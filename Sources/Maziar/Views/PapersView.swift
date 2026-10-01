@@ -7,9 +7,6 @@ struct PapersView: View {
     @EnvironmentObject var settings: AppSettings
     @State private var selectedPaper: Paper?
     @State private var showNewPaperSheet = false
-    @State private var newPaperTitle = ""
-    @State private var pendingProjectPath: String?
-    @State private var newPaperProjectError: String?
 
     var body: some View {
         if let selected = selectedPaper, paperStore.papers.contains(where: { $0.id == selected.id }) {
@@ -32,12 +29,13 @@ struct PapersView: View {
                         .opacity(0.05)
                         .allowsHitTesting(false)
                 }
-                if paperStore.papers.isEmpty {
+                let topLevel = paperStore.topLevelPapers()
+                if topLevel.isEmpty {
                     emptyState
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            ForEach(Array(paperStore.papers.enumerated()), id: \.element.id) { index, paper in
+                            ForEach(Array(topLevel.enumerated()), id: \.element.id) { index, paper in
                                 if index > 0 {
                                     Divider().opacity(0.4)
                                 }
@@ -46,7 +44,7 @@ struct PapersView: View {
                                     onOpen: { selectedPaper = paper },
                                     onDelete: { paperStore.remove(paper) },
                                     canMoveUp: index > 0,
-                                    canMoveDown: index < paperStore.papers.count - 1,
+                                    canMoveDown: index < topLevel.count - 1,
                                     onMoveUp: { paperStore.moveUp(paper) },
                                     onMoveDown: { paperStore.moveDown(paper) }
                                 )
@@ -60,7 +58,16 @@ struct PapersView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(settings.color(for: .windowBackground))
-        .sheet(isPresented: $showNewPaperSheet) { newPaperSheet }
+        .sheet(isPresented: $showNewPaperSheet) {
+            NewProjectSheet(
+                parentID: nil,
+                onCreated: { paper in
+                    showNewPaperSheet = false
+                    selectedPaper = paper
+                },
+                onCancel: { showNewPaperSheet = false }
+            )
+        }
     }
 
     private var header: some View {
@@ -104,73 +111,8 @@ struct PapersView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var newPaperSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("New Project").font(.headline)
-            TextField("Title", text: $newPaperTitle)
-                .textFieldStyle(.roundedBorder)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("LaTeX project").font(.caption.bold())
-                if let pendingProjectPath {
-                    HStack {
-                        Label(URL(fileURLWithPath: pendingProjectPath).lastPathComponent, systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                        Spacer()
-                        Button("Remove") { self.pendingProjectPath = nil }
-                            .buttonStyle(.plain)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    HStack {
-                        ProjectCreationMenu(
-                            label: "Add LaTeX Project",
-                            onCreated: { pendingProjectPath = $0.path },
-                            onError: { newPaperProjectError = $0 }
-                        )
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        Spacer()
-                    }
-                    Text("Optional \u{2014} it's automatically added to the Editor's project list either way, and you can also attach or create one later from this project's page.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                if let newPaperProjectError {
-                    CopyableErrorView(message: newPaperProjectError)
-                }
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { showNewPaperSheet = false }
-                Button("Create") { createPaper() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 420)
-    }
-
     private func startNewPaper() {
-        newPaperTitle = ""
-        pendingProjectPath = nil
-        newPaperProjectError = nil
         showNewPaperSheet = true
-    }
-
-    private func createPaper() {
-        let paper = paperStore.add(title: newPaperTitle)
-        if let pendingProjectPath {
-            var updated = paper
-            updated.projectPath = pendingProjectPath
-            paperStore.update(updated)
-        }
-        showNewPaperSheet = false
-        selectedPaper = paper
     }
 
     private func binding(for paper: Paper) -> Binding<Paper> {
@@ -191,6 +133,7 @@ private struct PaperCard: View {
     let onMoveDown: () -> Void
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conferenceStore: ConferenceStore
+    @EnvironmentObject var paperStore: PaperStore
     @State private var showDeleteConfirm = false
 
     private var linkedConference: ConferenceEntry? {
@@ -198,10 +141,13 @@ private struct PaperCard: View {
         return conferenceStore.conferences.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
+    private var subProjectCount: Int { paperStore.children(of: paper).count }
+
     /// Green normally; red once the next deadline is within 24h (or already past); off once the
-    /// paper's been marked rejected, since there's nothing left to race against at that point.
+    /// paper's been marked rejected (nothing left to race against), and off entirely for a
+    /// `.developing` project, which has no venue/deadline workflow to track in the first place.
     private var statusLightColor: Color? {
-        guard paper.decision != .rejected else { return nil }
+        guard paper.kind == .paperSubmission, paper.decision != .rejected else { return nil }
         if let date = linkedConference?.nextDeadline?.date {
             let hoursRemaining = date.timeIntervalSinceNow / 3600
             if hoursRemaining <= 24 { return .red }
@@ -226,6 +172,10 @@ private struct PaperCard: View {
                     if let statusLightColor {
                         BlinkingDot(color: statusLightColor, size: 8)
                     }
+                    Image(systemName: paper.kind.icon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help(paper.kind.displayName)
                     Text(paper.title).font(.headline)
                 }
                 HStack(spacing: 12) {
@@ -245,6 +195,12 @@ private struct PaperCard: View {
                         Text("\(paper.doneTaskCount)/\(paper.tasks.count) tasks done")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    if subProjectCount > 0 {
+                        Label("\(subProjectCount)", systemImage: "square.stack")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("\(subProjectCount) sub-project\(subProjectCount == 1 ? "" : "s")")
                     }
                 }
             }

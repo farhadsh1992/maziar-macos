@@ -12,6 +12,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     case projects
     case conferences
     case journals
+    case library
+    case diagrams
 
     var id: String { rawValue }
 
@@ -21,6 +23,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .projects: return "Editor"
         case .conferences: return "Conferences"
         case .journals: return "Journals"
+        case .library: return "Library"
+        case .diagrams: return "Diagrams"
         }
     }
 
@@ -30,6 +34,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .projects: return "doc.richtext"
         case .conferences: return "calendar.badge.clock"
         case .journals: return "book.closed"
+        case .library: return "books.vertical"
+        case .diagrams: return "flowchart"
         }
     }
 }
@@ -44,6 +50,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case ai
     case conferences
     case journals
+    case library
+    case customPages
+    case accounts
     case backup
     case about
 
@@ -54,6 +63,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 final class AppState: ObservableObject {
     @Published var route: Route = .projectList
     @Published var section: AppSection = .papers
+    /// Non-nil when a user-added custom page (Settings → Custom Pages) is the active sidebar
+    /// selection instead of one of the fixed `AppSection` cases — kept separate from `section`
+    /// since `AppSection` is a fixed, `CaseIterable` enum that can't grow a case per custom page.
+    /// Selecting any built-in section clears this back to nil.
+    @Published var selectedCustomPageID: UUID?
     @Published var settingsTab: SettingsTab = .appearance
 
     func open(_ project: Project) {

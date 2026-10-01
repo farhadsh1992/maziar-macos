@@ -121,6 +121,21 @@ final class AISettings: ObservableObject {
     @Published var journalModel: String = "" {
         didSet { UserDefaults.standard.set(journalModel, forKey: Self.journalModelKey) }
     }
+    /// Same idea again, for the Library page's AI features (metadata extraction, translator,
+    /// per-paper chat) — one override covers all three, since they're all lightweight text tasks
+    /// on the same page rather than needing to be tuned independently.
+    @Published var libraryProvider: AIProviderKind? {
+        didSet {
+            if let libraryProvider {
+                UserDefaults.standard.set(libraryProvider.rawValue, forKey: Self.libraryProviderKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.libraryProviderKey)
+            }
+        }
+    }
+    @Published var libraryModel: String = "" {
+        didSet { UserDefaults.standard.set(libraryModel, forKey: Self.libraryModelKey) }
+    }
     /// Same idea as the conference overrides above, but for poster/slide deck generation — a
     /// provider/model that's good at chat can still be mediocre at the "restructure this paper
     /// into slide bullets as JSON" task, so it's swappable independently right on the Poster &
@@ -168,6 +183,8 @@ final class AISettings: ObservableObject {
     private static let conferenceModelKey = "maziar.ai.conferenceModel"
     private static let journalProviderKey = "maziar.ai.journalProvider"
     private static let journalModelKey = "maziar.ai.journalModel"
+    private static let libraryProviderKey = "maziar.ai.libraryProvider"
+    private static let libraryModelKey = "maziar.ai.libraryModel"
     private static let deckProviderKey = "maziar.ai.deckProvider"
     private static let deckModelKey = "maziar.ai.deckModel"
     private static let codePageProviderKey = "maziar.ai.codePageProvider"
@@ -259,6 +276,13 @@ final class AISettings: ObservableObject {
         }
         journalModel = UserDefaults.standard.string(forKey: Self.journalModelKey) ?? ""
 
+        if let raw = UserDefaults.standard.string(forKey: Self.libraryProviderKey) {
+            libraryProvider = AIProviderKind(rawValue: raw)
+        } else {
+            libraryProvider = nil
+        }
+        libraryModel = UserDefaults.standard.string(forKey: Self.libraryModelKey) ?? ""
+
         if let raw = UserDefaults.standard.string(forKey: Self.deckProviderKey) {
             deckProvider = AIProviderKind(rawValue: raw)
         } else {
@@ -282,6 +306,15 @@ final class AISettings: ObservableObject {
 
     /// Which provider the Journal-lookup feature should use right now.
     var effectiveJournalProvider: AIProviderKind { journalProvider ?? activeProvider }
+
+    /// Which provider the Library page's AI features should use right now.
+    var effectiveLibraryProvider: AIProviderKind { libraryProvider ?? activeProvider }
+
+    /// Which model string the Library page's AI features should use right now.
+    func effectiveLibraryModel() -> String {
+        let trimmed = libraryModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? model(for: effectiveLibraryProvider) : trimmed
+    }
 
     /// Which model string the Journal-lookup feature should use right now.
     func effectiveJournalModel() -> String {

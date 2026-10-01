@@ -10,7 +10,8 @@ let package = Package(
             path: "Sources/Maziar",
             resources: [
                 .copy("Resources/Templates"),
-                .copy("Resources/Logo.png")
+                .copy("Resources/Logo.png"),
+                .copy("Resources/CVAutoFillLogo.png")
             ]
         )
     ]

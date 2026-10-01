@@ -35,7 +35,8 @@ enum AppSettingsBackupService {
         texManager: TeXInstallationManager,
         conferenceStore: ConferenceStore,
         journalStore: JournalStore,
-        paperStore: PaperStore
+        paperStore: PaperStore,
+        libraryStore: LibraryStore
     ) throws {
         guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
               let dict = plist as? [String: Any] else {
@@ -51,5 +52,6 @@ enum AppSettingsBackupService {
         conferenceStore.reloadFromDefaults()
         journalStore.reloadFromDefaults()
         paperStore.reloadFromDefaults()
+        libraryStore.reloadFromDefaults()
     }
 }

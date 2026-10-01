@@ -11,6 +11,8 @@ struct PaperDetailView: View {
     @EnvironmentObject var conferenceStore: ConferenceStore
     @EnvironmentObject var aiSettings: AISettings
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var paperStore: PaperStore
+    @EnvironmentObject var libraryStore: LibraryStore
 
     @State private var newTaskText = ""
     @State private var isDraftingRebuttal = false
@@ -23,28 +25,65 @@ struct PaperDetailView: View {
     @State private var projectLinkError: String?
     @State private var isGettingSuggestions = false
     @State private var improvementError: String?
+    @State private var newLinkText = ""
+    @State private var showNewSubProjectSheet = false
+    @State private var selectedChild: Paper?
 
     var body: some View {
+        if let selectedChild, paperStore.papers.contains(where: { $0.id == selectedChild.id }) {
+            PaperDetailView(paper: childBinding(for: selectedChild), onBack: { self.selectedChild = nil })
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             header
             Divider().opacity(0.4)
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    projectSection
-                    venueSection
-                    tasksSection
-                    reviewerSection
-                    decisionSection
-                    if paper.decision == .accepted {
-                        generateSection
-                        codePageSection
+                    switch paper.kind {
+                    case .paperSubmission:
+                        projectSection
+                        venueSection
+                        tasksSection
+                        reviewerSection
+                        decisionSection
+                        if paper.decision == .accepted {
+                            generateSection
+                            codePageSection
+                        }
+                    case .developing:
+                        ideaSection
+                        linksSection
+                        tasksSection
                     }
+                    libraryGroupSection
+                    subProjectsSection
                 }
                 .padding(20)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(settings.color(for: .windowBackground))
+        .sheet(isPresented: $showNewSubProjectSheet) {
+            NewProjectSheet(
+                parentID: paper.id,
+                onCreated: { child in
+                    showNewSubProjectSheet = false
+                    selectedChild = child
+                },
+                onCancel: { showNewSubProjectSheet = false }
+            )
+        }
+    }
+
+    private func childBinding(for child: Paper) -> Binding<Paper> {
+        Binding(
+            get: { paperStore.papers.first(where: { $0.id == child.id }) ?? child },
+            set: { paperStore.update($0) }
+        )
     }
 
     // MARK: - Header
@@ -288,6 +327,137 @@ struct PaperDetailView: View {
 
     private func removeTask(_ task: PaperTask) {
         paper.tasks.removeAll { $0.id == task.id }
+    }
+
+    // MARK: - Idea & links (developing projects)
+
+    private var ideaSection: some View {
+        SectionCard(title: "Idea", icon: "lightbulb") {
+            TextEditor(text: Binding(get: { paper.ideaDescription }, set: { paper.ideaDescription = $0 }))
+                .frame(minHeight: 100)
+                .font(.system(size: 12))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+        }
+    }
+
+    private var linksSection: some View {
+        SectionCard(title: "Links & References", icon: "link") {
+            Text("GitHub Repo").font(.caption).foregroundStyle(.secondary)
+            TextField(
+                "https://github.com/...",
+                text: Binding(get: { paper.githubRepoURLString ?? "" }, set: { paper.githubRepoURLString = $0.isEmpty ? nil : $0 })
+            )
+            .textFieldStyle(.roundedBorder)
+
+            Divider()
+
+            ForEach(Array(paper.links.enumerated()), id: \.offset) { index, link in
+                HStack {
+                    Text(link).font(.caption).textSelection(.enabled)
+                    Spacer()
+                    Button {
+                        removeLink(at: index)
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                TextField("Add a link or reference", text: $newLinkText, prompt: Text("e.g. https://... or a citation"))
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addLink)
+                Button("Add", action: addLink)
+                    .disabled(newLinkText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    private func addLink() {
+        let trimmed = newLinkText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        paper.links.append(trimmed)
+        newLinkText = ""
+    }
+
+    private func removeLink(at index: Int) {
+        guard paper.links.indices.contains(index) else { return }
+        paper.links.remove(at: index)
+    }
+
+    // MARK: - Library group
+
+    private var linkedLibraryGroup: LibraryGroup? {
+        guard let id = paper.libraryGroupID else { return nil }
+        return libraryStore.group(id)
+    }
+
+    private var libraryGroupSection: some View {
+        SectionCard(title: "Library Group", icon: "books.vertical") {
+            if let group = linkedLibraryGroup {
+                HStack {
+                    Label(group.name, systemImage: group.iconSystemName)
+                        .foregroundStyle(group.iconColorHex.flatMap(Color.init(hex:)) ?? .secondary)
+                    Spacer()
+                    Button("Reveal in Finder") {
+                        if let dir = libraryStore.directoryURL(for: group) {
+                            NSWorkspace.shared.open(dir)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Text("Reference papers you collect into \u{201c}\(group.name)\u{201d} on the Library page show up here.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack {
+                    Text("No library group yet — connect a library folder first.").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Create Library Group") { createLibraryGroup() }
+                        .buttonStyle(.bordered)
+                        .disabled(libraryStore.folderPath == nil)
+                }
+            }
+        }
+    }
+
+    private func createLibraryGroup() {
+        guard let created = try? libraryStore.createGroup(name: paper.title) else { return }
+        paper.libraryGroupID = created.id
+    }
+
+    // MARK: - Sub-projects
+
+    private var subProjectsSection: some View {
+        SectionCard(title: "Sub-Projects", icon: "square.stack") {
+            let children = paperStore.children(of: paper)
+            if children.isEmpty {
+                Text("No sub-projects yet.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(children) { child in
+                    HStack {
+                        Image(systemName: child.kind.icon).font(.caption).foregroundStyle(.secondary)
+                        Text(child.title).font(.subheadline)
+                        Spacer()
+                        if !child.tasks.isEmpty {
+                            Text("\(child.doneTaskCount)/\(child.tasks.count) tasks")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Open") { selectedChild = child }
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            Button {
+                showNewSubProjectSheet = true
+            } label: {
+                Label("Add Sub-Project", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
+        }
     }
 
     // MARK: - Reviewer comments / rebuttal

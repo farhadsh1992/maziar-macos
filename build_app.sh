@@ -66,6 +66,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Maziar opens links in Safari (e.g. a saved video, GitHub repo, or paper) as a new browser window.</string>
 </dict>
 </plist>
 PLIST
