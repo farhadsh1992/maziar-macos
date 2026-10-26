@@ -35,6 +35,12 @@ struct MaziarApp: App {
                 .environmentObject(cvAutofillStore)
                 .preferredColorScheme(settings.appearanceMode.colorScheme)
                 .tint(settings.color(for: .buttonColor))
+                .onAppear {
+                    GoogleDriveAccount.shared.attach(.init(
+                        app: settings, ai: aiSettings, tex: texManager, conference: conferenceStore,
+                        journal: journalStore, paper: paperStore, library: libraryStore, cv: cvAutofillStore
+                    ))
+                }
         }
         .defaultSize(width: 1200, height: 760)
         .commands {

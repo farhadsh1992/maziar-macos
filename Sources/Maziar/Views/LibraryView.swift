@@ -332,6 +332,40 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// A key for the circles on each paper's row — one dot + name per configured label color, and
+    /// the reading-order numbers — so what a color/number means is visible without hovering a dot.
+    /// Hidden entirely when nothing is configured.
+    @ViewBuilder
+    private var labelLegend: some View {
+        if !libraryStore.paperLabels.isEmpty || !libraryStore.paperLabelNumbers.isEmpty {
+            FlowLayout(spacing: 12) {
+                ForEach(libraryStore.paperLabels) { option in
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(option.color)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(Color.primary.opacity(0.25), lineWidth: 1))
+                        Text(option.name).font(.caption)
+                    }
+                }
+                if !libraryStore.paperLabelNumbers.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("Order:").font(.caption).foregroundStyle(.secondary)
+                        ForEach(libraryStore.paperLabelNumbers, id: \.self) { number in
+                            Text("\(number)")
+                                .font(.system(size: 9, weight: .bold))
+                                .frame(width: 14, height: 14)
+                                .background(Circle().stroke(Color.secondary.opacity(0.6), lineWidth: 1))
+                        }
+                    }
+                }
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+        }
+    }
+
     private var list: some View {
         VStack(spacing: 0) {
             HStack {
@@ -381,6 +415,7 @@ struct LibraryView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
+            labelLegend
             Divider().opacity(0.3)
 
             if let scanError = libraryStore.scanError {

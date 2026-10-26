@@ -200,6 +200,22 @@ final class CVAutofillStore: ObservableObject {
         }
     }
 
+    /// Re-reads everything from UserDefaults — used after a Google Drive snapshot is applied.
+    func reloadFromDefaults() {
+        structuredCVJSON = UserDefaults.standard.string(forKey: Self.structuredCVJSONKey)
+        cvFileName = UserDefaults.standard.string(forKey: Self.cvFileNameKey)
+        coverLetterText = UserDefaults.standard.string(forKey: Self.coverLetterTextKey)
+        coverLetterFileName = UserDefaults.standard.string(forKey: Self.coverLetterFileNameKey)
+        notes = Self.loadCodable([CVAutofillNote].self, key: Self.notesKey) ?? []
+        addresses = Self.loadCodable([CVAutofillAddress].self, key: Self.addressesKey) ?? []
+        savedJobs = Self.loadCodable([CVAutofillSavedJob].self, key: Self.savedJobsKey) ?? []
+        quickAccessItems = Self.loadCodable([CVAutofillQuickAccessItem].self, key: Self.quickAccessItemsKey) ?? []
+        promptOverrides = Self.loadCodable([String: String].self, key: Self.promptOverridesKey) ?? [:]
+        if let raw = UserDefaults.standard.string(forKey: Self.askAITargetKey), let target = CVAutofillAskAITarget(rawValue: raw) {
+            askAITarget = target
+        }
+    }
+
     func clearCV() {
         structuredCVJSON = nil
         cvFileName = nil
