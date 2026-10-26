@@ -366,6 +366,19 @@ struct LibraryView: View {
         }
     }
 
+    private func exportShownPapers() {
+        let entries = visibleEntries
+        Task {
+            do {
+                if let url = try await LibraryExportService.exportWithSavePanel(entries, libraryStore: libraryStore) {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private var list: some View {
         VStack(spacing: 0) {
             HStack {
@@ -407,6 +420,15 @@ struct LibraryView: View {
                     .clipShape(Capsule())
                 }
                 Spacer()
+                Button {
+                    exportShownPapers()
+                } label: {
+                    Label("Export \(visibleEntries.count) as ZIP", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .disabled(visibleEntries.isEmpty)
+                .help("Download every paper currently shown — PDFs, notes and info — as one zip file")
                 if let lastScanDate = libraryStore.lastScanDate {
                     Text("Updated \(lastScanDate, format: .relative(presentation: .named))")
                         .font(.caption2)
@@ -959,6 +981,12 @@ private struct LibraryCard: View {
                     }
                     .help("Copy BibTeX citation")
                     Button {
+                        exportZip()
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .help("Download this paper as a ZIP \u{2014} PDF, notes and info")
+                    Button {
                         showGroupEditor.toggle()
                     } label: {
                         Image(systemName: showGroupEditor ? "chevron.up" : "chevron.down")
@@ -1028,6 +1056,18 @@ private struct LibraryCard: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    private func exportZip() {
+        Task {
+            do {
+                if let url = try await LibraryExportService.exportWithSavePanel([entry], libraryStore: libraryStore) {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
     }
 
     private func copyBibTeX() {

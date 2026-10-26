@@ -251,6 +251,18 @@ final class GoogleDriveAccount: ObservableObject {
         guard isSignedIn, autoSync, stores != nil, !isBusy,
               Date().timeIntervalSince(lastCheck) >= minimumInterval else { return }
         lastCheck = Date()
+        await reconcile(reportUpToDate: false)
+    }
+
+    /// The Settings "Sync Now" button: the same reconciliation as the automatic checks, run
+    /// immediately and regardless of the "Sync automatically" toggle or the check throttle.
+    func syncNow() async {
+        guard isSignedIn, stores != nil else { return }
+        lastCheck = Date()
+        await reconcile(reportUpToDate: true)
+    }
+
+    private func reconcile(reportUpToDate: Bool) async {
         await run {
             let token = try await self.validAccessToken()
             guard let remote = try await self.remoteMeta(token: token) else {
@@ -271,6 +283,9 @@ final class GoogleDriveAccount: ObservableObject {
             } else if self.localDirty {
                 try await self.uploadSnapshot(token: token, existingID: remote.id)
                 self.statusMessage = "Uploaded to Google Drive."
+            } else if reportUpToDate {
+                self.markSynced()
+                self.statusMessage = "Already up to date with Google Drive."
             }
         }
     }
