@@ -176,7 +176,19 @@ struct AccountsSettingsTab: View {
                 }
                 .disabled(drive.isBusy)
             } else {
+                Label(drive.isConfigured
+                      ? "Not syncing \u{2014} click \u{201c}Sign in with Google\u{201d} below. Nothing is saved to or loaded from Google Drive until you do."
+                      : "Not syncing \u{2014} enter both the OAuth client ID and the client secret below, then sign in. Nothing is saved to or loaded from Google Drive until you do.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
                 TextField("OAuth client ID", text: $drive.clientID)
+                if !drive.clientID.trimmingCharacters(in: .whitespaces).isEmpty && !drive.clientIDLooksValid {
+                    Label("That doesn't look like a client ID. It must end in .apps.googleusercontent.com (it isn't your email or a project name). Copy it from Google Cloud Console \u{2192} APIs & Services \u{2192} Credentials.",
+                          systemImage: "xmark.octagon.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
                 SecureField("OAuth client secret", text: $drive.clientSecret)
                 Button("Sign in with Google") { Task { await drive.signIn() } }
                     .disabled(!drive.isConfigured || drive.isBusy)

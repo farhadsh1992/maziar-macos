@@ -57,7 +57,10 @@ final class GoogleDriveAccount: ObservableObject {
     @Published var errorMessage: String?
 
     var isSignedIn: Bool { KeychainHelper.get(forKey: Self.refreshTokenKey) != nil }
-    var isConfigured: Bool { !clientID.trimmingCharacters(in: .whitespaces).isEmpty && !clientSecret.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// A real OAuth client ID always ends in `.apps.googleusercontent.com` — anything else (an email
+    /// address, a project name, an API key) makes Google answer "Error 401: invalid_client".
+    var clientIDLooksValid: Bool { clientID.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(".apps.googleusercontent.com") }
+    var isConfigured: Bool { clientIDLooksValid && !clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private static let clientIDKey = "googleDrive.clientID"
     private static let clientSecretKey = "googleDrive.clientSecret"
@@ -155,8 +158,8 @@ final class GoogleDriveAccount: ObservableObject {
             let (code, redirect) = try await self.authorize(challenge: challenge, state: state)
             let tokens = try await self.tokenRequest([
                 "code": code,
-                "client_id": self.clientID,
-                "client_secret": self.clientSecret,
+                "client_id": self.clientID.trimmingCharacters(in: .whitespacesAndNewlines),
+                "client_secret": self.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines),
                 "code_verifier": verifier,
                 "redirect_uri": redirect,
                 "grant_type": "authorization_code",
@@ -259,23 +262,34 @@ final class GoogleDriveAccount: ObservableObject {
         pollTimer?.invalidate()
         pollTimer = nil
         debounceTask?.cancel()
+        debounceTask = nil
     }
 
     /// Any `UserDefaults` write (including unrelated system ones) lands here; wait for ten quiet
     /// seconds, then only treat it as a real local edit if the actual Maziar data differs from what
     /// was last synced.
     private func scheduleLocalChangeCheck() {
-        guard Date() >= suppressChangesUntil else { return }
-        debounceTask?.cancel()
+        guard Date() >= suppressChangesUntil, debounceTask == nil else { return }
+        // Scheduled once per burst and *not* restarted by every further write: a debounce that
+        // resets on each `UserDefaults` write can starve forever if anything (a timer, a scan)
+        // keeps writing more often than every ten seconds, so a change would never get uploaded.
         debounceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard !Task.isCancelled, let self, Date() >= self.suppressChangesUntil else { return }
-            let fingerprint = self.currentFingerprint()
-            guard fingerprint != self.lastFingerprint else { return }
-            self.lastFingerprint = fingerprint
-            self.localDirty = true
-            await self.autoSyncCheck(minimumInterval: 0)
+            guard let self else { return }
+            self.debounceTask = nil
+            guard !Task.isCancelled, Date() >= self.suppressChangesUntil else { return }
+            self.noteLocalChangesIfAny()
+            if self.localDirty { await self.autoSyncCheck(minimumInterval: 0) }
         }
+    }
+
+    /// Marks this Mac dirty if its synced data differs from what was last synced. Also run at the
+    /// start of every sync pass, so a change the notification path somehow missed is still caught.
+    private func noteLocalChangesIfAny() {
+        let fingerprint = currentFingerprint()
+        guard fingerprint != lastFingerprint else { return }
+        lastFingerprint = fingerprint
+        localDirty = true
     }
 
     private func currentFingerprint() -> Data? {
@@ -301,6 +315,7 @@ final class GoogleDriveAccount: ObservableObject {
     }
 
     private func reconcile(reportUpToDate: Bool) async {
+        noteLocalChangesIfAny()
         await run {
             let token = try await self.validAccessToken()
             guard let remote = try await self.remoteMeta(token: token) else {
@@ -468,7 +483,7 @@ final class GoogleDriveAccount: ObservableObject {
     /// request must repeat.
     private func authorize(challenge: String, state: String) async throws -> (String, String) {
         let box = try LoopbackBox()
-        let id = clientID
+        let id = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let port: UInt16 = try await box.start()
         let redirect = "http://127.0.0.1:\(port)"
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!

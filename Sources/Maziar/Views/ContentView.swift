@@ -192,8 +192,9 @@ private struct OuterSectionSidebar: View {
                         if drive.isBusy { ProgressView().controlSize(.small).background(Circle().fill(.ultraThinMaterial)) }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if drive.errorMessage != nil {
-                            Circle().fill(.red).frame(width: 9, height: 9)
+                        // Red: the last sync failed. Orange: not signed in, so nothing is syncing.
+                        if drive.errorMessage != nil || !drive.isSignedIn {
+                            Circle().fill(drive.errorMessage != nil ? Color.red : Color.orange).frame(width: 9, height: 9)
                                 .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
                         }
                     }
