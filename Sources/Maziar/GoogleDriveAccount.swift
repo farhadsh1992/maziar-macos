@@ -2,6 +2,7 @@ import Foundation
 import Network
 import CryptoKit
 import AppKit
+import UniformTypeIdentifiers
 
 /// Google sign-in plus a single-file snapshot sync of Maziar's own state (library list, groups,
 /// labels, notebook templates, settings, tracked papers/conferences/journals — everything
@@ -43,6 +44,15 @@ final class GoogleDriveAccount: ObservableObject {
     @Published private(set) var email: String?
     @Published private(set) var lastSync: Date?
     @Published private(set) var isBusy = false
+    /// The small picture shown on the sidebar's account button, chosen in Settings → Accounts.
+    /// Stored (already shrunk to 128 px) under a `maziar.googleDrive.`-prefixed key, so like the rest
+    /// of the Account section it stays on this Mac and isn't part of the Drive snapshot.
+    @Published private(set) var profileImage: NSImage?
+    /// The name shown under the picture on the sidebar's account button; blank falls back to
+    /// "Account". Kept on this Mac like the rest of the Account section.
+    @Published var displayName: String {
+        didSet { UserDefaults.standard.set(displayName, forKey: Self.displayNameKey) }
+    }
     @Published var statusMessage: String?
     @Published var errorMessage: String?
 
@@ -103,6 +113,34 @@ final class GoogleDriveAccount: ObservableObject {
         email = UserDefaults.standard.string(forKey: Self.emailDefaultsKey)
         lastSync = UserDefaults.standard.object(forKey: Self.lastSyncDefaultsKey) as? Date
         autoSync = UserDefaults.standard.object(forKey: Self.autoSyncKey) as? Bool ?? true
+        profileImage = UserDefaults.standard.data(forKey: Self.pictureKey).flatMap(NSImage.init(data:))
+        displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
+    }
+
+    private static let pictureKey = "maziar.googleDrive.profilePicture"
+    private static let displayNameKey = "maziar.googleDrive.displayName"
+
+    func chooseProfileImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a picture for your account"
+        guard panel.runModal() == .OK, let url = panel.url, let source = NSImage(contentsOf: url) else { return }
+        let side: CGFloat = 128
+        let square = min(source.size.width, source.size.height)
+        let crop = NSRect(x: (source.size.width - square) / 2, y: (source.size.height - square) / 2, width: square, height: square)
+        let result = NSImage(size: NSSize(width: side, height: side))
+        result.lockFocus()
+        source.draw(in: NSRect(x: 0, y: 0, width: side, height: side), from: crop, operation: .copy, fraction: 1)
+        result.unlockFocus()
+        guard let tiff = result.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+        UserDefaults.standard.set(png, forKey: Self.pictureKey)
+        profileImage = result
+    }
+
+    func clearProfileImage() {
+        UserDefaults.standard.removeObject(forKey: Self.pictureKey)
+        profileImage = nil
     }
 
     // MARK: - Sign in / out
@@ -207,7 +245,7 @@ final class GoogleDriveAccount: ObservableObject {
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.autoSyncCheck(minimumInterval: 30) }
         }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.autoSyncCheck(minimumInterval: 60) }
         }
         Task { await autoSyncCheck(minimumInterval: 0) }

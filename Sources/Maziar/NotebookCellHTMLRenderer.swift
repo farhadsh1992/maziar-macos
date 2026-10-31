@@ -96,6 +96,9 @@ enum NotebookCellHTMLRenderer {
           img.maziar-formula-inline { vertical-align: middle; max-height: 1.4em; }
           .maziar-formula-block { text-align: center; margin: 8px 0; }
           pre { white-space: pre-wrap; }
+          table { border-collapse: collapse; margin: 8px 0; }
+          th, td { border: 1px solid rgba(128,128,128,0.55); padding: 4px 10px; }
+          th { background: rgba(128,128,128,0.18); }
         </style>
         </head>
         <body>

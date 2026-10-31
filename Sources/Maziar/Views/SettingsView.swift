@@ -1294,7 +1294,6 @@ private struct LibrarySettingsTab: View {
     @EnvironmentObject var libraryStore: LibraryStore
     @EnvironmentObject var aiSettings: AISettings
     @EnvironmentObject var settings: AppSettings
-    @State private var driveRoots: [URL] = []
     @State private var modelText = ""
     @State private var newLanguage = ""
     @State private var showAddLabelSheet = false
@@ -1478,49 +1477,6 @@ private struct LibrarySettingsTab: View {
             }
 
             Section {
-                if let path = libraryStore.folderPath {
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(.secondary)
-                        Text(path)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                } else {
-                    Label("Not connected", systemImage: "folder.badge.questionmark")
-                        .foregroundStyle(.secondary)
-                }
-
-                if !driveRoots.isEmpty {
-                    ForEach(driveRoots, id: \.self) { root in
-                        Button {
-                            openPicker(startingAt: root)
-                        } label: {
-                            Label(root.lastPathComponent.replacingOccurrences(of: "GoogleDrive-", with: ""), systemImage: "folder.badge.gearshape")
-                        }
-                    }
-                }
-
-                Button {
-                    openPicker(startingAt: nil)
-                } label: {
-                    Label(libraryStore.folderPath == nil ? "Connect Folder…" : "Change Folder…", systemImage: "folder.badge.plus")
-                }
-
-                if libraryStore.folderPath != nil {
-                    Button("Reveal in Finder") {
-                        if let url = libraryStore.folderURL { NSWorkspace.shared.open(url) }
-                    }
-                    Button("Disconnect", role: .destructive) { libraryStore.disconnect() }
-                }
-            } header: {
-                Text("Storage Folder")
-            } footer: {
-                Text("Where your papers (and their notes files) actually live — point this at a folder inside your Google Drive for Desktop sync (detected accounts are listed above as shortcuts) so everything you add here is backed up automatically. No Google sign-in inside Maziar: it just watches whatever folder you pick, the same way it would watch any other local folder.")
-                    .font(.caption)
-            }
-
-            Section {
                 Toggle("Two-row group bar", isOn: $libraryStore.groupsTwoRowLayout)
                 if !libraryStore.groups.isEmpty {
                     ForEach(libraryStore.groups) { group in
@@ -1531,12 +1487,11 @@ private struct LibrarySettingsTab: View {
             } header: {
                 Text("Groups")
             } footer: {
-                Text("The group bar on the Library page defaults to one row, scrolling sideways once there are more groups than fit — turn this on to see two rows at once instead. Each group is a real subfolder of the storage folder above — add, rename, or delete groups from the Library page itself.")
+                Text("The group bar on the Library page defaults to one row, scrolling sideways once there are more groups than fit — turn this on to see two rows at once instead. Each group is a real subfolder of the storage folder (Settings \u{2192} Accounts) — add, rename, or delete groups from the Library page itself.")
                     .font(.caption)
             }
         }
         .formStyle(.grouped)
-        .onAppear { driveRoots = LibraryStore.suggestedDriveRoots() }
         .sheet(isPresented: $showAddLabelSheet) {
             PaperLabelEditorSheet(
                 existing: nil,
@@ -1559,18 +1514,6 @@ private struct LibrarySettingsTab: View {
         }
     }
 
-    private func openPicker(startingAt url: URL?) {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Connect"
-        panel.message = "Choose or create a folder for your paper library"
-        if let url { panel.directoryURL = url }
-        guard panel.runModal() == .OK, let picked = panel.url else { return }
-        libraryStore.connect(picked)
-    }
 
     private func addLanguage() {
         if libraryStore.addTranslatorLanguage(newLanguage) {

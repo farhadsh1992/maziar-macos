@@ -10,9 +10,15 @@ import AppKit
 /// and `$...$`/`$$...$$` LaTeX formulas, same as the plain-notes editor.
 struct NotebookEditorView: View {
     @Binding var cells: [NotebookCell]
+    /// When true (the standalone Notes window), cells with content open as rendered Markdown and
+    /// switch to editing on demand; when false, cells open as editable text and switch to preview
+    /// on demand (the Reader/Info behavior).
+    var defaultPreview = false
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var libraryStore: LibraryStore
     @State private var previewingCellIDs: Set<String> = []
+    /// Only used with `defaultPreview`: the cells currently being edited instead of shown rendered.
+    @State private var editingCellIDs: Set<String> = []
     @State private var cellHeights: [String: CGFloat] = [:]
     @State private var collapsedCellIDs: Set<String> = []
 
@@ -227,11 +233,14 @@ struct NotebookEditorView: View {
     /// cell's own "+" button passes its own id, inserting the new cell right below it instead of
     /// always at the bottom of a possibly-long notebook.
     private func insertCell(_ source: String, after id: String? = nil) {
+        let cell = NotebookCell(source: source)
+        // A brand new cell opens for typing even when cells otherwise open rendered.
+        if defaultPreview { editingCellIDs.insert(cell.id) }
         guard let id, let index = cells.firstIndex(where: { $0.id == id }) else {
-            cells.append(NotebookCell(source: source))
+            cells.append(cell)
             return
         }
-        cells.insert(NotebookCell(source: source), at: index + 1)
+        cells.insert(cell, at: index + 1)
     }
 
     private func canMoveCell(_ id: String, by offset: Int) -> Bool {
@@ -247,10 +256,17 @@ struct NotebookEditorView: View {
         cells.swapAt(index, target)
     }
 
-    private func isPreviewing(_ id: String) -> Bool { previewingCellIDs.contains(id) }
+    private func isPreviewing(_ id: String) -> Bool {
+        guard defaultPreview else { return previewingCellIDs.contains(id) }
+        // An empty cell would render as nothing, so it stays editable until it has text.
+        let isEmpty = cells.first { $0.id == id }?.source.isEmpty ?? true
+        return !editingCellIDs.contains(id) && !isEmpty
+    }
 
     private func toggle(_ id: String) {
-        if previewingCellIDs.contains(id) {
+        if defaultPreview {
+            if editingCellIDs.contains(id) { editingCellIDs.remove(id) } else { editingCellIDs.insert(id) }
+        } else if previewingCellIDs.contains(id) {
             previewingCellIDs.remove(id)
         } else {
             previewingCellIDs.insert(id)

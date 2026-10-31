@@ -93,6 +93,19 @@ struct MaziarApp: App {
         .defaultSize(width: 460, height: 620)
         .windowResizability(.contentSize)
 
+        WindowGroup(id: "paper-notes", for: UUID.self) { $paperID in
+            if let paperID {
+                PaperNotesWindow(paperID: paperID)
+                    .environmentObject(libraryStore)
+                    .environmentObject(aiSettings)
+                    .environmentObject(settings)
+                    .environmentObject(texManager)
+                    .preferredColorScheme(settings.appearanceMode.colorScheme)
+                    .tint(settings.color(for: .buttonColor))
+            }
+        }
+        .defaultSize(width: 620, height: 720)
+
         WindowGroup(id: "paper-reader", for: UUID.self) { $paperID in
             if let paperID {
                 PaperReaderWindow(paperID: paperID)

@@ -34,7 +34,10 @@ enum MarkdownBlockRenderer {
             listItems.removeAll()
         }
 
-        for line in lines {
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
+            index += 1
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
             if inCodeFence {
@@ -68,6 +71,24 @@ enum MarkdownBlockRenderer {
                 flushParagraph(); flushList()
                 output.append(line)
                 htmlDepth = max(0, tagDepthDelta(line))
+                continue
+            }
+
+            // GitHub-style table: a row of `|`-separated cells directly followed by a `---|---`
+            // separator row; every following non-blank line containing a `|` is a body row.
+            if trimmed.contains("|"), index < lines.count, let alignments = tableAlignments(lines[index]),
+               splitTableRow(trimmed).count == alignments.count {
+                flushParagraph(); flushList()
+                let headers = splitTableRow(trimmed)
+                index += 1
+                var rows: [[String]] = []
+                while index < lines.count {
+                    let next = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard !next.isEmpty, next.contains("|") else { break }
+                    rows.append(splitTableRow(next))
+                    index += 1
+                }
+                output.append(tableHTML(headers: headers, alignments: alignments, rows: rows))
                 continue
             }
 
@@ -133,6 +154,62 @@ enum MarkdownBlockRenderer {
             delta -= closeRegex.numberOfMatches(in: line, range: range)
         }
         return delta
+    }
+
+    /// Splits one table row on `|`, ignoring the optional leading/trailing pipe and `\|` escapes.
+    private static func splitTableRow(_ row: String) -> [String] {
+        var text = row.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("|") { text.removeFirst() }
+        if text.hasSuffix("|") && !text.hasSuffix("\\|") { text.removeLast() }
+        var cells: [String] = []
+        var current = ""
+        var previous: Character?
+        for character in text {
+            if character == "|" && previous != "\\" {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                if character == "|" { current.removeLast() }
+                current.append(character)
+            }
+            previous = character
+        }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+        return cells
+    }
+
+    /// The per-column alignment if `line` is a table separator row (`|---|:--:|--:|`), else nil.
+    private static func tableAlignments(_ line: String) -> [String]? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("|") || trimmed.contains("-") else { return nil }
+        let cells = splitTableRow(trimmed)
+        var alignments: [String] = []
+        for cell in cells {
+            guard !cell.isEmpty else { return nil }
+            var core = Substring(cell)
+            let left = core.hasPrefix(":")
+            if left { core = core.dropFirst() }
+            let right = core.hasSuffix(":")
+            if right { core = core.dropLast() }
+            guard !core.isEmpty, core.allSatisfy({ $0 == "-" }) else { return nil }
+            alignments.append(left && right ? "center" : right ? "right" : left ? "left" : "")
+        }
+        return alignments.isEmpty ? nil : alignments
+    }
+
+    private static func tableHTML(headers: [String], alignments: [String], rows: [[String]]) -> String {
+        func cell(_ tag: String, _ text: String, _ column: Int) -> String {
+            let align = column < alignments.count ? alignments[column] : ""
+            let style = align.isEmpty ? "" : " style=\"text-align:\(align)\""
+            return "<\(tag)\(style)>" + inlineFormat(text) + "</\(tag)>"
+        }
+        var html = "<table><thead><tr>" + headers.enumerated().map { cell("th", $1, $0) }.joined() + "</tr></thead><tbody>"
+        for row in rows {
+            // Ragged rows are padded/truncated to the header's width, like GitHub does.
+            let padded = (0..<headers.count).map { $0 < row.count ? row[$0] : "" }
+            html += "<tr>" + padded.enumerated().map { cell("td", $1, $0) }.joined() + "</tr>"
+        }
+        return html + "</tbody></table>"
     }
 
     private static func headerMatch(_ line: String) -> (level: Int, text: String)? {

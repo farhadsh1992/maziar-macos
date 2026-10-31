@@ -28,10 +28,10 @@ enum AppSettingsBackupService {
 
     /// Keys describing *this* Mac rather than the user's data — an absolute folder path that
     /// includes this machine's Drive account directory, which TeX distribution is installed, window
-    /// sizes, and the Google sign-in's own bookkeeping. A cloud snapshot leaves them out so loading
+    /// sizes, the Google sign-in's own bookkeeping (the Account section), and every AI setting (provider/model choices, prompt tasks, base URLs, pricing) — the AI section stays per-Mac by design. A cloud snapshot leaves them out so loading
     /// it on another Mac doesn't overwrite that Mac's own, different values with this one's.
     private static let machineSpecificKeys: Set<String> = ["maziar.library.folderPath", "maziar.texDistribution"]
-    private static let machineSpecificPrefixes = ["maziar.googleDrive.", "maziar.readerWindow."]
+    private static let machineSpecificPrefixes = ["maziar.googleDrive.", "maziar.readerWindow.", "maziar.ai."]
 
     private static func isMachineSpecific(_ key: String) -> Bool {
         machineSpecificKeys.contains(key) || machineSpecificPrefixes.contains { key.hasPrefix($0) }

@@ -10,6 +10,7 @@ import SwiftUI
 /// the same live-save behavior the Reader's Notebook page already had for a single notebook.
 struct NotebookTabsView: View {
     let entry: LibraryEntry
+    var defaultPreview = false
     @EnvironmentObject var libraryStore: LibraryStore
     @EnvironmentObject var settings: AppSettings
 
@@ -40,7 +41,7 @@ struct NotebookTabsView: View {
                 .help("Add a new notebook tab")
             }
 
-            NotebookEditorView(cells: $cells)
+            NotebookEditorView(cells: $cells, defaultPreview: defaultPreview)
                 .onChange(of: cells) { _, newValue in
                     guard let tab = currentTab else { return }
                     libraryStore.writeNotebook(NotebookDocument(cells: newValue), for: entry, tab: tab)

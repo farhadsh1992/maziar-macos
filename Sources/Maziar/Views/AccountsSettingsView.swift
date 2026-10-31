@@ -34,6 +34,7 @@ struct AccountsSettingsTab: View {
     @EnvironmentObject var journalStore: JournalStore
     @EnvironmentObject var paperStore: PaperStore
     @EnvironmentObject var libraryStore: LibraryStore
+    @State private var driveRoots: [URL] = []
     @State private var pendingDownload: (data: Data, modified: String?)?
     @State private var showDownloadConfirm = false
 
@@ -58,10 +59,12 @@ struct AccountsSettingsTab: View {
                     .font(.caption)
             }
 
+            storageFolderSection
             googleDriveSection
         }
         .formStyle(.grouped)
         .frame(minWidth: 480, minHeight: 320)
+        .onAppear { driveRoots = LibraryStore.suggestedDriveRoots() }
         .confirmationDialog(
             "Replace this Mac's Maziar data with the copy in Google Drive?",
             isPresented: $showDownloadConfirm,
@@ -75,8 +78,83 @@ struct AccountsSettingsTab: View {
     }
 
     @ViewBuilder
+    private var storageFolderSection: some View {
+        Section {
+            if let path = libraryStore.folderPath {
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(.secondary)
+                    Text(path)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } else {
+                Label("Not connected", systemImage: "folder.badge.questionmark")
+                    .foregroundStyle(.secondary)
+            }
+
+            if !driveRoots.isEmpty {
+                ForEach(driveRoots, id: \.self) { root in
+                    Button {
+                        openPicker(startingAt: root)
+                    } label: {
+                        Label(root.lastPathComponent.replacingOccurrences(of: "GoogleDrive-", with: ""), systemImage: "folder.badge.gearshape")
+                    }
+                }
+            }
+
+            Button {
+                openPicker(startingAt: nil)
+            } label: {
+                Label(libraryStore.folderPath == nil ? "Connect Folder…" : "Change Folder…", systemImage: "folder.badge.plus")
+            }
+
+            if libraryStore.folderPath != nil {
+                Button("Reveal in Finder") {
+                    if let url = libraryStore.folderURL { NSWorkspace.shared.open(url) }
+                }
+                Button("Disconnect", role: .destructive) { libraryStore.disconnect() }
+            }
+        } header: {
+            Text("Storage Folder")
+        } footer: {
+            Text("Where your papers (and their notes files) actually live — point this at a folder inside your Google Drive for Desktop sync (detected accounts are listed above as shortcuts) so everything you add here is backed up automatically. Maziar just watches whatever folder you pick, the same way it would watch any other local folder; signing in with Google below is separate and only syncs Maziar's own data.")
+                .font(.caption)
+        }
+    }
+
+    private func openPicker(startingAt url: URL?) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Connect"
+        panel.message = "Choose or create a folder for your paper library"
+        if let url { panel.directoryURL = url }
+        guard panel.runModal() == .OK, let picked = panel.url else { return }
+        libraryStore.connect(picked)
+    }
+
+    @ViewBuilder
     private var googleDriveSection: some View {
         Section {
+            HStack(spacing: 12) {
+                AccountAvatar(size: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("Your name", text: $drive.displayName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 200)
+                    Text(drive.email ?? "Not signed in").font(.caption).foregroundStyle(.secondary)
+                    Text("The name and picture show on the account button at the top of the left sidebar.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Choose Picture…") { drive.chooseProfileImage() }
+                if drive.profileImage != nil {
+                    Button("Remove") { drive.clearProfileImage() }
+                }
+            }
             if drive.isSignedIn {
                 LabeledContent("Signed in as", value: drive.email ?? "Google account")
                 LabeledContent("Last synced", value: drive.lastSync.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Never")
@@ -113,7 +191,7 @@ struct AccountsSettingsTab: View {
         } header: {
             Text("Google Drive Sync")
         } footer: {
-            Text("With \u{201c}Sync automatically\u{201d} on, Maziar checks Google Drive when it opens, when you switch back to it, and every few minutes, loads newer data from your other devices, and uploads your changes about ten seconds after you make them. If both sides changed, it asks which copy to keep rather than overwriting either. Saves Maziar's own data — library list, groups, labels, notebook templates, settings, tracked papers/conferences/journals — to a private app folder in your Google Drive, and loads it on another Mac signed in to the same account. PDFs and notes files are not uploaded here; they stay in the Library's connected folder (point it at Google Drive for desktop to share them). API keys and this Mac's folder path and LaTeX install are never synced. To sign in you need your own OAuth client: in Google Cloud Console, enable the Google Drive API and create an OAuth client ID of type \u{201c}Desktop app\u{201d}, then paste its ID and secret above.")
+            Text("With \u{201c}Sync automatically\u{201d} on, Maziar checks Google Drive when it opens, when you switch back to it, and every few minutes, loads newer data from your other devices, and uploads your changes about ten seconds after you make them. If both sides changed, it asks which copy to keep rather than overwriting either. Saves Maziar's own data — library list, groups, labels, notebook templates, settings, tracked papers/conferences/journals — to a private app folder in your Google Drive, and loads it on another Mac signed in to the same account. PDFs and notes files are not uploaded here; they stay in the Library's connected folder (point it at Google Drive for desktop to share them). Never synced, by design: the AI section, this Account section (including the picture), API keys, this Mac's folder path and LaTeX install. To sign in you need your own OAuth client: in Google Cloud Console, enable the Google Drive API and create an OAuth client ID of type \u{201c}Desktop app\u{201d}, then paste its ID and secret above.")
                 .font(.caption)
         }
     }
@@ -146,5 +224,26 @@ struct AccountSignInWindow: View {
         } else {
             Text("Unknown service").foregroundStyle(.secondary)
         }
+    }
+}
+
+/// The round account picture (or a plain person glyph when none is set) — shared by the Settings
+/// row where it's chosen and the sidebar button that shows it.
+struct AccountAvatar: View {
+    var size: CGFloat
+    @ObservedObject private var drive = GoogleDriveAccount.shared
+
+    var body: some View {
+        Group {
+            if let image = drive.profileImage {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
     }
 }

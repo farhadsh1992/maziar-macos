@@ -23,19 +23,35 @@ enum LibraryExportService {
     }
 
     /// Asks where to save, builds the zip, and returns where it went — or `nil` if cancelled.
-    static func exportWithSavePanel(_ entries: [LibraryEntry], libraryStore: LibraryStore) async throws -> URL? {
-        guard !entries.isEmpty else { return nil }
+    ///
+    /// `everything` is the full backup: every paper in the library (not just what's shown), plus a
+    /// snapshot of Maziar's settings (`maziar-settings.plist`, importable from Settings → Backup).
+    /// Its save panel opens in your Google Drive for desktop folder when there is one, so the zip
+    /// lands in Drive (visible on drive.google.com) without a separate upload — Maziar's own Google
+    /// sign-in is limited to a hidden app folder and can't write to the regular Drive.
+    static func exportWithSavePanel(_ entries: [LibraryEntry], libraryStore: LibraryStore, everything: Bool = false) async throws -> URL? {
+        guard !entries.isEmpty || everything else { return nil }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.zip]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = (entries.count == 1 ? sanitized(entries[0].title) : "Maziar Library Export") + ".zip"
-        panel.message = "Save the PDF\(entries.count == 1 ? "" : "s"), notes and info as a zip file"
+        if everything {
+            panel.nameFieldStringValue = "Maziar Everything \(Date().formatted(.iso8601.year().month().day())).zip"
+            panel.message = "Save every paper, its notes and info, and your settings as one zip file"
+            if let drive = LibraryStore.suggestedDriveRoots().first {
+                let myDrive = drive.appendingPathComponent("My Drive", isDirectory: true)
+                panel.directoryURL = FileManager.default.fileExists(atPath: myDrive.path) ? myDrive : drive
+            }
+        } else {
+            panel.nameFieldStringValue = (entries.count == 1 ? sanitized(entries[0].title) : "Maziar Library Export") + ".zip"
+            panel.message = "Save the PDF\(entries.count == 1 ? "" : "s"), notes and info as a zip file"
+        }
         guard panel.runModal() == .OK, let destination = panel.url else { return nil }
-        try await export(entries, libraryStore: libraryStore, to: destination)
+        let settings = everything ? try AppSettingsBackupService.cloudExportData() : nil
+        try await export(entries, libraryStore: libraryStore, to: destination, rootName: everything ? "Maziar Everything" : nil, settingsSnapshot: settings)
         return destination
     }
 
-    static func export(_ entries: [LibraryEntry], libraryStore: LibraryStore, to destination: URL) async throws {
+    static func export(_ entries: [LibraryEntry], libraryStore: LibraryStore, to destination: URL, rootName: String? = nil, settingsSnapshot: Data? = nil) async throws {
         var plan = Plan()
         var usedFolders = Set<String>()
         for entry in entries {
@@ -43,9 +59,10 @@ enum LibraryExportService {
             var suffix = 2
             while usedFolders.contains(folder) { folder = "\(sanitized(entry.title)) \(suffix)"; suffix += 1 }
             usedFolders.insert(folder)
-            add(entry, under: entries.count == 1 ? "" : folder + "/", to: &plan, libraryStore: libraryStore)
+            add(entry, under: entries.count == 1 && rootName == nil ? "" : folder + "/", to: &plan, libraryStore: libraryStore)
         }
-        let rootName = entries.count == 1 ? sanitized(entries[0].title) : "Maziar Library Export"
+        if let settingsSnapshot { plan.texts.append(("maziar-settings.plist", settingsSnapshot)) }
+        let rootName = rootName ?? (entries.count == 1 ? sanitized(entries[0].title) : "Maziar Library Export")
         let finished = plan
         try await Task.detached(priority: .userInitiated) {
             try build(plan: finished, rootName: rootName, destination: destination)

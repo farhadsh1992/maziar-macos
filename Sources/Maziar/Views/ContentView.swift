@@ -91,9 +91,14 @@ struct ContentView: View {
 private struct OuterSectionSidebar: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var settings: AppSettings
+    @ObservedObject private var drive = GoogleDriveAccount.shared
+    @Environment(\.openSettings) private var openSettings
+    @State private var showAccountMenu = false
 
     var body: some View {
         VStack(spacing: 4) {
+            accountButton
+            Divider().padding(.vertical, 4)
             ForEach(AppSection.allCases.filter { !settings.hiddenSections.contains($0) }) { section in
                 let isSelected = appState.selectedCustomPageID == nil && appState.section == section
                 // A custom icon color, when set, is the icon's own identity color and stays visible
@@ -173,5 +178,98 @@ private struct OuterSectionSidebar: View {
         .frame(width: 72)
         .frame(maxHeight: .infinity)
         .background(settings.color(for: .sidebarBackground))
+    }
+
+    /// Top of the rail: the account's picture and name. Clicking it opens a small menu — account
+    /// settings, update from Google Drive, and save this Mac's setup/settings to Google Drive.
+    private var accountButton: some View {
+        Button {
+            showAccountMenu.toggle()
+        } label: {
+            VStack(spacing: 4) {
+                AccountAvatar(size: 28)
+                    .overlay {
+                        if drive.isBusy { ProgressView().controlSize(.small).background(Circle().fill(.ultraThinMaterial)) }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if drive.errorMessage != nil {
+                            Circle().fill(.red).frame(width: 9, height: 9)
+                                .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                        }
+                    }
+                Text(accountLabel)
+                    .font(.system(size: 9.5))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(width: 60, height: 48)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(accountHelp)
+        .popover(isPresented: $showAccountMenu, arrowEdge: .trailing) { accountMenu }
+    }
+
+    private var accountLabel: String {
+        let name = drive.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Account" : name
+    }
+
+    private var accountMenu: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                AccountAvatar(size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(accountLabel).font(.headline)
+                    Text(drive.isSignedIn ? (drive.email ?? "Signed in") : "Not signed in to Google")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if drive.isSignedIn {
+                        Text(drive.lastSync.map { "Last synced \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Not synced yet")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Divider()
+            menuRow("Account settings", systemImage: "gearshape") {
+                showAccountMenu = false
+                appState.settingsTab = .accounts
+                openSettings()
+            }
+            menuRow("Update from Google Drive", systemImage: "arrow.triangle.2.circlepath", enabled: drive.isSignedIn && !drive.isBusy) {
+                showAccountMenu = false
+                Task { await drive.syncNow() }
+            }
+            menuRow("Save setup & settings to Google Drive", systemImage: "icloud.and.arrow.up", enabled: drive.isSignedIn && !drive.isBusy) {
+                showAccountMenu = false
+                Task { await drive.upload() }
+            }
+            if !drive.isSignedIn {
+                Text("Sign in with Google in Account settings to turn on syncing.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if let error = drive.errorMessage {
+                Text(error).font(.caption2).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(width: 270)
+    }
+
+    private func menuRow(_ title: String, systemImage: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private var accountHelp: String {
+        guard drive.isSignedIn else { return "Account \u{2014} sign in with Google to sync Maziar across your Macs" }
+        let who = drive.email.map { "Signed in as \($0). " } ?? ""
+        let when = drive.lastSync.map { "Last synced \($0.formatted(date: .omitted, time: .shortened))." } ?? "Not synced yet."
+        return who + when + " Click for the account menu."
     }
 }

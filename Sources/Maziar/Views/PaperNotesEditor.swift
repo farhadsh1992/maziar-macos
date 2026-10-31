@@ -6,9 +6,12 @@ import SwiftUI
 /// `PaperNotesDocument` into the one shared `.txt` companion file `LibraryStore` manages.
 struct PaperNotesEditor: View {
     @Binding var notes: [PaperNote]
+    /// See `NotebookEditorView.defaultPreview` — the standalone Notes window opens notes rendered.
+    var defaultPreview = false
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var libraryStore: LibraryStore
     @State private var previewingNoteIDs: Set<UUID> = []
+    @State private var editingNoteIDs: Set<UUID> = []
     @State private var noteHeights: [UUID: CGFloat] = [:]
 
     var body: some View {
@@ -17,7 +20,9 @@ struct PaperNotesEditor: View {
                 Text("Notes").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    notes.append(PaperNote(title: "", body: ""))
+                    let note = PaperNote(title: "", body: "")
+                    if defaultPreview { editingNoteIDs.insert(note.id) }
+                    notes.append(note)
                 } label: {
                     Label("Add Note", systemImage: "plus")
                 }
@@ -104,10 +109,16 @@ struct PaperNotesEditor: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
     }
 
-    private func isPreviewing(_ id: UUID) -> Bool { previewingNoteIDs.contains(id) }
+    private func isPreviewing(_ id: UUID) -> Bool {
+        guard defaultPreview else { return previewingNoteIDs.contains(id) }
+        let isEmpty = notes.first { $0.id == id }?.body.isEmpty ?? true
+        return !editingNoteIDs.contains(id) && !isEmpty
+    }
 
     private func toggle(_ id: UUID) {
-        if previewingNoteIDs.contains(id) {
+        if defaultPreview {
+            if editingNoteIDs.contains(id) { editingNoteIDs.remove(id) } else { editingNoteIDs.insert(id) }
+        } else if previewingNoteIDs.contains(id) {
             previewingNoteIDs.remove(id)
         } else {
             previewingNoteIDs.insert(id)

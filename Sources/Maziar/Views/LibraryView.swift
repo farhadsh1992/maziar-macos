@@ -8,6 +8,7 @@ struct LibraryView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openSettings) private var openSettings
     @State private var searchText = ""
+    @State private var isExporting = false
     @AppStorage("maziar.library.sortMode") private var sortModeRaw = LibrarySortMode.dateAdded.rawValue
     @State private var showConnectSheet = false
     @State private var showURLSheet = false
@@ -338,7 +339,15 @@ struct LibraryView: View {
     @ViewBuilder
     private var labelLegend: some View {
         if !libraryStore.paperLabels.isEmpty || !libraryStore.paperLabelNumbers.isEmpty {
-            FlowLayout(spacing: 12) {
+            FlowLayout(spacing: 10) {
+                Text("Tags:").font(.caption.weight(.semibold))
+                ForEach(libraryStore.paperLabelNumbers, id: \.self) { number in
+                    Text("\(number)")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 14, height: 14)
+                        .background(Circle().fill(Color.secondary.opacity(0.25)))
+                        .overlay(Circle().stroke(Color.secondary.opacity(0.8), lineWidth: 1))
+                }
                 ForEach(libraryStore.paperLabels) { option in
                     HStack(spacing: 4) {
                         Circle()
@@ -348,17 +357,6 @@ struct LibraryView: View {
                         Text(option.name).font(.caption)
                     }
                 }
-                if !libraryStore.paperLabelNumbers.isEmpty {
-                    HStack(spacing: 4) {
-                        Text("Order:").font(.caption).foregroundStyle(.secondary)
-                        ForEach(libraryStore.paperLabelNumbers, id: \.self) { number in
-                            Text("\(number)")
-                                .font(.system(size: 9, weight: .bold))
-                                .frame(width: 14, height: 14)
-                                .background(Circle().stroke(Color.secondary.opacity(0.6), lineWidth: 1))
-                        }
-                    }
-                }
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 20)
@@ -366,11 +364,24 @@ struct LibraryView: View {
         }
     }
 
+
+
     private func exportShownPapers() {
-        let entries = visibleEntries
+        runExport(visibleEntries, everything: false)
+    }
+
+    /// The whole library regardless of any group/keyword/search filter, plus settings — the saved
+    /// zip opens in Google Drive for desktop by default, so it's backed up the moment it's saved.
+    private func exportEverything() {
+        runExport(libraryStore.entries, everything: true)
+    }
+
+    private func runExport(_ entries: [LibraryEntry], everything: Bool) {
+        isExporting = true
         Task {
+            defer { isExporting = false }
             do {
-                if let url = try await LibraryExportService.exportWithSavePanel(entries, libraryStore: libraryStore) {
+                if let url = try await LibraryExportService.exportWithSavePanel(entries, libraryStore: libraryStore, everything: everything) {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
             } catch {
@@ -420,15 +431,19 @@ struct LibraryView: View {
                     .clipShape(Capsule())
                 }
                 Spacer()
-                Button {
-                    exportShownPapers()
+                if isExporting { ProgressView().controlSize(.small) }
+                Menu {
+                    Button("Shown papers (\(visibleEntries.count)) as ZIP") { exportShownPapers() }
+                        .disabled(visibleEntries.isEmpty)
+                    Button("Everything as ZIP \u{2014} all papers, notes, info and settings") { exportEverything() }
                 } label: {
-                    Label("Export \(visibleEntries.count) as ZIP", systemImage: "square.and.arrow.down")
+                    Label("Export", systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.borderless)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
                 .font(.caption)
-                .disabled(visibleEntries.isEmpty)
-                .help("Download every paper currently shown — PDFs, notes and info — as one zip file")
+                .disabled(isExporting)
+                .help("Download papers with their notes and info as a zip file")
                 if let lastScanDate = libraryStore.lastScanDate {
                     Text("Updated \(lastScanDate, format: .relative(presentation: .named))")
                         .font(.caption2)
@@ -846,6 +861,13 @@ private struct LibraryCard: View {
         libraryStore.groups.filter { entry.groupFileNames[$0.id] != nil }
     }
 
+    /// "2023 · CVPR" — publish year, then the venue's short name; **** stands in for whichever
+    /// isn't known.
+    private var yearAndVenueText: String {
+        let year = entry.year?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return "\(year.isEmpty ? VenueAbbreviation.placeholder : year) \u{00B7} \(VenueAbbreviation.short(entry.venue))"
+    }
+
     private var currentLabelColor: PaperLabelOption? { libraryStore.labelColor(for: entry) }
 
     /// The small colored "light" next to the paper's title — filled with the paper's current label
@@ -855,65 +877,70 @@ private struct LibraryCard: View {
     /// independent choices in two separate submenus, not one bundled label, so a paper can have
     /// either, both, or neither.
     private var labelPicker: some View {
+        HStack(spacing: 5) {
+            numberCircle
+            colorCircle
+        }
+    }
+
+    /// The reading-order number in its own circle, placed in front of the color tag's circle.
+    /// Right-click to pick or clear it; an unnumbered paper shows just a faint outline.
+    private var numberCircle: some View {
         Circle()
-            .fill(currentLabelColor?.color ?? Color.clear)
+            .fill(entry.labelNumber != nil ? Color.secondary.opacity(0.25) : Color.clear)
             .frame(width: 16, height: 16)
-            .overlay(Circle().stroke(currentLabelColor != nil ? Color.primary.opacity(0.25) : Color.secondary.opacity(0.4), lineWidth: 1))
-            .overlay { labelNumberText }
+            .overlay(Circle().stroke(Color.secondary.opacity(entry.labelNumber != nil ? 0.8 : 0.4), lineWidth: 1))
+            .overlay {
+                if let number = entry.labelNumber {
+                    Text("\(number)").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.primary)
+                }
+            }
             .contentShape(Circle())
             .contextMenu {
-                Menu("Color") {
-                    Button {
-                        libraryStore.setLabelColor(nil, for: entry)
-                    } label: {
-                        if entry.labelColorID == nil { Label("None", systemImage: "checkmark") } else { Text("None") }
-                    }
-                    if !libraryStore.paperLabels.isEmpty {
-                        Divider()
-                        ForEach(libraryStore.paperLabels) { option in
-                            Button {
-                                libraryStore.setLabelColor(option.id, for: entry)
-                            } label: {
-                                if entry.labelColorID == option.id { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
-                            }
-                        }
-                    }
+                Button {
+                    libraryStore.setLabelNumber(nil, for: entry)
+                } label: {
+                    if entry.labelNumber == nil { Label("No number", systemImage: "checkmark") } else { Text("No number") }
                 }
-                Menu("Number") {
-                    Button {
-                        libraryStore.setLabelNumber(nil, for: entry)
-                    } label: {
-                        if entry.labelNumber == nil { Label("None", systemImage: "checkmark") } else { Text("None") }
-                    }
-                    if !libraryStore.paperLabelNumbers.isEmpty {
-                        Divider()
-                        ForEach(libraryStore.paperLabelNumbers, id: \.self) { number in
-                            Button {
-                                libraryStore.setLabelNumber(number, for: entry)
-                            } label: {
-                                if entry.labelNumber == number { Label("\(number)", systemImage: "checkmark") } else { Text("\(number)") }
-                            }
+                if !libraryStore.paperLabelNumbers.isEmpty {
+                    Divider()
+                    ForEach(libraryStore.paperLabelNumbers, id: \.self) { number in
+                        Button {
+                            libraryStore.setLabelNumber(number, for: entry)
+                        } label: {
+                            if entry.labelNumber == number { Label("\(number)", systemImage: "checkmark") } else { Text("\(number)") }
                         }
                     }
                 }
             }
-            .help(labelPickerHelpText)
+            .help(entry.labelNumber.map { "Number \($0)" } ?? "No number \u{2014} right-click to set one")
     }
 
-    @ViewBuilder
-    private var labelNumberText: some View {
-        if let number = entry.labelNumber {
-            Text("\(number)")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(currentLabelColor != nil ? .white : Color.primary)
-        }
-    }
-
-    private var labelPickerHelpText: String {
-        let colorPart = currentLabelColor?.name
-        let numberPart = entry.labelNumber.map { "#\($0)" }
-        let parts = [colorPart, numberPart].compactMap { $0 }
-        return parts.isEmpty ? "No label \u{2014} right-click to assign a color or number" : parts.joined(separator: ", ")
+    /// The color tag ("Important", "To Read", …) — a plain colored circle, no number inside.
+    private var colorCircle: some View {
+        Circle()
+            .fill(currentLabelColor?.color ?? Color.clear)
+            .frame(width: 16, height: 16)
+            .overlay(Circle().stroke(currentLabelColor != nil ? Color.primary.opacity(0.25) : Color.secondary.opacity(0.4), lineWidth: 1))
+            .contentShape(Circle())
+            .contextMenu {
+                Button {
+                    libraryStore.setLabelColor(nil, for: entry)
+                } label: {
+                    if entry.labelColorID == nil { Label("No tag", systemImage: "checkmark") } else { Text("No tag") }
+                }
+                if !libraryStore.paperLabels.isEmpty {
+                    Divider()
+                    ForEach(libraryStore.paperLabels) { option in
+                        Button {
+                            libraryStore.setLabelColor(option.id, for: entry)
+                        } label: {
+                            if entry.labelColorID == option.id { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
+                        }
+                    }
+                }
+            }
+            .help(currentLabelColor?.name ?? "No tag \u{2014} right-click to set one")
     }
 
     var body: some View {
@@ -927,7 +954,6 @@ private struct LibraryCard: View {
                                 .help("File not found in the connected folder")
                         }
                         Text(entry.title).font(.headline)
-                        labelPicker
                     }
                     let subtitle = [entry.authors, entry.venue, entry.year].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " \u{2022} ")
                     if !subtitle.isEmpty {
@@ -945,8 +971,11 @@ private struct LibraryCard: View {
                             }
                         }
                     }
-                    if !memberGroups.isEmpty {
-                        HStack(spacing: 4) {
+                    // Group chips first, then the tag circles (number, then color). The line is always
+                    // shown — even for a paper in no groups — since the circles are also how you set a
+                    // tag, via right-click.
+                    HStack(spacing: 6) {
+                        if !memberGroups.isEmpty {
                             ForEach(memberGroups) { group in
                                 Label(group.name, systemImage: group.iconSystemName)
                                     .font(.caption2)
@@ -957,6 +986,11 @@ private struct LibraryCard: View {
                                     .clipShape(Capsule())
                             }
                         }
+                        Text(yearAndVenueText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .help(entry.venue.flatMap { $0.isEmpty ? nil : $0 } ?? "Publish year and venue unknown \u{2014} fill them in from Info, or use Extract Info")
+                        labelPicker
                     }
                 }
                 Spacer()
@@ -973,7 +1007,13 @@ private struct LibraryCard: View {
                     } label: {
                         Image(systemName: "info.circle")
                     }
-                    .help("Info: metadata, abstract, notes")
+                    .help("Info: metadata and abstract")
+                    Button {
+                        openWindow(id: "paper-notes", value: entry.id)
+                    } label: {
+                        Image(systemName: "note.text")
+                    }
+                    .help("Notes \u{2014} open this paper's notes in their own window, without opening the paper")
                     Button {
                         copyBibTeX()
                     } label: {
