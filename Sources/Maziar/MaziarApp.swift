@@ -51,6 +51,8 @@ struct MaziarApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Maziar") {
                     var options: [NSApplication.AboutPanelOptionKey: Any] = [
+                        .applicationVersion: AppUpdater.versionLabel,
+                        .version: AppUpdater.shared.shortVersion,
                         .credits: NSAttributedString(
                             string: AppBranding.aboutText,
                             attributes: [.font: NSFont.systemFont(ofSize: 12)]

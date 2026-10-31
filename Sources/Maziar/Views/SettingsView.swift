@@ -2022,12 +2022,12 @@ private struct AboutSettingsTab: View {
 /// About → Software Update: which build this is, a manual "Check for Updates" button, the weekly
 /// automatic check toggle, and — when GitHub has something newer — an Update Now button that pulls,
 /// rebuilds and relaunches (see `AppUpdater`).
-private struct SoftwareUpdateSection: View {
+struct SoftwareUpdateSection: View {
     @ObservedObject private var updater = AppUpdater.shared
 
     var body: some View {
         VStack(spacing: 8) {
-            Text("Version \(updater.shortVersion)" + (updater.buildDate.map { " \u{00B7} built \($0.prefix(10))" } ?? ""))
+            Text("\(AppUpdater.versionLabel) \u{00B7} \(updater.shortVersion)" + (updater.buildDate.map { " \u{00B7} built \($0.prefix(10))" } ?? ""))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {

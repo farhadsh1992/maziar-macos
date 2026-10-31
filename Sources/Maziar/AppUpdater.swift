@@ -14,6 +14,10 @@ import UserNotifications
 final class AppUpdater: ObservableObject {
     static let shared = AppUpdater()
 
+    /// The human-readable release name shown in About, Settings and the About panel. Bump this (and
+    /// the numeric `3.1` in `build_app.sh`) when cutting a new release.
+    static let versionLabel = "Beta 3.1"
+
     private static let repoSlug = "farhadsh1992/maziar-macos"
     private static let autoCheckKey = "maziar.updater.autoCheck"
     private static let lastCheckKey = "maziar.updater.lastCheck"
@@ -176,8 +180,9 @@ final class AppUpdater: ObservableObject {
         guard availableCommit != nil else { return }
         let alert = NSAlert()
         alert.messageText = "A new version of Maziar is available"
+        // "You have Beta 3.1 (abc1234)" so it's clear what you'd be replacing.
         let list = changes.prefix(8).map { "\u{2022} \($0)" }.joined(separator: "\n")
-        var text = list.isEmpty ? "There are newer changes on GitHub." : "What's new:\n\(list)"
+        var text = "You have \(Self.versionLabel) (\(shortVersion)).\n\n" + (list.isEmpty ? "There are newer changes on GitHub." : "What's new:\n\(list)")
         if !canSelfUpdate {
             text += "\n\nThis copy isn't linked to a source checkout, so it can't update itself — on this Mac run `git pull && ./build_app.sh release` in the project folder."
         }

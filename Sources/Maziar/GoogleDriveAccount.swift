@@ -26,6 +26,7 @@ final class GoogleDriveAccount: ObservableObject {
         case http(Int, String)
         case nothingInDrive
         case timedOut
+        case cancelled
 
         var errorDescription: String? {
             switch self {
@@ -35,6 +36,7 @@ final class GoogleDriveAccount: ObservableObject {
             case .http(let code, let body): return "Google returned HTTP \(code): \(body)"
             case .nothingInDrive: return "No Maziar data has been uploaded to this Google Drive account yet."
             case .timedOut: return "Sign-in timed out waiting for the browser."
+            case .cancelled: return "Sign-in cancelled."
             }
         }
     }
@@ -44,6 +46,9 @@ final class GoogleDriveAccount: ObservableObject {
     @Published private(set) var email: String?
     @Published private(set) var lastSync: Date?
     @Published private(set) var isBusy = false
+    /// True from clicking "Sign in" until the browser round-trip finishes, fails, or is cancelled.
+    @Published private(set) var isSigningIn = false
+    private var activeLoopback: LoopbackBox?
     /// The small picture shown on the sidebar's account button, chosen in Settings → Accounts.
     /// Stored (already shrunk to 128 px) under a `maziar.googleDrive.`-prefixed key, so like the rest
     /// of the Account section it stays on this Mac and isn't part of the Drive snapshot.
@@ -148,7 +153,17 @@ final class GoogleDriveAccount: ObservableObject {
 
     // MARK: - Sign in / out
 
+    /// Abandons a sign-in that's waiting on the browser (closed the tab, wrong account, changed
+    /// your mind) so you can fix something and click "Sign in" again — otherwise it'd sit there
+    /// until it times out after three minutes.
+    func cancelSignIn() {
+        activeLoopback?.cancel()
+    }
+
     func signIn() async {
+        guard !isBusy else { return }
+        isSigningIn = true
+        defer { isSigningIn = false }
         await run {
             guard self.isConfigured else { throw SyncError.notConfigured }
             let verifier = Self.randomURLSafeString(byteCount: 64)
@@ -431,7 +446,13 @@ final class GoogleDriveAccount: ObservableObject {
         errorMessage = nil
         statusMessage = nil
         defer { isBusy = false }
-        do { try await work() } catch { errorMessage = error.localizedDescription }
+        do {
+            try await work()
+        } catch SyncError.cancelled {
+            statusMessage = "Sign-in cancelled \u{2014} you can try again."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func validAccessToken() async throws -> String {
@@ -484,6 +505,8 @@ final class GoogleDriveAccount: ObservableObject {
     private func authorize(challenge: String, state: String) async throws -> (String, String) {
         let box = try LoopbackBox()
         let id = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeLoopback = box
+        defer { activeLoopback = nil }
         let port: UInt16 = try await box.start()
         let redirect = "http://127.0.0.1:\(port)"
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
@@ -499,7 +522,7 @@ final class GoogleDriveAccount: ObservableObject {
             URLQueryItem(name: "prompt", value: "consent"),
         ]
         NSWorkspace.shared.open(components.url!)
-        let query = try await box.waitForRedirect(timeout: 180)
+        let query = try await box.waitForRedirect(timeout: 90)
         if let error = query["error"] { throw SyncError.authorizationFailed(error) }
         guard query["state"] == state, let code = query["code"] else {
             throw SyncError.authorizationFailed("the response didn't match this sign-in attempt")
@@ -538,6 +561,7 @@ private final class LoopbackBox: @unchecked Sendable {
     private var startContinuation: CheckedContinuation<UInt16, Error>?
     private var redirectContinuation: CheckedContinuation<[String: String], Error>?
     private var pendingQuery: [String: String]?
+    private var cancelled = false
 
     init() throws {
         listener = try NWListener(using: .tcp, on: .any)
@@ -561,10 +585,30 @@ private final class LoopbackBox: @unchecked Sendable {
         }
     }
 
+    /// Stops listening and fails whatever is waiting with `.cancelled`; safe to call at any point,
+    /// including before anything has started waiting.
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let start = startContinuation
+        let redirect = redirectContinuation
+        startContinuation = nil
+        redirectContinuation = nil
+        lock.unlock()
+        listener.cancel()
+        start?.resume(throwing: GoogleDriveAccount.SyncError.cancelled)
+        redirect?.resume(throwing: GoogleDriveAccount.SyncError.cancelled)
+    }
+
     func waitForRedirect(timeout: TimeInterval) async throws -> [String: String] {
         defer { listener.cancel() }
         return try await withCheckedThrowingContinuation { continuation in
             lock.lock()
+            if cancelled {
+                lock.unlock()
+                continuation.resume(throwing: GoogleDriveAccount.SyncError.cancelled)
+                return
+            }
             if let pendingQuery {
                 lock.unlock()
                 continuation.resume(returning: pendingQuery)

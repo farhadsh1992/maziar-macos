@@ -60,6 +60,7 @@ struct AccountsSettingsTab: View {
             }
 
             storageFolderSection
+            appUpdateSection
             googleDriveSection
         }
         .formStyle(.grouped)
@@ -137,6 +138,19 @@ struct AccountsSettingsTab: View {
     }
 
     @ViewBuilder
+    private var appUpdateSection: some View {
+        Section {
+            SoftwareUpdateSection()
+                .frame(maxWidth: .infinity)
+        } header: {
+            Text("App Updates")
+        } footer: {
+            Text("\u{201c}Check for Updates\u{201d} looks at GitHub right now; if there's something newer than this build, Maziar lists what's new and asks whether to update. Saying yes pulls the new code, rebuilds, and restarts the app. It also checks by itself once a week and sends a notification when an update is waiting.")
+                .font(.caption)
+        }
+    }
+
+    @ViewBuilder
     private var googleDriveSection: some View {
         Section {
             HStack(spacing: 12) {
@@ -203,8 +217,20 @@ struct AccountsSettingsTab: View {
                         .font(.caption)
                 }
                 SecureField("OAuth client secret", text: $drive.clientSecret)
-                Button("Sign in with Google") { Task { await drive.signIn() } }
-                    .disabled(!drive.isConfigured || drive.isBusy)
+                if drive.isSigningIn {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Waiting for Google in your browser\u{2026}").font(.caption)
+                        Spacer()
+                        Button("Cancel") { drive.cancelSignIn() }
+                    }
+                    Text("If Google showed an error page (wrong client ID, access denied…), Maziar never hears back — press Cancel, fix the ID or secret below, and click Sign in again. It gives up by itself after 90 seconds.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("Sign in with Google") { Task { await drive.signIn() } }
+                        .disabled(!drive.isConfigured || drive.isBusy)
+                }
             }
             if drive.isBusy { ProgressView().controlSize(.small) }
             if let status = drive.statusMessage {
