@@ -2012,11 +2012,49 @@ private struct AboutSettingsTab: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 420)
             Spacer()
-            Text("Version 0.1.0")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SoftwareUpdateSection()
         }
         .padding(30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// About → Software Update: which build this is, a manual "Check for Updates" button, the weekly
+/// automatic check toggle, and — when GitHub has something newer — an Update Now button that pulls,
+/// rebuilds and relaunches (see `AppUpdater`).
+private struct SoftwareUpdateSection: View {
+    @ObservedObject private var updater = AppUpdater.shared
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("Version \(updater.shortVersion)" + (updater.buildDate.map { " \u{00B7} built \($0.prefix(10))" } ?? ""))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Button("Check for Updates") { Task { await updater.checkAndReport() } }
+                    .disabled(updater.isChecking || updater.isUpdating)
+                if updater.availableCommit != nil && updater.canSelfUpdate {
+                    Button("Update Now") { Task { await updater.update() } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(updater.isUpdating)
+                }
+                if updater.isChecking || updater.isUpdating { ProgressView().controlSize(.small) }
+            }
+            Toggle("Check for updates automatically every week", isOn: $updater.autoCheck)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+            if let progress = updater.progress {
+                Text(progress).font(.caption).foregroundStyle(.secondary)
+            } else if let status = updater.statusMessage {
+                Text(status).font(.caption).foregroundStyle(.secondary)
+            }
+            if let error = updater.errorMessage {
+                Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center).frame(maxWidth: 420)
+            }
+            if let lastCheck = updater.lastCheck {
+                Text("Last checked \(lastCheck.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
     }
 }

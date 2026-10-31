@@ -34,6 +34,12 @@ if [ -f "Resources/AppIcon.icns" ]; then
   cp "Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
+# Stamped into Info.plist so the running app can tell which commit it was built from (to compare
+# against GitHub for the in-app updater) and which checkout to pull/rebuild when updating itself.
+GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+REPO_PATH="$(pwd)"
+BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -49,6 +55,12 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <string>0.1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
+    <key>MaziarGitCommit</key>
+    <string>$GIT_COMMIT</string>
+    <key>MaziarRepoPath</key>
+    <string>$REPO_PATH</string>
+    <key>MaziarBuildDate</key>
+    <string>$BUILD_DATE</string>
     <key>CFBundleExecutable</key>
     <string>$BIN_NAME</string>
     <key>CFBundlePackageType</key>

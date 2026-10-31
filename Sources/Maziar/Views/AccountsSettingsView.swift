@@ -160,6 +160,19 @@ struct AccountsSettingsTab: View {
                 LabeledContent("Last synced", value: drive.lastSync.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Never")
                 Toggle("Sync automatically", isOn: $drive.autoSync)
                 HStack {
+                    LabeledContent("OAuth client ID") {
+                        Text(drive.clientID)
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(drive.clientID, forType: .string)
+                    }
+                    .help("Copy the client ID to paste into Maziar on your other Mac — no need to sign out here. The secret is hidden; copy it from Google Cloud Console → Credentials.")
+                }
+                HStack {
                     Button("Sync Now") { Task { await drive.syncNow() } }
                         .help("Check Google Drive now: load newer data from other devices and upload this Mac's changes")
                     Button("Upload to Drive") { Task { await drive.upload() } }

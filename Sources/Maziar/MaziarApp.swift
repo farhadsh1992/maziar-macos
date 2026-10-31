@@ -36,6 +36,7 @@ struct MaziarApp: App {
                 .preferredColorScheme(settings.appearanceMode.colorScheme)
                 .tint(settings.color(for: .buttonColor))
                 .onAppear {
+                    AppUpdater.shared.start()
                     GoogleDriveAccount.shared.attach(.init(
                         app: settings, ai: aiSettings, tex: texManager, conference: conferenceStore,
                         journal: journalStore, paper: paperStore, library: libraryStore, cv: cvAutofillStore
@@ -44,6 +45,9 @@ struct MaziarApp: App {
         }
         .defaultSize(width: 1200, height: 760)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates\u{2026}") { Task { await AppUpdater.shared.checkAndReport() } }
+            }
             CommandGroup(replacing: .appInfo) {
                 Button("About Maziar") {
                     var options: [NSApplication.AboutPanelOptionKey: Any] = [
