@@ -285,6 +285,65 @@ final class LibraryStore: ObservableObject {
         return entries.filter { $0.groupFileNames[group.id] != nil }
     }
 
+    /// Archived papers live only in the Archive: flagged individually, or filed solely in archived
+    /// groups (a paper that also has a library-root copy or an active group stays in the menu).
+    func isArchived(_ entry: LibraryEntry) -> Bool {
+        if entry.archived == true { return true }
+        guard entry.rootFileName == nil, !entry.groupFileNames.isEmpty else { return false }
+        return entry.groupFileNames.keys.allSatisfy { id in groups.first { $0.id == id }?.isArchived ?? false }
+    }
+
+    func setEntryArchived(_ entry: LibraryEntry, _ archived: Bool) {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        entries[index].archived = archived ? true : nil
+    }
+
+    /// The papers for one view of the Library. `archive` picks the Archive's papers or the menu's
+    /// (All Papers and the active groups) — the two never overlap, except that opening an archived
+    /// group lists everything filed in it.
+    func entries(in group: LibraryGroup?, subgroup: UUID?, archive: Bool) -> [LibraryEntry] {
+        var result = entries(in: group)
+        if let group, let subgroup, group.subgroupList.contains(where: { $0.id == subgroup }) {
+            result = result.filter { $0.subgroupIDs.contains(subgroup) }
+        }
+        if group == nil || !archive {
+            result = result.filter { isArchived($0) == archive }
+        }
+        return result
+    }
+
+    @discardableResult
+    func addSubgroup(named name: String, to groupID: UUID) -> UUID? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = groups.firstIndex(where: { $0.id == groupID }) else { return nil }
+        let subgroup = LibrarySubgroup(name: trimmed)
+        groups[index].subgroups = groups[index].subgroupList + [subgroup]
+        return subgroup.id
+    }
+
+    func renameSubgroup(_ id: UUID, in groupID: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let gi = groups.firstIndex(where: { $0.id == groupID }),
+              let si = groups[gi].subgroupList.firstIndex(where: { $0.id == id }) else { return }
+        groups[gi].subgroups?[si].name = trimmed
+    }
+
+    /// Removes the sub-group only — its papers stay in the parent group, just unfiled.
+    func deleteSubgroup(_ id: UUID, in groupID: UUID) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        groups[gi].subgroups = groups[gi].subgroupList.filter { $0.id != id }
+        for index in entries.indices where entries[index].subgroupIDs.contains(id) {
+            entries[index].subgroupIDs.removeAll { $0 == id }
+        }
+    }
+
+    func setSubgroup(_ id: UUID, isOn: Bool, for entry: LibraryEntry) {
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        entries[index].subgroupIDs.removeAll { $0 == id }
+        if isOn { entries[index].subgroupIDs.append(id) }
+    }
+
     func connect(_ url: URL) {
         folderPath = url.path
         scanError = nil
@@ -778,6 +837,39 @@ final class LibraryStore: ObservableObject {
     }
 
     // -- groups ---------------------------------------------------------------
+
+    /// Reorders the group bar: `id` moves to the position `target` currently holds (so dragging
+    /// right drops it just after that card, dragging left just before it), or to the very front
+    /// when `target` is nil. The new order is just the `groups` array's order, so it's persisted
+    /// (and synced to other Macs) like any other group change.
+    func moveGroup(_ id: UUID, to target: UUID?) {
+        guard let from = groups.firstIndex(where: { $0.id == id }) else { return }
+        let destination: Int
+        if let target {
+            guard target != id, let index = groups.firstIndex(where: { $0.id == target }) else { return }
+            destination = index
+        } else {
+            destination = 0
+        }
+        let group = groups.remove(at: from)
+        groups.insert(group, at: min(destination, groups.count))
+    }
+
+    /// Nudges one group a single place left (-1) or right (+1) — the right-click alternative to
+    /// dragging.
+    /// Sends a group to the Archive (hidden from the main groups row) or back to the menu. Its
+    /// papers and folder are untouched — they still show under All Papers.
+    func setGroupArchived(_ id: UUID, _ archived: Bool) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        groups[index].archived = archived ? true : nil
+    }
+
+    func shiftGroup(_ id: UUID, by offset: Int) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + offset
+        guard groups.indices.contains(target) else { return }
+        groups.swapAt(index, target)
+    }
 
     private static func sanitizedFolderName(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -15,8 +15,30 @@ struct LibraryView: View {
     @State private var errorMessage: String?
 
     @State private var selectedGroupID: UUID?
+    /// True while the groups row is showing the Archive's groups instead of the menu's.
+    @State private var showingArchive = false
+    /// The sub-group chosen in the left menu bar while a group is selected (nil = the whole group).
+    @State private var selectedSubgroupID: UUID?
+    @State private var subgroupEditor: SubgroupEditorTarget?
+    /// Tags clicked in the legend under the search box; the list then shows only papers carrying
+    /// them (a color and a number together must both match). Click again to clear.
+    @State private var tagFilterColorID: UUID?
+    @State private var tagFilterNumber: Int?
+    /// Per-group width / open-closed state of the SUBGROUPS bar, as JSON keyed by group id, so each
+    /// group remembers its own layout (also across launches).
+    @AppStorage("maziar.library.subgroupSidebarLayout") private var subgroupLayoutJSON = "{}"
     @State private var showNewGroupSheet = false
     @State private var editingGroup: LibraryGroup?
+    /// The group card currently under a dragged card (nil for none, `.allPapers` marker handled
+    /// separately) — drawn with a highlight so it's clear where the drop will land.
+    /// iOS-style reordering of the group cards: the card being held, where the pointer is (in the
+    /// grid's own coordinate space, so it stays right while the row is scrolled), and where on the
+    /// card it was grabbed.
+    @State private var draggingGroupID: UUID?
+    @State private var dragPointer: CGPoint?
+    @State private var dragGrab: CGSize = .zero
+    @State private var groupCardFrames: [UUID: CGRect] = [:]
+    @State private var lastGroupMove = Date.distantPast
     @State private var groupPendingDeletion: LibraryGroup?
     @State private var keywordFilter: (field: LibraryKeywordField, value: String)?
     @State private var showScholarSearch = false
@@ -27,13 +49,58 @@ struct LibraryView: View {
     private var sortMode: LibrarySortMode { LibrarySortMode(rawValue: sortModeRaw) ?? .dateAdded }
     private var selectedGroup: LibraryGroup? { libraryStore.group(selectedGroupID) }
 
+    private struct SubgroupBarLayout: Codable {
+        var width: Double?
+        var collapsed: Bool?
+    }
+
+    private func subgroupBarLayout(for groupID: UUID) -> SubgroupBarLayout {
+        let all = (try? JSONDecoder().decode([String: SubgroupBarLayout].self, from: Data(subgroupLayoutJSON.utf8))) ?? [:]
+        return all[groupID.uuidString] ?? SubgroupBarLayout()
+    }
+
+    private func updateSubgroupBarLayout(for groupID: UUID, _ change: (inout SubgroupBarLayout) -> Void) {
+        var all = (try? JSONDecoder().decode([String: SubgroupBarLayout].self, from: Data(subgroupLayoutJSON.utf8))) ?? [:]
+        var layout = all[groupID.uuidString] ?? SubgroupBarLayout()
+        change(&layout)
+        all[groupID.uuidString] = layout
+        if let data = try? JSONEncoder().encode(all), let json = String(data: data, encoding: .utf8) {
+            subgroupLayoutJSON = json
+        }
+    }
+
+    private func subgroupBarWidth(for groupID: UUID) -> Binding<Double> {
+        Binding(
+            get: { subgroupBarLayout(for: groupID).width ?? 180 },
+            set: { newValue in updateSubgroupBarLayout(for: groupID) { $0.width = newValue } }
+        )
+    }
+
+    private func setSubgroupBarCollapsed(_ collapsed: Bool, for groupID: UUID) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            updateSubgroupBarLayout(for: groupID) { $0.collapsed = collapsed }
+        }
+    }
+
+    private var selectedSubgroup: LibrarySubgroup? {
+        guard let selectedSubgroupID else { return nil }
+        return selectedGroup?.subgroupList.first { $0.id == selectedSubgroupID }
+    }
+
     private var scopedEntries: [LibraryEntry] {
-        libraryStore.entries(in: selectedGroup)
+        libraryStore.entries(in: selectedGroup, subgroup: selectedSubgroup?.id, archive: showingArchive)
+    }
+
+    private var tagFilteredEntries: [LibraryEntry] {
+        scopedEntries.filter {
+            (tagFilterColorID == nil || $0.labelColorID == tagFilterColorID)
+                && (tagFilterNumber == nil || $0.labelNumber == tagFilterNumber)
+        }
     }
 
     private var keywordFilteredEntries: [LibraryEntry] {
-        guard let keywordFilter else { return scopedEntries }
-        return libraryEntries(matching: keywordFilter.field, value: keywordFilter.value, in: scopedEntries)
+        guard let keywordFilter else { return tagFilteredEntries }
+        return libraryEntries(matching: keywordFilter.field, value: keywordFilter.value, in: tagFilteredEntries)
     }
 
     private var sortedEntries: [LibraryEntry] {
@@ -61,11 +128,20 @@ struct LibraryView: View {
         if !searchText.isEmpty {
             return "No papers match \u{201c}\(searchText)\u{201d}\(selectedGroup.map { " in \u{201c}\($0.name)\u{201d}" } ?? "")."
         }
+        if tagFilterColorID != nil || tagFilterNumber != nil {
+            return "No papers with the selected tag\(selectedGroup.map { " in \u{201c}\($0.name)\u{201d}" } ?? "") \u{2014} click the tag again (or Clear) to show everything."
+        }
         if let keywordFilter {
             return "No papers with \(keywordFilter.field.label.lowercased()) \u{201c}\(keywordFilter.value)\u{201d}\(selectedGroup.map { " in \u{201c}\($0.name)\u{201d}" } ?? "")."
         }
+        if let selectedGroup, let selectedSubgroup {
+            return "No papers in \u{201c}\(selectedSubgroup.name)\u{201d} yet \u{2014} open a paper in \u{201c}\(selectedGroup.name)\u{201d}, press its \u{2193} button and tick this sub-group."
+        }
         if let selectedGroup {
             return "\u{201c}\(selectedGroup.name)\u{201d} has no papers yet — add one above (it'll go straight into this group), or open a paper from \u{201c}All Papers\u{201d} and add it to this group from its \u{2193} chips."
+        }
+        if showingArchive {
+            return "The archive has no papers \u{2014} archive a group (right-click its card) or a paper (its archive button)."
         }
         return "No papers here yet — add one above."
     }
@@ -90,7 +166,32 @@ struct LibraryView: View {
                         }
                     }
                     Divider().opacity(0.3)
-                    list
+                    HStack(spacing: 0) {
+                        if let selectedGroup {
+                            if subgroupBarLayout(for: selectedGroup.id).collapsed == true {
+                                Button { setSubgroupBarCollapsed(false, for: selectedGroup.id) } label: {
+                                    Image(systemName: "sidebar.left").padding(.vertical, 12).padding(.horizontal, 6)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .frame(maxHeight: .infinity, alignment: .top)
+                                .help("Show the subgroups bar")
+                                Divider().opacity(0.3)
+                            } else {
+                                SubgroupSidebar(
+                                    group: selectedGroup,
+                                    width: CGFloat(subgroupBarWidth(for: selectedGroup.id).wrappedValue),
+                                    selectedSubgroupID: $selectedSubgroupID,
+                                    onAdd: { subgroupEditor = SubgroupEditorTarget(groupID: selectedGroup.id, subgroupID: nil, name: "") },
+                                    onRename: { sub in subgroupEditor = SubgroupEditorTarget(groupID: selectedGroup.id, subgroupID: sub.id, name: sub.name) },
+                                    onCollapse: { setSubgroupBarCollapsed(true, for: selectedGroup.id) }
+                                )
+                                ResizableDivider(width: subgroupBarWidth(for: selectedGroup.id), minWidth: 120, maxWidth: 400)
+                                    .frame(width: 6)
+                            }
+                        }
+                        list
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -128,6 +229,18 @@ struct LibraryView: View {
                 }
                 showNewGroupSheet = false
             }, onCancel: { showNewGroupSheet = false })
+        }
+        .onChange(of: selectedGroupID) { _, _ in selectedSubgroupID = nil }
+        .sheet(item: $subgroupEditor) { target in
+            SubgroupNameSheet(target: target) { name in
+                if let subgroupID = target.subgroupID {
+                    libraryStore.renameSubgroup(subgroupID, in: target.groupID, to: name)
+                } else if let created = libraryStore.addSubgroup(named: name, to: target.groupID) {
+                    selectedGroupID = target.groupID
+                    selectedSubgroupID = created
+                }
+                subgroupEditor = nil
+            } onCancel: { subgroupEditor = nil }
         }
         .sheet(item: $editingGroup) { group in
             GroupEditorSheet(existingGroup: group, onSave: { name, icon, colorHex, imageData, info, keywords, links in
@@ -260,14 +373,85 @@ struct LibraryView: View {
             : [GridItem(.fixed(84), spacing: 10)]
     }
 
+    private static let groupGridSpace = "groupGrid"
+    /// Stands in for the "All Papers" card, which isn't a group but is a drop spot (front of the list).
+    private static let frontSlotID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
+    /// Keeps the lifted card under the pointer even while its layout slot changes mid-drag.
+    private func reorderOffset(for id: UUID) -> CGSize {
+        guard draggingGroupID == id, let pointer = dragPointer, let frame = groupCardFrames[id] else { return .zero }
+        return CGSize(
+            width: pointer.x - dragGrab.width - frame.midX,
+            height: pointer.y - dragGrab.height - frame.midY
+        )
+    }
+
+    private func reorderGesture(for id: UUID) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.25)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.groupGridSpace)))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                if draggingGroupID != id {
+                    guard let frame = groupCardFrames[id] else { return }
+                    draggingGroupID = id
+                    dragGrab = CGSize(width: drag.startLocation.x - frame.midX, height: drag.startLocation.y - frame.midY)
+                }
+                dragPointer = drag.location
+                moveDraggedGroupIfNeeded(id)
+            }
+            .onEnded { _ in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    draggingGroupID = nil
+                    dragPointer = nil
+                }
+            }
+    }
+
+    /// When the pointer enters another card, the held group takes that card's place.
+    private func moveDraggedGroupIfNeeded(_ id: UUID) {
+        guard let pointer = dragPointer,
+              Date().timeIntervalSince(lastGroupMove) > 0.25,
+              let target = groupCardFrames.first(where: { $0.key != id && $0.value.contains(pointer) })?.key
+        else { return }
+        if target == Self.frontSlotID {
+            guard libraryStore.groups.first?.id != id else { return }
+            lastGroupMove = Date()
+            withAnimation(.easeInOut(duration: 0.2)) { libraryStore.moveGroup(id, to: nil) }
+        } else {
+            lastGroupMove = Date()
+            withAnimation(.easeInOut(duration: 0.2)) { libraryStore.moveGroup(id, to: target) }
+        }
+    }
+
     private var groupsRow: some View {
         ScrollView(.horizontal, showsIndicators: true) {
             LazyHGrid(rows: groupRowSpecs, spacing: 12) {
-                GroupCardButton(title: "All Papers", systemIcon: "tray.full.fill", colorHex: nil, image: nil, tooltip: nil, isSelected: selectedGroupID == nil) {
+                let archivedCount = libraryStore.groups.filter(\.isArchived).count
+                GroupCardButton(
+                    title: "Archive", systemIcon: showingArchive ? "archivebox.fill" : "archivebox", colorHex: nil, image: nil,
+                    tooltip: showingArchive
+                        ? "Back to the menu"
+                        : "Archive \u{2014} \(archivedCount) group\(archivedCount == 1 ? "" : "s"). Right-click a group to send it here or back to the menu.",
+                    isSelected: showingArchive
+                ) {
                     selectedGroupID = nil
+                    showingArchive.toggle()
                 }
 
-                ForEach(libraryStore.groups) { group in
+                GroupCardButton(title: "All Papers", systemIcon: "tray.full.fill", colorHex: nil, image: nil, tooltip: "All Papers \u{2014} drag a group here to move it to the front", isSelected: selectedGroupID == nil && !showingArchive) {
+                    selectedGroupID = nil
+                    showingArchive = false
+                }
+                .background(GroupFrameReader(id: Self.frontSlotID))
+
+                if showingArchive && archivedCount == 0 {
+                    Text("No archived groups.\nRight-click a group \u{2192} Move to Archive.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 190, alignment: .leading)
+                }
+
+                ForEach(libraryStore.groups.filter { $0.isArchived == showingArchive }) { group in
                     GroupCardButton(
                         title: group.name,
                         systemIcon: group.iconSystemName,
@@ -278,13 +462,34 @@ struct LibraryView: View {
                     ) {
                         selectedGroupID = group.id
                     }
+                    // Press and hold a card, then move the mouse: it lifts, follows the pointer, and
+                    // the other cards slide out of the way (like rearranging apps on iOS).
+                    .background(GroupFrameReader(id: group.id))
+                    .offset(reorderOffset(for: group.id))
+                    .scaleEffect(draggingGroupID == group.id ? 1.12 : 1)
+                    .shadow(color: .black.opacity(draggingGroupID == group.id ? 0.35 : 0), radius: 8, y: 4)
+                    .zIndex(draggingGroupID == group.id ? 1 : 0)
+                    .simultaneousGesture(reorderGesture(for: group.id))
                     .contextMenu {
+                        Button(group.isArchived ? "Move Back to Menu" : "Move to Archive") {
+                            if selectedGroupID == group.id { selectedGroupID = nil }
+                            withAnimation { libraryStore.setGroupArchived(group.id, !group.isArchived) }
+                        }
+                        Divider()
+                        Button("Add Subgroup\u{2026}") {
+                            subgroupEditor = SubgroupEditorTarget(groupID: group.id, subgroupID: nil, name: "")
+                        }
+                        Divider()
+                        Button("Move Left") { withAnimation { libraryStore.shiftGroup(group.id, by: -1) } }
+                        Button("Move Right") { withAnimation { libraryStore.shiftGroup(group.id, by: 1) } }
+                        Divider()
                         Button("Rename / Change Icon…") { editingGroup = group }
                         Divider()
                         Button("Delete Group…", role: .destructive) { groupPendingDeletion = group }
                     }
                 }
 
+                if !showingArchive {
                 Button {
                     showNewGroupSheet = true
                 } label: {
@@ -302,9 +507,12 @@ struct LibraryView: View {
                     .frame(width: 84, height: 84)
                 }
                 .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
+            .coordinateSpace(name: Self.groupGridSpace)
+            .onPreferenceChange(GroupFramesKey.self) { groupCardFrames = $0 }
         }
         .frame(height: libraryStore.groupsTwoRowLayout ? 200 : 108)
         .background(settings.color(for: .libraryGroupsBackground))
@@ -342,20 +550,44 @@ struct LibraryView: View {
             FlowLayout(spacing: 10) {
                 Text("Tags:").font(.caption.weight(.semibold))
                 ForEach(libraryStore.paperLabelNumbers, id: \.self) { number in
-                    Text("\(number)")
-                        .font(.system(size: 9, weight: .bold))
-                        .frame(width: 14, height: 14)
-                        .background(Circle().fill(Color.secondary.opacity(0.25)))
-                        .overlay(Circle().stroke(Color.secondary.opacity(0.8), lineWidth: 1))
+                    let isOn = tagFilterNumber == number
+                    Button { tagFilterNumber = isOn ? nil : number } label: {
+                        Text("\(number)")
+                            .font(.system(size: 9, weight: .bold))
+                            .frame(width: 14, height: 14)
+                            .background(Circle().fill(isOn ? settings.libraryButtonColor().opacity(0.35) : Color.secondary.opacity(0.25)))
+                            .overlay(Circle().stroke(isOn ? settings.libraryButtonColor() : Color.secondary.opacity(0.8), lineWidth: isOn ? 2 : 1))
+                            .padding(3)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(isOn ? "Showing papers numbered \(number) \u{2014} click to show all" : "Show only papers numbered \(number)")
                 }
                 ForEach(libraryStore.paperLabels) { option in
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(option.color)
-                            .frame(width: 10, height: 10)
-                            .overlay(Circle().stroke(Color.primary.opacity(0.25), lineWidth: 1))
-                        Text(option.name).font(.caption)
+                    let isOn = tagFilterColorID == option.id
+                    Button { tagFilterColorID = isOn ? nil : option.id } label: {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(option.color)
+                                .frame(width: 10, height: 10)
+                                .overlay(Circle().stroke(Color.primary.opacity(0.25), lineWidth: 1))
+                            Text(option.name).font(.caption)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .foregroundStyle(isOn ? option.color : Color.secondary)
+                        .background(Capsule().fill(isOn ? option.color.opacity(0.18) : Color.clear))
+                        .overlay(Capsule().stroke(isOn ? option.color : Color.clear, lineWidth: 1))
+                        .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .help(isOn ? "Showing \u{201c}\(option.name)\u{201d} papers \u{2014} click to show all" : "Show only \u{201c}\(option.name)\u{201d} papers")
+                }
+                if tagFilterColorID != nil || tagFilterNumber != nil {
+                    Button("Clear") { tagFilterColorID = nil; tagFilterNumber = nil }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        .foregroundStyle(settings.libraryButtonColor())
                 }
             }
             .foregroundStyle(.secondary)
@@ -538,6 +770,150 @@ struct LibraryView: View {
     }
 }
 
+/// What the sub-group name sheet is editing: a new sub-group in `groupID` (`subgroupID == nil`) or a rename.
+private struct SubgroupEditorTarget: Identifiable {
+    let id = UUID()
+    let groupID: UUID
+    let subgroupID: UUID?
+    let name: String
+}
+
+private struct SubgroupNameSheet: View {
+    let target: SubgroupEditorTarget
+    var onSave: (String) -> Void
+    var onCancel: () -> Void
+    @State private var name: String
+
+    init(target: SubgroupEditorTarget, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.target = target
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _name = State(initialValue: target.name)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(target.subgroupID == nil ? "New Subgroup" : "Rename Subgroup").font(.headline)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(save)
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                Button(target.subgroupID == nil ? "Add" : "Save", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 320)
+    }
+
+    private func save() {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        onSave(name)
+    }
+}
+
+/// The menu bar on the left of a group's paper list: the whole group, then each of its sub-groups.
+private struct SubgroupSidebar: View {
+    let group: LibraryGroup
+    let width: CGFloat
+    @Binding var selectedSubgroupID: UUID?
+    var onAdd: () -> Void
+    var onRename: (LibrarySubgroup) -> Void
+    var onCollapse: () -> Void
+    @EnvironmentObject var libraryStore: LibraryStore
+    @EnvironmentObject var settings: AppSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("SUBGROUPS").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                Button(action: onAdd) { Image(systemName: "plus.circle") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Add a subgroup to \u{201c}\(group.name)\u{201d}")
+                Button(action: onCollapse) { Image(systemName: "sidebar.left") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Hide this bar")
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 4)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    row(title: "All in \(group.name)", icon: "square.stack", count: libraryStore.entries(in: group, subgroup: nil, archive: group.isArchived).count, isSelected: selectedSubgroupID == nil) {
+                        selectedSubgroupID = nil
+                    }
+                    ForEach(group.subgroupList) { sub in
+                        row(
+                            title: sub.name, icon: "line.3.horizontal.decrease.circle",
+                            count: libraryStore.entries(in: group, subgroup: sub.id, archive: group.isArchived).count,
+                            isSelected: selectedSubgroupID == sub.id
+                        ) { selectedSubgroupID = sub.id }
+                        .contextMenu {
+                            Button("Rename\u{2026}") { onRename(sub) }
+                            Button("Delete Subgroup", role: .destructive) {
+                                if selectedSubgroupID == sub.id { selectedSubgroupID = nil }
+                                libraryStore.deleteSubgroup(sub.id, in: group.id)
+                            }
+                        }
+                    }
+                    if group.subgroupList.isEmpty {
+                        Text("No subgroups yet.\nPress + to add one.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.top, 6)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(width: width)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(settings.color(for: .libraryGroupsBackground).opacity(0.5))
+    }
+
+    private func row(title: String, icon: String, count: Int, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.caption)
+                Text(title).font(.callout).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(count)").font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .foregroundStyle(isSelected ? settings.libraryButtonColor() : Color.primary)
+            .background(isSelected ? settings.libraryButtonColor().opacity(0.15) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+    }
+}
+
+private struct GroupFramesKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// Reports a card's frame in the groups grid's coordinate space (measured before any drag offset).
+private struct GroupFrameReader: View {
+    let id: UUID
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: GroupFramesKey.self, value: [id: proxy.frame(in: .named("groupGrid"))])
+        }
+    }
+}
+
 private struct GroupCardButton: View {
     let title: String
     let systemIcon: String
@@ -571,10 +947,12 @@ private struct GroupCardButton: View {
                             .foregroundStyle(iconColor)
                     }
                 }
+                // A soft "light" in the icon's own color around the tile; stronger when selected.
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(isSelected ? settings.libraryButtonColor() : Color.secondary.opacity(0.25), lineWidth: isSelected ? 2 : 1)
+                        .stroke(iconColor.opacity(isSelected ? 1 : 0.7), lineWidth: isSelected ? 2.5 : 1.5)
                 )
+                .shadow(color: iconColor.opacity(isSelected ? 0.85 : 0.45), radius: isSelected ? 8 : 5)
                 Text(title)
                     .font(.caption2)
                     .lineLimit(1)
@@ -1021,6 +1399,15 @@ private struct LibraryCard: View {
                     }
                     .help("Copy BibTeX citation")
                     Button {
+                        libraryStore.setEntryArchived(entry, entry.archived != true)
+                    } label: {
+                        Image(systemName: entry.archived == true ? "tray.and.arrow.up" : "archivebox")
+                    }
+                    .disabled(entry.archived != true && libraryStore.isArchived(entry))
+                    .help(entry.archived == true
+                        ? "Move this paper back to the menu"
+                        : libraryStore.isArchived(entry) ? "Archived with its group \u{2014} move the group back to the menu" : "Move this paper to the Archive")
+                    Button {
                         exportZip()
                     } label: {
                         Image(systemName: "square.and.arrow.down")
@@ -1055,6 +1442,18 @@ private struct LibraryCard: View {
                     }
                     if libraryStore.groups.isEmpty {
                         Text("No groups yet — create one above.").font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(libraryStore.groups.filter { entry.groupFileNames[$0.id] != nil && !$0.subgroupList.isEmpty }) { group in
+                        Text("Subgroups in \(group.name)").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                        FlowLayout(spacing: 6) {
+                            ForEach(group.subgroupList) { sub in
+                                groupToggleChip(
+                                    label: sub.name, systemIcon: "line.3.horizontal.decrease.circle",
+                                    color: group.iconColorHex.flatMap(Color.init(hex:)) ?? .accentColor,
+                                    isOn: entry.subgroupIDs.contains(sub.id)
+                                ) { libraryStore.setSubgroup(sub.id, isOn: $0, for: entry) }
+                            }
+                        }
                     }
                     HStack {
                         Spacer()

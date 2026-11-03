@@ -48,10 +48,17 @@ struct LibraryEntry: Codable, Equatable, Identifiable {
     /// inside that same circle. Independent of `labelColorID` — a paper can have a color, a number,
     /// both, or neither, chosen separately from the circle's right-click menu.
     var labelNumber: Int?
+    /// The sub-groups (`LibraryGroup.subgroups`) this paper is filed under. Sub-groups are a way of
+    /// organizing *within* a group, not folders on disk, so this is plain metadata — a paper is only
+    /// ever filtered by a sub-group while its parent group is the selected one.
+    var subgroupIDs: [UUID] = []
+    /// Set when this paper was sent to the Archive on its own (a paper can also be archived just by
+    /// belonging only to archived groups — see `LibraryStore.isArchived`). nil means "not archived".
+    var archived: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, title, authors, year, venue, doi, affiliation, abstract, tags, notes, dateAdded,
-             rootFileName, groupFileNames, videoLinks, codeLinks, labelColorID, labelNumber
+             rootFileName, groupFileNames, videoLinks, codeLinks, labelColorID, labelNumber, subgroupIDs, archived
     }
 
     init(
@@ -59,7 +66,7 @@ struct LibraryEntry: Codable, Equatable, Identifiable {
         doi: String? = nil, affiliation: String? = nil, abstract: String? = nil, tags: [String] = [],
         notes: String = "", dateAdded: Date = Date(), rootFileName: String? = nil,
         groupFileNames: [UUID: String] = [:], videoLinks: [String] = [], codeLinks: [String] = [],
-        labelColorID: UUID? = nil, labelNumber: Int? = nil
+        labelColorID: UUID? = nil, labelNumber: Int? = nil, subgroupIDs: [UUID] = [], archived: Bool? = nil
     ) {
         self.id = id
         self.title = title
@@ -78,6 +85,8 @@ struct LibraryEntry: Codable, Equatable, Identifiable {
         self.codeLinks = codeLinks
         self.labelColorID = labelColorID
         self.labelNumber = labelNumber
+        self.subgroupIDs = subgroupIDs
+        self.archived = archived
     }
 
     /// Custom decode so every field added after this struct's first release — `videoLinks`,
@@ -108,7 +117,15 @@ struct LibraryEntry: Codable, Equatable, Identifiable {
         codeLinks = try container.decodeIfPresent([String].self, forKey: .codeLinks) ?? []
         labelColorID = try container.decodeIfPresent(UUID.self, forKey: .labelColorID)
         labelNumber = try container.decodeIfPresent(Int.self, forKey: .labelNumber)
+        subgroupIDs = try container.decodeIfPresent([UUID].self, forKey: .subgroupIDs) ?? []
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived)
     }
+}
+
+/// A named subdivision of a `LibraryGroup`, listed in the menu bar on the left of that group's papers.
+struct LibrarySubgroup: Codable, Equatable, Identifiable {
+    var id = UUID()
+    var name: String
 }
 
 /// A named collection of papers ("Group" in the UI) — backed by an actual subfolder of the
@@ -138,6 +155,14 @@ struct LibraryGroup: Codable, Equatable, Identifiable {
     var keywords: [String] = []
     var links: [String] = []
     var dateCreated: Date = Date()
+    /// Optional so libraries saved before the Archive existed still decode; nil means "in the menu".
+    var archived: Bool?
+    /// Optional for the same reason as `archived` — groups saved before sub-groups existed still decode.
+    var subgroups: [LibrarySubgroup]?
+    var subgroupList: [LibrarySubgroup] { subgroups ?? [] }
+
+    /// Archived groups are tucked away behind the Archive card instead of the main groups row.
+    var isArchived: Bool { archived ?? false }
 }
 
 /// One entry in the Reader window's highlighter palette — a named color the user can apply to
