@@ -12,6 +12,7 @@ struct MaziarApp: App {
     @StateObject private var journalStore = JournalStore()
     @StateObject private var paperStore = PaperStore()
     @StateObject private var libraryStore = LibraryStore()
+    @StateObject private var taskTagStore = TaskTagStore()
     @StateObject private var cvAutofillStore = CVAutofillStore()
 
     /// Remembers the Reader window's last size across launches — read here for `.defaultSize`
@@ -33,6 +34,7 @@ struct MaziarApp: App {
                 .environmentObject(paperStore)
                 .environmentObject(libraryStore)
                 .environmentObject(cvAutofillStore)
+                .environmentObject(taskTagStore)
                 .preferredColorScheme(settings.appearanceMode.colorScheme)
                 .tint(settings.color(for: .buttonColor))
                 .onAppear {
@@ -77,6 +79,7 @@ struct MaziarApp: App {
                 .environmentObject(paperStore)
                 .environmentObject(libraryStore)
                 .environmentObject(cvAutofillStore)
+                .environmentObject(taskTagStore)
                 .preferredColorScheme(settings.appearanceMode.colorScheme)
                 .tint(settings.color(for: .buttonColor))
         }
@@ -135,6 +138,31 @@ struct MaziarApp: App {
                 .tint(settings.color(for: .buttonColor))
         }
         .defaultSize(width: 520, height: 680)
+
+        // A website shortcut from a project's top button bar — the app's embedded browser in its own window.
+        WindowGroup(id: "project-web", for: ProjectWebTarget.self) { $target in
+            if let target {
+                CustomWebPageView(page: CustomWebPage(id: target.id, name: target.title, urlString: target.urlString))
+                    .navigationTitle(target.title)
+                    .preferredColorScheme(settings.appearanceMode.colorScheme)
+                    .tint(settings.color(for: .buttonColor))
+            }
+        }
+        .defaultSize(width: 1100, height: 780)
+
+        // A task's sub-tasks / notes / tags, from the (i) button on a project's task row — its own,
+        // larger window; looks the task up live in `paperStore`.
+        WindowGroup(id: "task-detail", for: TaskWindowTarget.self) { $target in
+            if let target {
+                TaskDetailWindow(target: target)
+                    .environmentObject(paperStore)
+                    .environmentObject(taskTagStore)
+                    .environmentObject(settings)
+                    .preferredColorScheme(settings.appearanceMode.colorScheme)
+                    .tint(settings.color(for: .buttonColor))
+            }
+        }
+        .defaultSize(width: 600, height: 720)
 
         // The CV AutoFill panel's own "Setting" button — deliberately a separate window, not a tab
         // in Maziar's regular Settings, matching the original browser extension's own separate

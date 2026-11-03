@@ -248,6 +248,11 @@ enum MarkdownBlockRenderer {
         result = replace(result, pattern: "\\*([^*]+)\\*", template: "<em>$1</em>")
         result = replace(result, pattern: "(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])", template: "<em>$1</em>")
         result = replace(result, pattern: "\\[([^\\]]+)\\]\\(([^)]+)\\)", template: "<a href=\"$2\">$1</a>")
+        // The note-formatting toolbar (color / font / size / underline) writes these two tags — the
+        // only inline HTML let through, with a style limited to harmless characters.
+        result = replace(result, pattern: "&lt;span style=\"([A-Za-z0-9#:;.,%' -]*)\"&gt;", template: "<span style=\"$1\">")
+        result = result.replacingOccurrences(of: "&lt;/span&gt;", with: "</span>")
+        result = result.replacingOccurrences(of: "&lt;u&gt;", with: "<u>").replacingOccurrences(of: "&lt;/u&gt;", with: "</u>")
         return result
     }
 

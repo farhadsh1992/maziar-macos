@@ -51,6 +51,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case conferences
     case journals
     case library
+    case projects
     case customPages
     case accounts
     case backup

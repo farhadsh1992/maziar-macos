@@ -564,6 +564,8 @@ extension Color {
     init?(hex: String) {
         var sanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         sanitized = sanitized.replacingOccurrences(of: "#", with: "")
+        // Accept plain RRGGBB too (the project color palette stores six digits) — fully opaque.
+        if sanitized.count == 6 { sanitized += "FF" }
         var value: UInt64 = 0
         guard Scanner(string: sanitized).scanHexInt64(&value), sanitized.count == 8 else { return nil }
         let r = Double((value & 0xFF00_0000) >> 24) / 255

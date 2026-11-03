@@ -914,7 +914,7 @@ private struct GroupFrameReader: View {
     }
 }
 
-private struct GroupCardButton: View {
+struct GroupCardButton: View {
     let title: String
     let systemIcon: String
     let colorHex: String?

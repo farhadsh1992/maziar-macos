@@ -46,7 +46,8 @@ struct PapersView: View {
                                     canMoveUp: index > 0,
                                     canMoveDown: index < topLevel.count - 1,
                                     onMoveUp: { paperStore.moveUp(paper) },
-                                    onMoveDown: { paperStore.moveDown(paper) }
+                                    onMoveDown: { paperStore.moveDown(paper) },
+                                    onOpenChild: { selectedPaper = $0 }
                                 )
                             }
                         }
@@ -55,6 +56,11 @@ struct PapersView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Pinned to the bottom of the page, always in view under the project list.
+            Divider().opacity(0.4)
+            ProjectsCalendarView(onOpenProject: { selectedPaper = $0 })
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(settings.color(for: .windowBackground))
@@ -131,10 +137,13 @@ private struct PaperCard: View {
     let canMoveDown: Bool
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
+    /// Opens a sub-project straight from this card, without going through its parent first.
+    let onOpenChild: (Paper) -> Void
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var conferenceStore: ConferenceStore
     @EnvironmentObject var paperStore: PaperStore
     @State private var showDeleteConfirm = false
+    @State private var showSubProjects = true
 
     private var linkedConference: ConferenceEntry? {
         guard let name = paper.conferenceName else { return nil }
@@ -142,6 +151,8 @@ private struct PaperCard: View {
     }
 
     private var subProjectCount: Int { paperStore.children(of: paper).count }
+
+    private var projectColor: Color? { paperStore.color(of: paper) }
 
     /// Green normally; red once the next deadline is within 24h (or already past); off once the
     /// paper's been marked rejected (nothing left to race against), and off entirely for a
@@ -155,7 +166,7 @@ private struct PaperCard: View {
         return .green
     }
 
-    var body: some View {
+    private var mainRow: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(spacing: 2) {
                 Button(action: onMoveUp) { Image(systemName: "chevron.up") }
@@ -174,7 +185,7 @@ private struct PaperCard: View {
                     }
                     Image(systemName: paper.kind.icon)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(projectColor ?? Color.secondary)
                         .help(paper.kind.displayName)
                     Text(paper.title).font(.headline)
                 }
@@ -197,10 +208,15 @@ private struct PaperCard: View {
                             .foregroundStyle(.secondary)
                     }
                     if subProjectCount > 0 {
-                        Label("\(subProjectCount)", systemImage: "square.stack")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .help("\(subProjectCount) sub-project\(subProjectCount == 1 ? "" : "s")")
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { showSubProjects.toggle() }
+                        } label: {
+                            Label("\(subProjectCount)", systemImage: showSubProjects ? "chevron.down" : "square.stack")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("\(subProjectCount) sub-project\(subProjectCount == 1 ? "" : "s") \u{2014} click to \(showSubProjects ? "hide" : "show")")
                     }
                 }
             }
@@ -215,15 +231,100 @@ private struct PaperCard: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onOpen)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            mainRow
+            if showSubProjects && subProjectCount > 0 {
+                Divider().opacity(0.4)
+                SubProjectBar(parent: paper, onOpen: onOpenChild)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                Color(nsColor: .controlBackgroundColor)
+                // A soft wash of the project's color spreading in from the left edge, like light.
+                if let projectColor {
+                    LinearGradient(colors: [projectColor.opacity(0.22), projectColor.opacity(0)], startPoint: .leading, endPoint: .init(x: 0.45, y: 0.5))
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        // The glowing line down the left side — drawn outside the clip so its glow spills past the edge.
+        .overlay(alignment: .leading) {
+            if let projectColor {
+                Capsule()
+                    .fill(projectColor)
+                    .frame(width: 4)
+                    .padding(.vertical, 6)
+                    .shadow(color: projectColor.opacity(0.9), radius: 4)
+                    .shadow(color: projectColor.opacity(0.6), radius: 10)
+            }
+        }
         .confirmationDialog("Delete \"\(paper.title)\"?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive, action: onDelete)
             Button("Cancel", role: .cancel) {}
         }
+    }
+}
+
+/// A project's sub-projects as a row of cards under it — the same tiles as the Library's group bar —
+/// each opening directly, with right-click to rename or change its icon and color.
+private struct SubProjectBar: View {
+    let parent: Paper
+    let onOpen: (Paper) -> Void
+    @EnvironmentObject var paperStore: PaperStore
+    @EnvironmentObject var settings: AppSettings
+    @State private var editing: Paper?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("SUB-PROJECTS").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(paperStore.children(of: parent)) { child in
+                        GroupCardButton(
+                            title: child.title,
+                            systemIcon: child.cardIcon,
+                            colorHex: child.iconColorHex,
+                            image: nil,
+                            tooltip: tooltip(for: child),
+                            isSelected: false
+                        ) { onOpen(child) }
+                        .contextMenu {
+                            Button("Open") { onOpen(child) }
+                            Button("Rename / Change Icon\u{2026}") { editing = child }
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            }
+            .background(settings.color(for: .libraryGroupsBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .sheet(item: $editing) { child in
+            ProjectIconSheet(paper: child, onSave: { title, icon, colorHex in
+                var updated = paperStore.papers.first(where: { $0.id == child.id }) ?? child
+                updated.title = title
+                updated.iconSystemName = icon
+                updated.iconColorHex = colorHex
+                paperStore.update(updated)
+                editing = nil
+            }, onCancel: { editing = nil })
+        }
+    }
+
+    private func tooltip(for child: Paper) -> String {
+        var lines = [child.title, child.kind.displayName]
+        if !child.tasks.isEmpty { lines.append("\(child.doneTaskCount)/\(child.tasks.count) tasks done") }
+        let nested = paperStore.children(of: child).count
+        if nested > 0 { lines.append("\(nested) sub-project\(nested == 1 ? "" : "s")") }
+        return lines.joined(separator: "\n")
     }
 }

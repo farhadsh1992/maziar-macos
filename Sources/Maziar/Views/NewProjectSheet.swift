@@ -3,16 +3,14 @@ import SwiftUI
 /// Creates a new project — used both for a top-level project (`parentID: nil`, from the Projects
 /// page) and a sub-project nested inside another one (`parentID: <parent's id>`, from
 /// `PaperDetailView`'s Sub-Projects section) — the same sheet either way, just parameterized by
-/// what the new project's parent should be. Also creates a matching Library group for the new
-/// project (skipped, not forced, when no library folder is connected yet), so every project —
-/// top-level or nested — gets somewhere to collect its own reference papers.
+/// what the new project's parent should be. Creating a project makes no folder on disk — a project
+/// can be tagged with an existing Library group later, from its own page.
 struct NewProjectSheet: View {
     let parentID: UUID?
     var onCreated: (Paper) -> Void
     var onCancel: () -> Void
 
     @EnvironmentObject var paperStore: PaperStore
-    @EnvironmentObject var libraryStore: LibraryStore
 
     @State private var title = ""
     @State private var kind: ProjectKind = .paperSubmission
@@ -84,9 +82,6 @@ struct NewProjectSheet: View {
         var paper = paperStore.add(title: title, kind: kind, parentID: parentID)
         if let pendingProjectPath {
             paper.projectPath = pendingProjectPath
-        }
-        if let created = try? libraryStore.createGroup(name: paper.title) {
-            paper.libraryGroupID = created.id
         }
         paperStore.update(paper)
         onCreated(paper)

@@ -25,6 +25,9 @@ struct SettingsView: View {
             LibrarySettingsTab()
                 .tabItem { Label("Library", systemImage: "books.vertical") }
                 .tag(SettingsTab.library)
+            ProjectsSettingsTab()
+                .tabItem { Label("Projects", systemImage: "doc.badge.clock") }
+                .tag(SettingsTab.projects)
             CustomPagesSettingsTab()
                 .tabItem { Label("Custom Pages", systemImage: "globe") }
                 .tag(SettingsTab.customPages)
@@ -1576,6 +1579,49 @@ private struct PaperLabelEditorSheet: View {
         }
         .padding(20)
         .frame(width: 340)
+    }
+}
+
+/// Settings → Projects: the color tags that can be put on a project's tasks.
+private struct ProjectsSettingsTab: View {
+    @EnvironmentObject var taskTagStore: TaskTagStore
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach($taskTagStore.tags) { $tag in
+                    HStack(spacing: 10) {
+                        ColorPicker("", selection: Binding(
+                            get: { tag.color },
+                            set: { tag.colorHex = $0.toHex() ?? tag.colorHex }
+                        ), supportsOpacity: false)
+                        .labelsHidden()
+                        TextField("Tag name", text: $tag.name)
+                            .textFieldStyle(.roundedBorder)
+                        Button(role: .destructive) {
+                            taskTagStore.remove(tag)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                if taskTagStore.tags.isEmpty {
+                    Text("No tags yet.").font(.caption).foregroundStyle(.secondary)
+                }
+                Button {
+                    taskTagStore.add()
+                } label: {
+                    Label("Add Tag", systemImage: "plus")
+                }
+            } header: {
+                Text("Task Tags")
+            } footer: {
+                Text("Colored tags you can put on a task in any project \u{2014} click a task\u{2019}s info button (\u{24d8}) or right-click it \u{2192} Tags. Give each a name that says what it means, like \u{201c}Urgent\u{201d} or \u{201c}Waiting on reviewer\u{201d}. Deleting a tag removes it from every task.")
+                    .font(.caption)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

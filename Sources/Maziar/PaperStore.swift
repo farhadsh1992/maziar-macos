@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 @MainActor
 final class PaperStore: ObservableObject {
@@ -42,6 +43,19 @@ final class PaperStore: ObservableObject {
         papers.filter { $0.parentID == parent.id }
     }
 
+    /// The color a project is shown in (its card stripe and its calendar entries): its own, or — for a
+    /// sub-project with none of its own — the nearest ancestor's. nil when none up the chain has one.
+    func color(of paper: Paper) -> Color? {
+        var current: Paper? = paper
+        var hops = 0
+        while let candidate = current, hops < 32 {
+            if let hex = candidate.iconColorHex, let color = Color(hex: hex) { return color }
+            current = candidate.parentID.flatMap { id in papers.first { $0.id == id } }
+            hops += 1
+        }
+        return nil
+    }
+
     /// Top-level projects only — what the Projects page's main list actually shows; a sub-project
     /// is only reachable from inside its parent.
     func topLevelPapers() -> [Paper] {
@@ -62,7 +76,24 @@ final class PaperStore: ObservableObject {
             idsToRemove.formUnion(nextFrontier)
             frontier = nextFrontier
         }
+        // Extra Notes boxes keep their notebooks under their own ids.
+        let extraNoteScopes = papers.filter { idsToRemove.contains($0.id) }
+            .flatMap(\.sectionLayout).filter { $0.isExtra && $0.kind == .notes }.map(\.id)
         papers.removeAll { idsToRemove.contains($0.id) }
+        idsToRemove.forEach(ProjectNotebookStorage.remove)
+        extraNoteScopes.forEach(ProjectNotebookStorage.remove)
+        idsToRemove.forEach(ProjectImageStorage.removeAll)
+    }
+
+    func moveTask(in paperID: UUID, taskID: UUID, before targetID: UUID?) {
+        guard let pi = papers.firstIndex(where: { $0.id == paperID }),
+              let from = papers[pi].tasks.firstIndex(where: { $0.id == taskID }) else { return }
+        let task = papers[pi].tasks.remove(at: from)
+        if let targetID, let to = papers[pi].tasks.firstIndex(where: { $0.id == targetID }) {
+            papers[pi].tasks.insert(task, at: to)
+        } else {
+            papers[pi].tasks.append(task)
+        }
     }
 
     func update(_ paper: Paper) {

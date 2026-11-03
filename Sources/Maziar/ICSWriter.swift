@@ -44,6 +44,34 @@ enum ICSWriter {
         return url
     }
 
+    /// One `.ics` holding several all-day events (`isoDate` is a bare "yyyy-MM-dd"), so adding a whole
+    /// task list is a single Calendar confirmation instead of one per task.
+    static func writeAllDayEventsFile(_ events: [(title: String, isoDate: String, notes: String?)]) -> URL? {
+        var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Maziar//Projects//EN"]
+        var count = 0
+        for event in events {
+            let compact = event.isoDate.replacingOccurrences(of: "-", with: "")
+            guard compact.count == 8, Int(compact) != nil else { continue }
+            lines += [
+                "BEGIN:VEVENT",
+                "UID:\(UUID().uuidString)",
+                "DTSTAMP:\(timestampFormatter.string(from: Date()))",
+                "DTSTART;VALUE=DATE:\(compact)",
+                "SUMMARY:\(escape(event.title))",
+            ]
+            if let notes = event.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append("DESCRIPTION:\(escape(notes))")
+            }
+            lines.append("END:VEVENT")
+            count += 1
+        }
+        guard count > 0 else { return nil }
+        lines.append("END:VCALENDAR")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("maziar-events-\(UUID().uuidString).ics")
+        guard (try? lines.joined(separator: "\r\n").write(to: url, atomically: true, encoding: .utf8)) != nil else { return nil }
+        return url
+    }
+
     private static func parseISODateTime(_ iso: String) -> Date? {
         let strict = ISO8601DateFormatter()
         strict.formatOptions = [.withInternetDateTime]
