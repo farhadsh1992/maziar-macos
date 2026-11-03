@@ -11,6 +11,8 @@ struct ProjectImageView: View {
 
     @State private var image: NSImage?
     @State private var failed = false
+    /// Bumped when pictures were just downloaded from Drive, so a "missing" one gets another try.
+    @State private var reloadToken = 0
 
     var body: some View {
         Group {
@@ -26,7 +28,8 @@ struct ProjectImageView: View {
                 ProgressView().controlSize(.small)
             }
         }
-        .task(id: url) {
+        .onReceive(NotificationCenter.default.publisher(for: .projectImagesChanged)) { _ in reloadToken += 1 }
+        .task(id: "\(url.path)#\(reloadToken)") {
             failed = false
             let loaded = await Self.load(url, maxPixel: maxPixel)
             image = loaded

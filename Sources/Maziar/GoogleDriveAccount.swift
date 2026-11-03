@@ -211,6 +211,7 @@ final class GoogleDriveAccount: ObservableObject {
             let token = try await self.validAccessToken()
             let remote = try await self.remoteMeta(token: token)
             try await self.uploadSnapshot(token: token, existingID: remote?.id)
+            await self.syncProjectImages(token: token)
             self.statusMessage = "Uploaded to Google Drive."
         }
     }
@@ -335,6 +336,7 @@ final class GoogleDriveAccount: ObservableObject {
             let token = try await self.validAccessToken()
             guard let remote = try await self.remoteMeta(token: token) else {
                 try await self.uploadSnapshot(token: token, existingID: nil)
+                await self.syncProjectImages(token: token)
                 self.statusMessage = "Uploaded to Google Drive."
                 return
             }
@@ -355,6 +357,41 @@ final class GoogleDriveAccount: ObservableObject {
                 self.markSynced()
                 self.statusMessage = "Already up to date with Google Drive."
             }
+            await self.syncProjectImages(token: token)
+        }
+    }
+
+    /// Makes the project pictures match on both Macs: uploads pictures Drive doesn't have yet and
+    /// downloads ones this Mac is missing (only for pictures its projects list). Additive only —
+    /// removing a picture doesn't delete the Drive copy. Runs after every sync pass, whichever way
+    /// the settings went, so a picture added on one Mac shows up on the other.
+    private func syncProjectImages(token: String) async {
+        guard let papers = stores?.paper.papers else { return }
+        var wanted: [(name: String, url: URL)] = []
+        for paper in papers {
+            for image in paper.images + paper.extraImages.values.flatMap({ $0 }) {
+                wanted.append((
+                    "\(DriveImageFiles.namePrefix)\(paper.id.uuidString)-\(image.fileName)",
+                    ProjectImageStorage.url(for: image, paperID: paper.id)
+                ))
+            }
+        }
+        guard !wanted.isEmpty else { return }
+        do {
+            let remote = try await DriveImageFiles.list(token: token)
+            var downloaded = false
+            for item in wanted {
+                let existsLocally = FileManager.default.fileExists(atPath: item.url.path)
+                if existsLocally, remote[item.name] == nil {
+                    try await DriveImageFiles.upload(token: token, name: item.name, file: item.url)
+                } else if !existsLocally, let id = remote[item.name] {
+                    try await DriveImageFiles.download(token: token, id: id, to: item.url)
+                    downloaded = true
+                }
+            }
+            if downloaded { NotificationCenter.default.post(name: .projectImagesChanged, object: nil) }
+        } catch {
+            errorMessage = "Couldn\u{2019}t sync project images: \(error.localizedDescription)"
         }
     }
 

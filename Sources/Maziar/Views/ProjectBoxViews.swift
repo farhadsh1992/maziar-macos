@@ -13,6 +13,8 @@ struct ProjectInfoBox: View {
     @State private var renamingID: UUID?
     @State private var nameDraft = ""
     @State private var pendingDeletion: ProjectInfoSection?
+    /// Bumped when Drive data was applied, so the editor reloads the text that arrived.
+    @State private var syncToken = 0
 
     private var stored: [ProjectInfoSection] {
         instanceID.map { paper.extraInfo[$0.uuidString] ?? [] } ?? paper.infoSections
@@ -183,10 +185,11 @@ struct ProjectInfoBox: View {
                 controller: controller,
                 onChange: { rtf, plain in update(id, rtf: rtf, plain: plain) }
             )
-            .id(id)
+            .id("\(id.uuidString)#\(syncToken)")
             .frame(height: 170)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
         }
+        .onReceive(NotificationCenter.default.publisher(for: .maziarSettingsImported)) { _ in syncToken += 1 }
     }
 }
 
@@ -344,6 +347,7 @@ struct ProjectNotesBox: View {
                 .frame(height: 440)
         }
         .onAppear { load() }
+        .onReceive(NotificationCenter.default.publisher(for: .maziarSettingsImported)) { _ in load() }
         .onChange(of: scope) { _, _ in load() }
         .onChange(of: notes) { _, newValue in
             if let selectedID { ProjectNotebookStorage.write(newValue, for: scope, section: selectedID) }

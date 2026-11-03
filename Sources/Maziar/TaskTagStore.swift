@@ -29,6 +29,15 @@ final class TaskTagStore: ObservableObject {
         } else {
             tags = []
         }
+        NotificationCenter.default.addObserver(forName: .maziarSettingsImported, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.reloadFromDefaults() }
+        }
+    }
+
+    func reloadFromDefaults() {
+        guard let data = UserDefaults.standard.data(forKey: Self.key),
+              let decoded = try? JSONDecoder().decode([TaskTag].self, from: data) else { tags = []; return }
+        if decoded != tags { tags = decoded }
     }
 
     func tag(_ id: UUID) -> TaskTag? { tags.first { $0.id == id } }

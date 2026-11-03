@@ -1396,12 +1396,16 @@ final class ProjectSectionState: ObservableObject {
     @Published private var collapsed: [String: [String]]
 
     private init() {
-        if let data = UserDefaults.standard.data(forKey: Self.key),
-           let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) {
-            collapsed = decoded
-        } else {
-            collapsed = [:]
+        collapsed = Self.load()
+        NotificationCenter.default.addObserver(forName: .maziarSettingsImported, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.collapsed = Self.load() }
         }
+    }
+
+    private static func load() -> [String: [String]] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) else { return [:] }
+        return decoded
     }
 
     func isCollapsed(_ project: UUID, _ section: String) -> Bool {

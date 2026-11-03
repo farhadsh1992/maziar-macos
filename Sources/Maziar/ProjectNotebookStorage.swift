@@ -44,10 +44,9 @@ enum ProjectNotebookStorage {
 
     static func write(_ cells: [NotebookCell], for projectID: UUID, section sectionID: UUID? = nil) {
         let key = contentKey(projectID, sectionID ?? projectID)
-        guard !cells.isEmpty, let data = NotebookDocument(cells: cells).encoded() else {
-            defaults.removeObject(forKey: key)
-            return
-        }
+        // An emptied notebook is saved as an empty one rather than deleted, so clearing notes on one
+        // Mac also clears them on the other (a snapshot only carries keys that exist).
+        guard let data = NotebookDocument(cells: cells).encoded() else { return }
         defaults.set(data, forKey: key)
     }
 

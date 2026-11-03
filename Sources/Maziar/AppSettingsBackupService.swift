@@ -73,5 +73,7 @@ enum AppSettingsBackupService {
         paperStore.reloadFromDefaults()
         libraryStore.reloadFromDefaults()
         cvAutofillStore?.reloadFromDefaults()
+        // Stores and views that aren't passed in above (project task tags, open/closed boxes, notes…).
+        NotificationCenter.default.post(name: .maziarSettingsImported, object: nil)
     }
 }
