@@ -39,7 +39,7 @@ final class GoogleDriveAccount: ObservableObject {
             case .nothingInDrive: return "No Maziar data has been uploaded to this Google Drive account yet."
             case .timedOut: return "Sign-in timed out waiting for the browser."
             case .cancelled: return "Sign-in cancelled."
-            case .sessionExpired: return "Your Google sign-in has expired or was revoked \u{2014} sign in with Google again to resume syncing. (If this keeps happening about once a week, your OAuth app is in \u{201c}Testing\u{201d} mode in Google Cloud Console; publish it to \u{201c}In production\u{201d} so refresh tokens stop expiring after 7 days.)"
+            case .sessionExpired: return "Your Google sign-in expired \u{2014} sign in with Google again to resume syncing."
             }
         }
     }
@@ -524,6 +524,10 @@ final class GoogleDriveAccount: ObservableObject {
             try await work()
         } catch SyncError.cancelled {
             statusMessage = "Sign-in cancelled \u{2014} you can try again."
+        } catch SyncError.sessionExpired {
+            errorMessage = SyncError.sessionExpired.localizedDescription
+            // Queued so it runs after this `run` has cleared `isBusy`, letting "Sign In" start right away.
+            Task { @MainActor in self.promptToSignInAgain() }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -558,6 +562,24 @@ final class GoogleDriveAccount: ObservableObject {
         stopAutoSync()
         KeychainHelper.delete(forKey: Self.refreshTokenKey)
         accessToken = nil
+    }
+
+    /// An OAuth app left in Google's "Testing" status gets refresh tokens that expire after 7 days, so
+    /// this comes up about once a week. Rather than leave a red error in Settings, ask right away and
+    /// run the browser sign-in (account preselected via `login_hint`) — a couple of clicks and sync resumes.
+    private var isPromptingToSignIn = false
+    private func promptToSignInAgain() {
+        guard !isPromptingToSignIn, !isSignedIn else { return }
+        isPromptingToSignIn = true
+        defer { isPromptingToSignIn = false }
+        let alert = NSAlert()
+        alert.messageText = "Google sign-in expired"
+        alert.informativeText = "Google Drive sync is paused because your Google sign-in\(email.map { " (\($0))" } ?? "") expired. Sign in again to resume \u{2014} nothing is lost; changes made meanwhile will be synced."
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await self.signIn() }
     }
 
     private func store(_ tokens: [String: Any]) {
@@ -611,6 +633,10 @@ final class GoogleDriveAccount: ObservableObject {
             URLQueryItem(name: "access_type", value: "offline"),
             URLQueryItem(name: "prompt", value: "consent"),
         ]
+        // Preselect the account last used, so signing in again after an expiry is just "Continue".
+        if let email, !email.isEmpty {
+            components.queryItems?.append(URLQueryItem(name: "login_hint", value: email))
+        }
         NSWorkspace.shared.open(components.url!)
         let query = try await box.waitForRedirect(timeout: 90)
         if let error = query["error"] { throw SyncError.authorizationFailed(error) }

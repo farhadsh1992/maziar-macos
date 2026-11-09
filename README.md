@@ -1967,12 +1967,11 @@ snapshot of every `maziar.` setting except machine-specific ones (`maziar.librar
 OpenPrism projects (`DriveOpenPrismSync.swift`, toggle "Include OpenPrism projects"). Everything
 is stored in the Drive app-data folder. API keys are never synced.
 
-**"Your Google sign-in has expired or was revoked"** (Google's `invalid_grant`): Maziar drops the
-dead token and shows Sign in again; signing back in to the same account resumes where sync left
-off. If this happens about once a week, your OAuth app is in **Testing** status in Google Cloud
-Console (APIs & Services → OAuth consent screen / Audience), where refresh tokens expire after
-7 days. Click **Publish app** to move it to **In production**; a personal app doesn't need
-Google's verification, you just click past the "unverified app" warning when signing in.
+**Google sign-in expired** (Google's `invalid_grant`): while the OAuth app stays in **Testing**
+status in Google Cloud Console, Google expires its refresh tokens after 7 days. Maziar then drops
+the dead token and shows a "Google sign-in expired" dialog; **Sign In** opens Google with your
+account preselected, and sync resumes where it left off. Publishing the app (Audience → Publish
+app, after filling in Branding) would stop the weekly expiry, but isn't required.
 
 ## Backup & restore
 
