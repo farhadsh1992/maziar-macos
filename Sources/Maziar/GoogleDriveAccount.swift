@@ -27,6 +27,8 @@ final class GoogleDriveAccount: ObservableObject {
         case nothingInDrive
         case timedOut
         case cancelled
+        /// The saved refresh token was rejected (`invalid_grant`) — expired or revoked, so only signing in again helps.
+        case sessionExpired
 
         var errorDescription: String? {
             switch self {
@@ -37,6 +39,7 @@ final class GoogleDriveAccount: ObservableObject {
             case .nothingInDrive: return "No Maziar data has been uploaded to this Google Drive account yet."
             case .timedOut: return "Sign-in timed out waiting for the browser."
             case .cancelled: return "Sign-in cancelled."
+            case .sessionExpired: return "Your Google sign-in has expired or was revoked \u{2014} sign in with Google again to resume syncing. (If this keeps happening about once a week, your OAuth app is in \u{201c}Testing\u{201d} mode in Google Cloud Console; publish it to \u{201c}In production\u{201d} so refresh tokens stop expiring after 7 days.)"
             }
         }
     }
@@ -194,6 +197,9 @@ final class GoogleDriveAccount: ObservableObject {
             KeychainHelper.set(refresh, forKey: Self.refreshTokenKey)
             self.store(tokens)
             let address = (tokens["id_token"] as? String).flatMap(Self.emailFromIDToken)
+            // An expired session keeps its sync bookkeeping (see `dropExpiredSession`); that only applies
+            // to the same Drive, so signing back in as someone else starts fresh.
+            if let previous = self.email, previous != address { self.lastSyncedRemote = nil }
             self.email = address
             UserDefaults.standard.set(address, forKey: Self.emailDefaultsKey)
             self.statusMessage = "Signed in\(address.map { " as \($0)" } ?? "")."
@@ -527,15 +533,31 @@ final class GoogleDriveAccount: ObservableObject {
         if let accessToken, accessTokenExpiry > Date().addingTimeInterval(60) { return accessToken }
         guard let refresh = KeychainHelper.get(forKey: Self.refreshTokenKey) else { throw SyncError.notSignedIn }
         guard isConfigured else { throw SyncError.notConfigured }
-        let tokens = try await tokenRequest([
-            "refresh_token": refresh,
-            "client_id": clientID,
-            "client_secret": clientSecret,
-            "grant_type": "refresh_token",
-        ])
+        let tokens: [String: Any]
+        do {
+            tokens = try await tokenRequest([
+                "refresh_token": refresh,
+                "client_id": clientID,
+                "client_secret": clientSecret,
+                "grant_type": "refresh_token",
+            ])
+        } catch SyncError.http(let code, let body) where code == 400 && body.contains("invalid_grant") {
+            dropExpiredSession()
+            throw SyncError.sessionExpired
+        }
         store(tokens)
         guard let accessToken else { throw SyncError.notSignedIn }
         return accessToken
+    }
+
+    /// Forgets a refresh token Google no longer accepts so the UI shows "Sign in" again and auto-sync
+    /// stops retrying it. Unlike `signOut()`, the sync bookkeeping (last remote version, unsynced local
+    /// changes) is kept, so signing back in into the same account carries on where it left off.
+    private func dropExpiredSession() {
+        objectWillChange.send()
+        stopAutoSync()
+        KeychainHelper.delete(forKey: Self.refreshTokenKey)
+        accessToken = nil
     }
 
     private func store(_ tokens: [String: Any]) {
