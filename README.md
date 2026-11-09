@@ -13,6 +13,10 @@ rebuttal rounds until it's ready for the conference.
 
 Built with SwiftUI + Swift Package Manager (no Xcode project needed).
 
+**Current version: Beta 3.0.4.** The version lives in two places, bumped together per release:
+`AppUpdater.versionLabel` (shown in About/Settings) and the numeric `CFBundleVersion` /
+`CFBundleShortVersionString` in `build_app.sh`.
+
 ## Features
 
 - **Branding** (`AppBranding.swift`) — the logo (`Sources/Maziar/Resources/Logo.png`,
@@ -1933,6 +1937,42 @@ on-screen kind picker, the sub-project drill-down navigation, and the Library-gr
 Finder" button couldn't be click-tested in this environment — no Screen Recording/Accessibility
 permission here — so that part rests on the build succeeding and the store-level logic underneath
 it being verified for real, same caveat as the rest of this app's UI throughout this README.
+
+## OpenPrism
+
+A second, web-based LaTeX editor in its own sidebar section, built on
+[OpenDCAI/OpenPrism](https://github.com/OpenDCAI/OpenPrism) (a Node app: React + Fastify).
+Maziar runs it as a child process instead of linking it:
+
+- `OpenPrismServer.swift` clones it into `~/Library/Application Support/Maziar/OpenPrism/repo`,
+  runs `npm install` + `npm run build` on first use, then starts `node apps/backend/src/index.js` on
+  a free localhost port (from 8787). Projects live in `…/OpenPrism/data/<id>/`, outside the checkout.
+  A force-quit leaves the node child running, so `server.pid` is used to reap it on the next start.
+- `Views/OpenPrismView.swift` embeds the UI via `ScholarBrowserView`. Opening a project gives it its
+  own editor-sized window.
+- Nothing is forked. On each start Maziar patches the checkout (binds to 127.0.0.1; ignores the
+  page's own AI settings), and `OpenPrismTheme.pageScript` adds English-by-default, a dark mode,
+  the custom start-page title (Settings → Appearance → OpenPrism) and hides OpenPrism's own AI dialog.
+- Its AI is Maziar's: the provider/model from Settings → AI is passed in as `OPENPRISM_LLM_*`
+  environment variables (Claude and Gemini through their OpenAI-compatible endpoints), so
+  changing the provider restarts the server. OpenPrism never asks for its own API key.
+
+## Google Drive account sync
+
+Settings → Accounts → **Sign in with Google** (your own OAuth client ID/secret from Google Cloud
+Console) keeps Maziar the same on every Mac you sign in on (`GoogleDriveAccount.swift`). It syncs a
+snapshot of every `maziar.` setting except machine-specific ones (`maziar.library.folderPath`,
+`maziar.texDistribution`, and the `maziar.googleDrive.`, `maziar.readerWindow.`, `maziar.ai.`,
+`maziar.updater.` prefixes), plus project pictures (`DriveImageFiles.swift`) and, optionally,
+OpenPrism projects (`DriveOpenPrismSync.swift`, toggle "Include OpenPrism projects"). Everything
+is stored in the Drive app-data folder. API keys are never synced.
+
+**"Your Google sign-in has expired or was revoked"** (Google's `invalid_grant`): Maziar drops the
+dead token and shows Sign in again; signing back in to the same account resumes where sync left
+off. If this happens about once a week, your OAuth app is in **Testing** status in Google Cloud
+Console (APIs & Services → OAuth consent screen / Audience), where refresh tokens expire after
+7 days. Click **Publish app** to move it to **In production**; a personal app doesn't need
+Google's verification, you just click past the "unverified app" warning when signing in.
 
 ## Backup & restore
 
