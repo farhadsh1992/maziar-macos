@@ -20,7 +20,18 @@ final class WebViewHolder: ObservableObject {
 /// via `createWebViewWith` previously didn't get this at all, defaulting back to the generic
 /// identity even though the parent view had already been fixed, exactly the gap that let a
 /// "Continue with Google" popup hit this error after the *outer* popup-hosting fix already worked.
-let embeddedBrowserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+///
+/// The `Version/…` part follows the Safari actually installed on this Mac. A fixed number goes stale —
+/// Google Docs answered a `Version/17.0` identity with "This browser version is no longer supported" —
+/// so it is read from Safari's own Info.plist each launch, with a recent fallback if Safari can't be found.
+let embeddedBrowserUserAgent: String = {
+    let safariPaths = ["/Applications/Safari.app", "/System/Cryptexes/App/System/Applications/Safari.app"]
+    let installed = safariPaths.lazy
+        .compactMap { Bundle(path: $0)?.infoDictionary?["CFBundleShortVersionString"] as? String }
+        .first
+    let version = installed.flatMap { $0.contains(where: \.isNumber) ? $0 : nil } ?? "26.0"
+    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(version) Safari/605.1.15"
+}()
 
 /// Bridges a `WKWebView` into SwiftUI for the Library page's embedded Google Scholar search panel
 /// — a real, live, JS-interactive web page inside the app, which SwiftUI has no equivalent for.
@@ -34,13 +45,20 @@ struct ScholarBrowserView: NSViewRepresentable {
     /// real, Safari-style address bar that tracks where the embedded browser actually is, rather
     /// than staying blank or stuck on whatever was last typed into a separate search field.
     @Binding var currentURL: URL?
+    /// JavaScript run in every frame before the page's own scripts (e.g. to preset a site's saved settings).
+    var documentStartScript: String? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(canGoBack: $canGoBack, canGoForward: $canGoForward, isLoading: $isLoading, currentURL: $currentURL)
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let configuration = WKWebViewConfiguration()
+        if let documentStartScript {
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: documentStartScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.customUserAgent = embeddedBrowserUserAgent
@@ -191,8 +209,11 @@ struct ScholarBrowserView: NSViewRepresentable {
         /// is what makes the popup share the parent page's session/cookies, letting an OAuth-style
         /// popup flow actually complete), hosted in a real, separate `NSWindow`.
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            let width = windowFeatures.width?.doubleValue ?? 520
-            let height = windowFeatures.height?.doubleValue ?? 680
+            // An OpenPrism project opened in its own window (see `OpenPrismTheme.pageScript`) is a full
+            // editor, not a small sign-in popup — give it an editor-sized, properly titled window.
+            let isEditorWindow = navigationAction.request.url?.path.hasPrefix("/editor/") == true
+            let width = windowFeatures.width?.doubleValue ?? (isEditorWindow ? 1280 : 520)
+            let height = windowFeatures.height?.doubleValue ?? (isEditorWindow ? 820 : 680)
             let popupWebView = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
             popupWebView.navigationDelegate = self
             popupWebView.uiDelegate = self
@@ -204,7 +225,7 @@ struct ScholarBrowserView: NSViewRepresentable {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "Sign In"
+            window.title = isEditorWindow ? "OpenPrism" : "Sign In"
             window.contentView = popupWebView
             window.delegate = self
             // `NSWindow`'s default `isReleasedWhenClosed = true` makes AppKit itself release the

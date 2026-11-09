@@ -173,6 +173,11 @@ struct AccountsSettingsTab: View {
                 LabeledContent("Signed in as", value: drive.email ?? "Google account")
                 LabeledContent("Last synced", value: drive.lastSync.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Never")
                 Toggle("Sync automatically", isOn: $drive.autoSync)
+                Toggle("Include OpenPrism projects", isOn: $drive.syncOpenPrism)
+                    .help("Keeps your OpenPrism projects (LaTeX files, images, bibliography) the same on every Mac you sign in on. Anything replaced or removed by a sync is first saved to Application Support/Maziar/OpenPrism/sync-backups. OpenPrism's own settings and API keys are not synced.")
+                if drive.syncOpenPrism, let status = drive.openPrismStatus {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
                 HStack {
                     LabeledContent("OAuth client ID") {
                         Text(drive.clientID)

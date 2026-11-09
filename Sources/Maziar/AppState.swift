@@ -10,6 +10,7 @@ enum Route: Equatable {
 enum AppSection: String, CaseIterable, Identifiable {
     case papers
     case projects
+    case openPrism
     case conferences
     case journals
     case library
@@ -21,6 +22,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .papers: return "Projects"
         case .projects: return "Editor"
+        case .openPrism: return "OpenPrism"
         case .conferences: return "Conferences"
         case .journals: return "Journals"
         case .library: return "Library"
@@ -32,6 +34,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .papers: return "doc.badge.clock"
         case .projects: return "doc.richtext"
+        case .openPrism: return "triangle"
         case .conferences: return "calendar.badge.clock"
         case .journals: return "book.closed"
         case .library: return "books.vertical"

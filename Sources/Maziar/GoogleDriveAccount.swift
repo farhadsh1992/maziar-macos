@@ -60,6 +60,13 @@ final class GoogleDriveAccount: ObservableObject {
     }
     @Published var statusMessage: String?
     @Published var errorMessage: String?
+    /// Result of the last OpenPrism-projects pass, shown under its toggle in Settings → Accounts.
+    @Published private(set) var openPrismStatus: String?
+    /// Whether OpenPrism projects are synced too. Kept on this Mac (`maziar.googleDrive.` key) — it's a
+    /// per-Mac choice, not something one Mac should switch on for the other.
+    @Published var syncOpenPrism: Bool {
+        didSet { UserDefaults.standard.set(syncOpenPrism, forKey: Self.syncOpenPrismKey) }
+    }
 
     var isSignedIn: Bool { KeychainHelper.get(forKey: Self.refreshTokenKey) != nil }
     /// A real OAuth client ID always ends in `.apps.googleusercontent.com` — anything else (an email
@@ -74,6 +81,7 @@ final class GoogleDriveAccount: ObservableObject {
     private static let lastSyncDefaultsKey = "maziar.googleDrive.lastSync"
     private static let stateFileName = "maziar-state.plist"
     private static let autoSyncKey = "maziar.googleDrive.autoSync"
+    private static let syncOpenPrismKey = "maziar.googleDrive.syncOpenPrism"
     private static let lastRemoteKey = "maziar.googleDrive.lastRemoteModified"
     private static let dirtyKey = "maziar.googleDrive.localDirty"
 
@@ -121,6 +129,7 @@ final class GoogleDriveAccount: ObservableObject {
         email = UserDefaults.standard.string(forKey: Self.emailDefaultsKey)
         lastSync = UserDefaults.standard.object(forKey: Self.lastSyncDefaultsKey) as? Date
         autoSync = UserDefaults.standard.object(forKey: Self.autoSyncKey) as? Bool ?? true
+        syncOpenPrism = UserDefaults.standard.object(forKey: Self.syncOpenPrismKey) as? Bool ?? true
         profileImage = UserDefaults.standard.data(forKey: Self.pictureKey).flatMap(NSImage.init(data:))
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
     }
@@ -211,7 +220,7 @@ final class GoogleDriveAccount: ObservableObject {
             let token = try await self.validAccessToken()
             let remote = try await self.remoteMeta(token: token)
             try await self.uploadSnapshot(token: token, existingID: remote?.id)
-            await self.syncProjectImages(token: token)
+            await self.syncExtras(token: token)
             self.statusMessage = "Uploaded to Google Drive."
         }
     }
@@ -336,7 +345,7 @@ final class GoogleDriveAccount: ObservableObject {
             let token = try await self.validAccessToken()
             guard let remote = try await self.remoteMeta(token: token) else {
                 try await self.uploadSnapshot(token: token, existingID: nil)
-                await self.syncProjectImages(token: token)
+                await self.syncExtras(token: token)
                 self.statusMessage = "Uploaded to Google Drive."
                 return
             }
@@ -357,7 +366,7 @@ final class GoogleDriveAccount: ObservableObject {
                 self.markSynced()
                 self.statusMessage = "Already up to date with Google Drive."
             }
-            await self.syncProjectImages(token: token)
+            await self.syncExtras(token: token)
         }
     }
 
@@ -365,6 +374,28 @@ final class GoogleDriveAccount: ObservableObject {
     /// downloads ones this Mac is missing (only for pictures its projects list). Additive only —
     /// removing a picture doesn't delete the Drive copy. Runs after every sync pass, whichever way
     /// the settings went, so a picture added on one Mac shows up on the other.
+    /// Everything that rides along with the settings snapshot but is stored as separate files.
+    private func syncExtras(token: String) async {
+        await syncProjectImages(token: token)
+        await syncOpenPrismProjects(token: token)
+    }
+
+    private func syncOpenPrismProjects(token: String) async {
+        guard syncOpenPrism else { return }
+        do {
+            let summary = try await DriveOpenPrismSync.sync(token: token)
+            openPrismStatus = "OpenPrism projects: \(summary.text)"
+            if let failure = summary.failures.first {
+                errorMessage = "Couldn\u{2019}t sync an OpenPrism project (\(failure))"
+            }
+            if summary.didChangeLocalFiles {
+                NotificationCenter.default.post(name: .openPrismProjectsChanged, object: nil)
+            }
+        } catch {
+            errorMessage = "Couldn\u{2019}t sync OpenPrism projects: \(error.localizedDescription)"
+        }
+    }
+
     private func syncProjectImages(token: String) async {
         guard let papers = stores?.paper.papers else { return }
         var wanted: [(name: String, url: URL)] = []

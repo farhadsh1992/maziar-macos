@@ -48,6 +48,7 @@ struct SettingsView: View {
 
 private struct AppearanceSettingsTab: View {
     @EnvironmentObject var settings: AppSettings
+    @AppStorage(OpenPrismTheme.greetingKey) private var openPrismGreeting = OpenPrismTheme.defaultGreeting
 
     var body: some View {
         Form {
@@ -60,6 +61,19 @@ private struct AppearanceSettingsTab: View {
                 .pickerStyle(.segmented)
             } header: {
                 Text("Appearance")
+            }
+
+            Section {
+                TextField("Start page title", text: $openPrismGreeting, prompt: Text(OpenPrismTheme.defaultGreeting))
+                Button("Reset to \u{201c}\(OpenPrismTheme.defaultGreeting)\u{201d}") {
+                    openPrismGreeting = OpenPrismTheme.defaultGreeting
+                }
+                .disabled(openPrismGreeting == OpenPrismTheme.defaultGreeting)
+            } header: {
+                Text("OpenPrism")
+            } footer: {
+                Text("The big title on OpenPrism's start page, in place of \u{201c}OpenPrism is Here\u{201d}. Leave it empty to show OpenPrism's own title. Takes effect right away.")
+                    .font(.caption)
             }
 
             Section {
