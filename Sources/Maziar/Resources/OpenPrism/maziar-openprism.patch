@@ -470,10 +470,10 @@ index 8e77535..103d40a 100644
  
  export function createCollabInvite(id: string) {
 diff --git a/apps/frontend/src/app/App.css b/apps/frontend/src/app/App.css
-index ec09d64..2923152 100644
+index ec09d64..ddca4f0 100644
 --- a/apps/frontend/src/app/App.css
 +++ b/apps/frontend/src/app/App.css
-@@ -3739,3 +3739,486 @@ textarea.input {
+@@ -3739,3 +3739,550 @@ textarea.input {
  .transfer-widget-log > div {
    margin-bottom: 2px;
  }
@@ -608,8 +608,6 @@ index ec09d64..2923152 100644
 +  font-weight: 600;
 +}
 +
-+.diag-count.error { background: rgba(200, 40, 40, 0.14); color: #b42323; }
-+.diag-count.warning { background: rgba(214, 150, 0, 0.16); color: #8a6100; }
 +.diag-count.badbox { background: rgba(110, 110, 110, 0.14); color: #555; }
 +.diag-count.zero { opacity: 0.55; }
 +
@@ -662,8 +660,6 @@ index ec09d64..2923152 100644
 +  transform: translateY(2px);
 +}
 +
-+.diag-item.error .diag-sev { background: #c62f2f; }
-+.diag-item.warning .diag-sev { background: #d29a12; }
 +.diag-item.badbox .diag-sev { background: #8b8b8b; }
 +
 +.diag-msg {
@@ -678,12 +674,9 @@ index ec09d64..2923152 100644
 +  color: var(--muted, #7a6a5e);
 +}
 +
-+.error-item.diag-warning .error-tag { background: #d29a12; }
 +.error-item.diag-badbox .error-tag { background: #8b8b8b; }
 +
 +/* Editor: lines with compile problems, and the line you just jumped to. */
-+.cm-maziar-diag-error { background: rgba(220, 50, 50, 0.1); box-shadow: inset 3px 0 0 #d33; }
-+.cm-maziar-diag-warning { background: rgba(230, 170, 0, 0.1); box-shadow: inset 3px 0 0 #e0a800; }
 +.cm-maziar-diag-badbox { box-shadow: inset 3px 0 0 rgba(130, 130, 130, 0.6); }
 +
 +@keyframes maziar-flash {
@@ -960,6 +953,77 @@ index ec09d64..2923152 100644
 +  opacity: 0.45;
 +  cursor: default;
 +}
++
++/* ---------- Maziar: bright, glowing error (#DE2900) and warning (#F5C814) lines ---------- */
++
++:root {
++  --maziar-error: #de2900;
++  --maziar-warning: #f5c814;
++}
++
++.cm-maziar-diag-error,
++.cm-maziar-diag-warning {
++  position: relative;
++  isolation: isolate;
++}
++
++/* The tint, bar and glow live on a layer behind the text, so dark mode can restore their exact colours
++   without touching the text (Maziar's dark mode inverts the whole page). */
++.cm-maziar-diag-error::before,
++.cm-maziar-diag-warning::before {
++  content: '';
++  position: absolute;
++  inset: 0;
++  z-index: -1;
++  pointer-events: none;
++  animation: maziar-light-on 0.9s ease-out;
++}
++
++.cm-maziar-diag-error::before {
++  background: linear-gradient(90deg, rgba(222, 41, 0, 0.28), rgba(222, 41, 0, 0.1) 70%, rgba(222, 41, 0, 0.05));
++  box-shadow: inset 4px 0 0 var(--maziar-error), -2px 0 12px rgba(222, 41, 0, 0.6);
++}
++
++.cm-maziar-diag-warning::before {
++  background: linear-gradient(90deg, rgba(245, 200, 20, 0.36), rgba(245, 200, 20, 0.14) 70%, rgba(245, 200, 20, 0.06));
++  box-shadow: inset 4px 0 0 var(--maziar-warning), -2px 0 12px rgba(245, 200, 20, 0.75);
++}
++
++/* "Switching on": a quick flicker to full brightness, then a steady glow. */
++@keyframes maziar-light-on {
++  0% { opacity: 0; filter: brightness(1); }
++  15% { opacity: 1; filter: brightness(1.7); }
++  28% { opacity: 0.3; filter: brightness(1); }
++  42% { opacity: 1; filter: brightness(1.6); }
++  100% { opacity: 1; filter: brightness(1); }
++}
++
++html.maziar-dark .cm-maziar-diag-error::before,
++html.maziar-dark .cm-maziar-diag-warning::before {
++  filter: invert(1) hue-rotate(180deg);
++  animation-name: maziar-light-on-dark;
++}
++
++@keyframes maziar-light-on-dark {
++  0% { opacity: 0; filter: invert(1) hue-rotate(180deg); }
++  15% { opacity: 1; filter: invert(1) hue-rotate(180deg) brightness(1.5); }
++  28% { opacity: 0.3; filter: invert(1) hue-rotate(180deg); }
++  42% { opacity: 1; filter: invert(1) hue-rotate(180deg) brightness(1.4); }
++  100% { opacity: 1; filter: invert(1) hue-rotate(180deg); }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .cm-maziar-diag-error::before,
++  .cm-maziar-diag-warning::before { animation: none; }
++}
++
++/* Same colours in the Problems panel and the log's error list. */
++.diag-item.error .diag-sev { background: var(--maziar-error); box-shadow: 0 0 6px rgba(222, 41, 0, 0.6); }
++.diag-item.warning .diag-sev { background: var(--maziar-warning); color: #3d3000; box-shadow: 0 0 6px rgba(245, 200, 20, 0.75); }
++.diag-count.error { background: rgba(222, 41, 0, 0.14); color: var(--maziar-error); }
++.diag-count.warning { background: rgba(245, 200, 20, 0.24); color: #8a6b00; }
++.error-item .error-tag { background: var(--maziar-error); }
++.error-item.diag-warning .error-tag { background: var(--maziar-warning); color: #3d3000; }
 diff --git a/apps/frontend/src/app/EditorPage.tsx b/apps/frontend/src/app/EditorPage.tsx
 index f924bd7..d6770a9 100644
 --- a/apps/frontend/src/app/EditorPage.tsx

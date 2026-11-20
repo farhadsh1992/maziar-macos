@@ -1986,7 +1986,9 @@ OpenPrism runs unchanged and the log says so. What it adds:
   that line. Backend: `apps/backend/src/routes/synctex.js` (uses the `synctex` CLI from TeX).
 - **Problems panel** — compiles with `-file-line-error` and an unwrapped log; errors, warnings and
   over/underfull boxes are listed with file:line (`apps/frontend/src/latex/diagnostics.ts`), clicking one
-  opens and flashes the line, affected lines are tinted in the editor, and "Full log" stays available.
+  opens and flashes the line, affected lines glow in the editor (errors #DE2900, warnings #F5C814,
+  with a short "switch-on" flicker when they appear; the glow sits on a `::before` layer so Maziar's
+  inverted dark mode can counter-invert it back to the same colours), and "Full log" stays available.
 - **Spelling & grammar** — American English by default; Settings → Appearance → OpenPrism → "Spelling &
   grammar" switches between English (US) and (UK) (`maziar.openPrism.spellLanguage`, passed to the page as
   `window.__maziarSpellLanguage`). through macOS's own checker via the small `MaziarSpell` helper executable
