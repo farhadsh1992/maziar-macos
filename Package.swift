@@ -11,8 +11,14 @@ let package = Package(
             resources: [
                 .copy("Resources/Templates"),
                 .copy("Resources/Logo.png"),
-                .copy("Resources/CVAutoFillLogo.png")
+                .copy("Resources/CVAutoFillLogo.png"),
+                .copy("Resources/OpenPrism")
             ]
+        ),
+        // Spelling/grammar helper for the embedded OpenPrism editor (see Sources/MaziarSpell/main.swift).
+        .executableTarget(
+            name: "MaziarSpell",
+            path: "Sources/MaziarSpell"
         )
     ]
 )

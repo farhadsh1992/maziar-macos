@@ -1957,6 +1957,39 @@ Maziar runs it as a child process instead of linking it:
   environment variables (Claude and Gemini through their OpenAI-compatible endpoints), so
   changing the provider restarts the server. OpenPrism never asks for its own API key.
 
+### OpenPrism editor improvements (Phase 10)
+
+Maziar's changes to OpenPrism's editor ship as one patch against upstream,
+`Sources/Maziar/Resources/OpenPrism/maziar-openprism.patch`. `OpenPrismServer.applyMaziarPatchIfNeeded`
+applies it to a clean checkout whenever the patch or the upstream commit changes (tracked in
+`repo/.maziar-patch`) and rebuilds the interface; if upstream moves so far that it no longer applies,
+OpenPrism runs unchanged and the log says so. What it adds:
+
+- **Uploads** — files go into the folder they're dropped on (or the selected folder for the Upload
+  button), nested folders included; the tree opens to show them and failures appear in the Files panel.
+  (The multipart parser dropped folder names, so every upload used to land in the project root.)
+- **PDF viewer** (`apps/frontend/src/app/PdfViewer.tsx`) — keeps page, scroll offset and zoom across
+  compiles (clamped to the last page if the document got shorter); renders only visible pages; pinch,
+  Cmd/Ctrl + wheel zoom anchored on the pointer; Fit width / Fit page / 100%; Space- or middle-drag to pan.
+- **SyncTeX** — compiles with `-synctex=1`; the last PDF + `.synctex.gz` are kept in
+  `<project>/.compile/last/`. Cmd/Ctrl + Shift + J (or "Source → PDF") shows the cursor's line in the
+  PDF with a brief highlight; double-click (or Cmd/Ctrl-click) the PDF to open the right `.tex` file at
+  that line. Backend: `apps/backend/src/routes/synctex.js` (uses the `synctex` CLI from TeX).
+- **Problems panel** — compiles with `-file-line-error` and an unwrapped log; errors, warnings and
+  over/underfull boxes are listed with file:line (`apps/frontend/src/latex/diagnostics.ts`), clicking one
+  opens and flashes the line, affected lines are tinted in the editor, and "Full log" stays available.
+- **Spelling & grammar** — through macOS's own checker via the small `MaziarSpell` helper executable
+  (second SPM target, copied next to Maziar's binary by `build_app.sh`, path passed as
+  `MAZIAR_SPELL_HELPER`). The LaTeX source is masked first (commands, math, citation keys, labels,
+  paths, code and verbatim blanked) so only prose is checked (`apps/frontend/src/latex/spell.ts`).
+  Hover an underline for suggestions, Ignore, or Add to dictionary; toggle and language are in the
+  editor toolbar. Nothing leaves the Mac.
+
+To try OpenPrism changes in a normal browser, `scripts/openprism-dev.sh` runs the checkout on port 8790
+with the same projects folder and the debug spell helper (`swift build` first). Regenerate the patch
+from the checkout with `git add -N` on new files and `git diff`, excluding the two runtime edits
+`patchBackend()` makes (`host: '127.0.0.1'` and the `MAZIAR_LLM_LOCKED` lines).
+
 ## Google Drive account sync
 
 Settings → Accounts → **Sign in with Google** (your own OAuth client ID/secret from Google Cloud

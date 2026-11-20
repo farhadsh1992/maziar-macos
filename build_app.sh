@@ -24,6 +24,10 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$BIN_NAME"
+# Spelling/grammar helper the embedded OpenPrism editor talks to (found next to the main executable).
+if [ -f ".build/$CONFIG/MaziarSpell" ]; then
+  cp ".build/$CONFIG/MaziarSpell" "$APP_DIR/Contents/MacOS/MaziarSpell"
+fi
 
 RESOURCE_BUNDLE=".build/$CONFIG/${BIN_NAME}_${BIN_NAME}.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then

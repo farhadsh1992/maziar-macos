@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Darwin
+import CryptoKit
 
 /// Runs OpenPrism (github.com/OpenDCAI/OpenPrism, MIT) — an open-source LaTeX + AI writing workspace —
 /// as a local server so Maziar can embed its web UI as a second editor.
@@ -165,13 +166,14 @@ final class OpenPrismServer: ObservableObject {
             if FileManager.default.fileExists(atPath: repoDirectory.appendingPathComponent(".git").path) {
                 if update {
                     state = .working("Downloading the latest OpenPrism…")
-                    // Drop the localhost patch (re-applied below) so the pull can't conflict with it.
-                    try await shell("git -C \(repo) checkout -- . && git -C \(repo) pull --ff-only", cwd: nil)
+                    // Drop Maziar's edits and added files (re-applied below) so the pull can't conflict with them.
+                    try await shell("git -C \(repo) checkout -- . && git -C \(repo) clean -fdq -- apps packages && git -C \(repo) pull --ff-only", cwd: nil)
                 }
             } else {
                 state = .working("Downloading OpenPrism…")
                 try await shell("git clone --depth 1 \(Self.repoURL) \(repo)", cwd: nil)
             }
+            try await applyMaziarPatchIfNeeded(rebuild: false)
             try patchBackend()
 
             state = .working("Installing dependencies (a few minutes the first time)…")
@@ -181,6 +183,7 @@ final class OpenPrismServer: ObservableObject {
             try await shell("npm run build", cwd: repoDirectory)
 
             guard isInstalled else { throw SetupError("The build finished but the interface files are missing.") }
+            writePatchMarker()
             state = .stopped
             start()
         } catch {
@@ -217,10 +220,87 @@ final class OpenPrismServer: ObservableObject {
         }
     }
 
+    // MARK: - Maziar's editor improvements
+
+    /// Maziar's changes to OpenPrism's editor (image uploads into folders, PDF position kept across compiles,
+    /// SyncTeX source <-> PDF navigation, pointer-anchored zoom, a problems panel, spelling and grammar),
+    /// shipped as one patch against upstream (`Resources/OpenPrism/maziar-openprism.patch`) instead of a fork.
+    /// It is applied to a clean checkout whenever the patch or the upstream commit changes — tracked by a
+    /// marker file holding both — and the interface is rebuilt. If upstream has moved on so far that the
+    /// patch no longer applies, OpenPrism keeps running unpatched and the log says so.
+    private static var patchURL: URL? {
+        Bundle.module.url(forResource: "maziar-openprism", withExtension: "patch", subdirectory: "OpenPrism")
+    }
+
+    private static var patchDigest: String? {
+        guard let url = patchURL, let data = try? Data(contentsOf: url), !data.isEmpty else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The `MaziarSpell` helper next to Maziar's own executable (in the .app or in `.build/<config>`).
+    static var spellHelperURL: URL? {
+        guard let dir = Bundle.main.executableURL?.deletingLastPathComponent() else { return nil }
+        let url = dir.appendingPathComponent("MaziarSpell")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
+    }
+
+    private var patchMarkerURL: URL { repoDirectory.appendingPathComponent(".maziar-patch") }
+
+    private func upstreamHead() -> String {
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        git.arguments = ["-C", repoDirectory.path, "rev-parse", "HEAD"]
+        let pipe = Pipe()
+        git.standardOutput = pipe
+        git.standardError = FileHandle.nullDevice
+        guard (try? git.run()) != nil else { return "" }
+        git.waitUntilExit()
+        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private var wantedPatchMarker: String? {
+        guard let digest = Self.patchDigest else { return nil }
+        return "\(digest) \(upstreamHead())"
+    }
+
+    private func writePatchMarker() {
+        guard let wanted = wantedPatchMarker else { return }
+        try? wanted.write(to: patchMarkerURL, atomically: true, encoding: .utf8)
+    }
+
+    private func applyMaziarPatchIfNeeded(rebuild: Bool) async throws {
+        guard let patch = Self.patchURL, let wanted = wantedPatchMarker else { return }
+        let current = (try? String(contentsOf: patchMarkerURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard current != wanted else { return }
+        state = .working("Applying Maziar\u{2019}s editor improvements\u{2026}")
+        let repo = shellQuote(repoDirectory.path)
+        // Start from upstream exactly: drop earlier edits and files a previous patch version added.
+        try await shell("git -C \(repo) checkout -- . && git -C \(repo) clean -fdq -- apps packages", cwd: nil)
+        do {
+            try await shell("git -C \(repo) apply --whitespace=nowarn \(shellQuote(patch.path))", cwd: nil)
+        } catch {
+            append("Note: Maziar's editor improvements don't apply to this OpenPrism version — running it unchanged.\n")
+            try? wanted.write(to: patchMarkerURL, atomically: true, encoding: .utf8)
+            if rebuild {
+                try patchBackend()
+                try await shell("npm run build", cwd: repoDirectory)
+            }
+            return
+        }
+        guard rebuild else { return } // runSetup builds next and writes the marker afterwards
+        try patchBackend()
+        state = .working("Rebuilding the OpenPrism interface\u{2026}")
+        try await shell("npm run build", cwd: repoDirectory)
+        writePatchMarker()
+    }
+
     // MARK: - Launch
 
     private func launch() async {
         do {
+            try await applyMaziarPatchIfNeeded(rebuild: true)
+            state = .starting
             try patchBackend()
             stopStaleServer()
             guard let port = Self.freePort() else { throw SetupError("No free local port was found.") }
@@ -236,6 +316,8 @@ final class OpenPrismServer: ObservableObject {
             // With this set, the patched backend ignores any AI settings OpenPrism's own page sends and
             // uses only the values below (or fails with "key not set" when Maziar has none).
             env["MAZIAR_LLM_LOCKED"] = "1"
+            // Spelling/grammar for the editor through macOS's checker (see Sources/MaziarSpell).
+            if let helper = Self.spellHelperURL { env["MAZIAR_SPELL_HELPER"] = helper.path }
             env.removeValue(forKey: "OPENPRISM_LLM_API_KEY")
             if let ai = aiConfig {
                 env["OPENPRISM_LLM_ENDPOINT"] = ai.endpoint
