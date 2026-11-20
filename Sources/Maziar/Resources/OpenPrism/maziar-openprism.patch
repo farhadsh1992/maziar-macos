@@ -470,10 +470,10 @@ index 8e77535..103d40a 100644
  
  export function createCollabInvite(id: string) {
 diff --git a/apps/frontend/src/app/App.css b/apps/frontend/src/app/App.css
-index ec09d64..ee7c560 100644
+index ec09d64..291a56c 100644
 --- a/apps/frontend/src/app/App.css
 +++ b/apps/frontend/src/app/App.css
-@@ -3739,3 +3739,432 @@ textarea.input {
+@@ -3739,3 +3739,440 @@ textarea.input {
  .transfer-widget-log > div {
    margin-bottom: 2px;
  }
@@ -906,10 +906,27 @@ index ec09d64..ee7c560 100644
 +.editor-area {
 +  border-top: 1.5px solid var(--maziar-line);
 +}
++
++/* Maziar: "%%%" comments — bold green notes (the inner span overrides the normal comment colour). */
++.cm-maziar-strong-comment,
++.cm-maziar-strong-comment * {
++  color: #138a3c !important;
++  font-weight: 700 !important;
++  font-style: normal !important;
++}
 diff --git a/apps/frontend/src/app/EditorPage.tsx b/apps/frontend/src/app/EditorPage.tsx
-index f924bd7..02b8bcd 100644
+index f924bd7..47810f6 100644
 --- a/apps/frontend/src/app/EditorPage.tsx
 +++ b/apps/frontend/src/app/EditorPage.tsx
+@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
+ import ReactMarkdown from 'react-markdown';
+ import remarkGfm from 'remark-gfm';
+ import { basicSetup } from 'codemirror';
+-import { latex } from '../latex/lang';
++import { latex, strongComments } from '../latex/lang';
+ import { Compartment, EditorState, StateEffect, StateField } from '@codemirror/state';
+ import { Decoration, EditorView, DecorationSet, WidgetType, keymap, gutter, GutterMarker } from '@codemirror/view';
+ import { search, searchKeymap } from '@codemirror/search';
 @@ -15,6 +15,11 @@ import { foldKeymap, foldService, indentOnInput } from '@codemirror/language';
  import { GlobalWorkerOptions, getDocument, renderTextLayer } from 'pdfjs-dist';
  import pdfWorker from 'pdfjs-dist/build/pdf.worker.min?url';
@@ -1206,16 +1223,17 @@ index f924bd7..02b8bcd 100644
        {
          key: 'Mod-Space',
          run: () => {
-@@ -1707,6 +1528,8 @@ export default function EditorPage() {
+@@ -1707,6 +1528,9 @@ export default function EditorPage() {
          editorTheme,
          collabCompartment.of([]),
          ghostField,
 +        diagnosticsExtension(),
++        strongComments(),
 +        spellCompartment.of([]),
          search(),
          autocompletion({ override: [latexCompletionSource] }),
          updateListener,
-@@ -1760,7 +1583,9 @@ export default function EditorPage() {
+@@ -1760,7 +1584,9 @@ export default function EditorPage() {
        setIsDirty(false);
        if (!collabTextFile) {
          setEditorDoc(cached);
@@ -1225,7 +1243,7 @@ index f924bd7..02b8bcd 100644
        return cached;
      }
      const data = await getFile(projectId, filePath);
-@@ -1770,13 +1595,76 @@ export default function EditorPage() {
+@@ -1770,13 +1596,76 @@ export default function EditorPage() {
      setIsDirty(false);
      if (!collabTextFile) {
        setEditorDoc(data.content);
@@ -1302,7 +1320,7 @@ index f924bd7..02b8bcd 100644
      const current = view.state.doc.toString();
      if (current === value) return;
      suppressDirtyRef.current = true;
-@@ -2639,11 +2527,42 @@ export default function EditorPage() {
+@@ -2639,11 +2528,42 @@ export default function EditorPage() {
      }
    };
  
@@ -1348,7 +1366,7 @@ index f924bd7..02b8bcd 100644
    };
  
    const handleVisionSubmit = async () => {
-@@ -2942,8 +2861,12 @@ export default function EditorPage() {
+@@ -2942,8 +2862,12 @@ export default function EditorPage() {
    useEffect(() => {
      if (texFiles.length === 0) return;
      if (!texFiles.includes(mainFile)) {
@@ -1362,7 +1380,7 @@ index f924bd7..02b8bcd 100644
      }
    }, [texFiles, mainFile]);
  
-@@ -3044,25 +2967,8 @@ export default function EditorPage() {
+@@ -3044,25 +2968,8 @@ export default function EditorPage() {
      );
    };
  
@@ -1390,7 +1408,7 @@ index f924bd7..02b8bcd 100644
    };
  
    const renderTree = (nodes: TreeNode[], depth = 0) =>
-@@ -3096,6 +3002,7 @@ export default function EditorPage() {
+@@ -3096,6 +3003,7 @@ export default function EditorPage() {
                }}
                onDrop={(event) => {
                  event.preventDefault();
@@ -1398,7 +1416,7 @@ index f924bd7..02b8bcd 100644
                  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
                    handleUpload(event.dataTransfer.files, node.path).catch((err) => setStatus(t('上传失败: {{error}}', { error: String(err) })));
                    setDragOverPath('');
-@@ -3187,10 +3094,16 @@ export default function EditorPage() {
+@@ -3187,10 +3095,16 @@ export default function EditorPage() {
            }}
            onDrop={(event) => {
              event.preventDefault();
@@ -1416,7 +1434,7 @@ index f924bd7..02b8bcd 100644
              if (!from) return;
              if (fileFilter.trim()) {
                setStatus(t('搜索过滤中无法拖拽排序。'));
-@@ -3290,6 +3203,22 @@ export default function EditorPage() {
+@@ -3290,6 +3204,22 @@ export default function EditorPage() {
      }
    };
  
@@ -1439,7 +1457,7 @@ index f924bd7..02b8bcd 100644
    const selectionText = useMemo(() => {
      const [start, end] = selectionRange;
      if (start === end) return '';
-@@ -3297,6 +3226,124 @@ export default function EditorPage() {
+@@ -3297,6 +3227,124 @@ export default function EditorPage() {
    }, [selectionRange, editorValue]);
  
    const compileErrors = useMemo(() => parseCompileErrors(compileLog), [compileLog]);
@@ -1564,7 +1582,7 @@ index f924bd7..02b8bcd 100644
    const pendingGrouped = useMemo(() => {
      const map = new Map<string, PendingChange>();
      pendingChanges.forEach((item) => {
-@@ -3326,13 +3373,7 @@ export default function EditorPage() {
+@@ -3326,13 +3374,7 @@ export default function EditorPage() {
      setPdfOutline([]);
    }, [pdfUrl]);
  
@@ -1579,7 +1597,7 @@ index f924bd7..02b8bcd 100644
  
    const breadcrumbParts = useMemo(() => (activePath ? activePath.split('/').filter(Boolean) : []), [activePath]);
  
-@@ -3808,14 +3849,30 @@ export default function EditorPage() {
+@@ -3808,14 +3850,30 @@ export default function EditorPage() {
                <>
                  <div className="panel-header">
                    <div>{t('Project Files')}</div>
@@ -1611,7 +1629,7 @@ index f924bd7..02b8bcd 100644
                      if (event.target) {
                        event.target.value = '';
                      }
-@@ -3828,7 +3885,7 @@ export default function EditorPage() {
+@@ -3828,7 +3886,7 @@ export default function EditorPage() {
                    style={{ display: 'none' }}
                    {...({ webkitdirectory: 'true', directory: 'true' } as Record<string, string>)}
                    onChange={(event) => {
@@ -1620,7 +1638,7 @@ index f924bd7..02b8bcd 100644
                      if (event.target) {
                        event.target.value = '';
                      }
-@@ -5042,6 +5099,31 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5042,6 +5100,31 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                <button className="toolbar-btn" onClick={insertLabelSnippet}>{t('Label')}</button>
              </div>
              <div className="toolbar-spacer" />
@@ -1652,7 +1670,7 @@ index f924bd7..02b8bcd 100644
              <div className="toolbar-group font-size-group">
                <button className="toolbar-btn icon-only" onClick={() => setEditorFontSize((s) => Math.max(8, s - 1))} title={t('放大')}>
                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-@@ -5058,7 +5140,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5058,7 +5141,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
            >
              <div className="editor-area" ref={editorAreaRef}>
                <div ref={editorHostRef} className="editor-host" style={{ '--editor-font-size': `${editorFontSize}px` } as React.CSSProperties} />
@@ -1661,7 +1679,7 @@ index f924bd7..02b8bcd 100644
                {(inlineSuggestionText || isSuggesting) && suggestionPos && (
                  <div
                    className={`suggestion-popover ${isSuggesting && !inlineSuggestionText ? 'loading' : ''}`}
-@@ -5129,26 +5211,26 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5129,26 +5212,26 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
            </div>
            <div className="right-body">
              <div className="view-content">
@@ -1700,7 +1718,7 @@ index f924bd7..02b8bcd 100644
                        <button className="btn ghost small" onClick={downloadPdf} disabled={!pdfUrl}>{t('下载 PDF')}</button>
                        <button
                          className={`btn ghost small ${pdfSpread ? 'active' : ''}`}
-@@ -5167,36 +5249,66 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5167,36 +5250,66 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                      </div>
                    </div>
                    {pdfUrl ? (
@@ -1786,7 +1804,7 @@ index f924bd7..02b8bcd 100644
                    {pdfAnnotations.length > 0 && (
                      <div className="pdf-annotations">
                        <div className="muted">{t('注释')}</div>
-@@ -5223,8 +5335,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5223,8 +5336,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                        </div>
                      </div>
                    )}
@@ -1796,7 +1814,7 @@ index f924bd7..02b8bcd 100644
                {rightView === 'toc' && (
                  <div className="toc-panel">
                    <div className="toc-title">{t('目录')}</div>
-@@ -5345,17 +5456,18 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5345,17 +5457,18 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                        )}
                      </button>
                    </div>
@@ -2790,10 +2808,16 @@ index 0000000..aa3ff9d
 +  }, 1800);
 +}
 diff --git a/apps/frontend/src/latex/lang.ts b/apps/frontend/src/latex/lang.ts
-index e81d031..b24f732 100644
+index e81d031..47ef85a 100644
 --- a/apps/frontend/src/latex/lang.ts
 +++ b/apps/frontend/src/latex/lang.ts
-@@ -46,7 +46,10 @@ const latexMode = {
+@@ -1,4 +1,5 @@
+ import { StreamLanguage } from '@codemirror/language';
++import { Decoration, EditorView, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+ import { tags as t } from '@lezer/highlight';
+ 
+ // Simple LaTeX mode for CodeMirror 6
+@@ -46,9 +47,35 @@ const latexMode = {
  };
  
  export function latex() {
@@ -2805,6 +2829,31 @@ index e81d031..b24f732 100644
      languageData: {
        commentTokens: { line: '%' }
      }
+   });
+ }
++
++// Maziar: "%%%" comments are notes meant to stand out — shown bold green from the %%% to the end of the
++// line. An escaped "\\%" is a literal percent sign, not a comment, so it doesn't count.
++const strongCommentMark = Decoration.mark({ class: 'cm-maziar-strong-comment' });
++const strongCommentMatcher = new MatchDecorator({
++  regexp: /(?<!\\)%%%.*$/gm,
++  decoration: () => strongCommentMark
++});
++
++export function strongComments() {
++  return ViewPlugin.fromClass(
++    class {
++      decorations: DecorationSet;
++      constructor(view: EditorView) {
++        this.decorations = strongCommentMatcher.createDeco(view);
++      }
++      update(update: ViewUpdate) {
++        this.decorations = strongCommentMatcher.updateDeco(update, this.decorations);
++      }
++    },
++    { decorations: (plugin) => plugin.decorations }
++  );
++}
 diff --git a/apps/frontend/src/latex/spell.ts b/apps/frontend/src/latex/spell.ts
 new file mode 100644
 index 0000000..820db4a

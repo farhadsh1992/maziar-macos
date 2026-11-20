@@ -1974,6 +1974,8 @@ OpenPrism runs unchanged and the log says so. What it adds:
 - **Opens where you left off** — opening a project compiles it automatically, reopens the last file at
   its cursor/scroll position, keeps your chosen main file, and shows the PDF at the page and offset you
   last viewed (remembered per project in the page's localStorage, keys `maziar.openprism.<id>.*`).
+- **`%%%` notes** — a comment starting with `%%%` is shown bold green to the end of the line
+  (`strongComments()` in `apps/frontend/src/latex/lang.ts`); `%` and `%%` comments look as before.
 - **SyncTeX** — compiles with `-synctex=1`; the last PDF + `.synctex.gz` are kept in
   `<project>/.compile/last/`. Cmd/Ctrl + Shift + J (or "Source → PDF") shows the cursor's line in the
   PDF with a brief highlight; double-click (or Cmd/Ctrl-click) the PDF to open the right `.tex` file at
