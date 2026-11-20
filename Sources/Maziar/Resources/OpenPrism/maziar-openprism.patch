@@ -2543,6 +2543,22 @@ index 0000000..aa3ff9d
 +    if (view.state.field(flashField, false) !== undefined) view.dispatch({ effects: flashLine.of(null) });
 +  }, 1800);
 +}
+diff --git a/apps/frontend/src/latex/lang.ts b/apps/frontend/src/latex/lang.ts
+index e81d031..b24f732 100644
+--- a/apps/frontend/src/latex/lang.ts
++++ b/apps/frontend/src/latex/lang.ts
+@@ -46,7 +46,10 @@ const latexMode = {
+ };
+ 
+ export function latex() {
+-  return StreamLanguage.define(latexMode, {
++  // Maziar: language data belongs inside the parser spec — `define` takes only one argument, so passing it
++  // as a second one was silently ignored and Cmd/Ctrl+/ (toggleComment) found no comment syntax.
++  return StreamLanguage.define({
++    ...latexMode,
+     languageData: {
+       commentTokens: { line: '%' }
+     }
 diff --git a/apps/frontend/src/latex/spell.ts b/apps/frontend/src/latex/spell.ts
 new file mode 100644
 index 0000000..820db4a
