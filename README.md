@@ -1976,6 +1976,10 @@ OpenPrism runs unchanged and the log says so. What it adds:
   last viewed (remembered per project in the page's localStorage, keys `maziar.openprism.<id>.*`).
 - **`%%%` notes** — a comment starting with `%%%` is shown bold green to the end of the line
   (`strongComments()` in `apps/frontend/src/latex/lang.ts`); `%` and `%%` comments look as before.
+- **Jump buttons and editor zoom** — **→** / **←** at the top of the editor/PDF divider: → shows the
+  selected LaTeX (or the cursor's line) in the PDF, ← shows the text selected in the PDF (or the last
+  spot clicked there) in the LaTeX. The editor zooms with Cmd/Ctrl + scroll or pinch over the text,
+  Cmd/Ctrl + = / − / 0, or the toolbar's +/− (remembered as `maziar.editor.fontSize`).
 - **SyncTeX** — compiles with `-synctex=1`; the last PDF + `.synctex.gz` are kept in
   `<project>/.compile/last/`. Cmd/Ctrl + Shift + J (or "Source → PDF") shows the cursor's line in the
   PDF with a brief highlight; double-click (or Cmd/Ctrl-click) the PDF to open the right `.tex` file at
