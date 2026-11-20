@@ -470,10 +470,10 @@ index 8e77535..103d40a 100644
  
  export function createCollabInvite(id: string) {
 diff --git a/apps/frontend/src/app/App.css b/apps/frontend/src/app/App.css
-index ec09d64..31fce6f 100644
+index ec09d64..ee7c560 100644
 --- a/apps/frontend/src/app/App.css
 +++ b/apps/frontend/src/app/App.css
-@@ -3739,3 +3739,355 @@ textarea.input {
+@@ -3739,3 +3739,432 @@ textarea.input {
  .transfer-widget-log > div {
    margin-bottom: 2px;
  }
@@ -828,6 +828,83 @@ index ec09d64..31fce6f 100644
 +.upload-error span {
 +  flex: 1;
 +  word-break: break-word;
++}
++
++/* ---------- Maziar: light-blue borders so panels, dividers and text fields stand out ---------- */
++
++:root {
++  --maziar-line: #8ec3f0;
++  --maziar-line-strong: #4f9fe3;
++  --maziar-line-soft: rgba(142, 195, 240, 0.55);
++  --border: var(--maziar-line);
++}
++
++/* Maziar's dark mode inverts the page (keeping hues), so a darker blue there shows as a soft light blue. */
++html.maziar-dark {
++  --maziar-line: #2d6eae;
++  --maziar-line-strong: #1b5592;
++  --maziar-line-soft: rgba(45, 110, 174, 0.6);
++}
++
++.panel {
++  border: 1.5px solid var(--maziar-line);
++}
++
++.drag-handle {
++  background: var(--maziar-line-soft);
++}
++
++.drag-handle:hover,
++.drag-handle:active {
++  background: var(--maziar-line-strong);
++}
++
++.input,
++textarea.input,
++.chat-input,
++.vision-result textarea,
++.ios-select-trigger,
++.spell-lang,
++.inline-input,
++.editor-host .cm-search.cm-panel input[type="text"] {
++  border-color: var(--maziar-line) !important;
++}
++
++.input:focus,
++textarea.input:focus,
++.chat-input:focus,
++.inline-input:focus,
++.editor-host .cm-search.cm-panel input[type="text"]:focus {
++  border-color: var(--maziar-line-strong) !important;
++  box-shadow: 0 0 0 3px rgba(79, 159, 227, 0.18) !important;
++}
++
++.pdf-preview,
++.pdf-toolbar,
++.diag-panel,
++.pdf-annotations,
++.log-content,
++.file-tree-body,
++.editor-area {
++  border-color: var(--maziar-line);
++}
++
++.pdf-preview,
++.pdf-toolbar,
++.diag-panel {
++  border-width: 1.5px;
++}
++
++.diag-list,
++.panel-header,
++.breadcrumb-bar,
++.editor-toolbar {
++  border-color: var(--maziar-line) !important;
++}
++
++/* The editor's text area gets its own frame, separate from the toolbar above it. */
++.editor-area {
++  border-top: 1.5px solid var(--maziar-line);
 +}
 diff --git a/apps/frontend/src/app/EditorPage.tsx b/apps/frontend/src/app/EditorPage.tsx
 index f924bd7..b041c11 100644
