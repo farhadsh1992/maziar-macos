@@ -131,6 +131,11 @@ enum OpenPrismTheme: String, CaseIterable, Identifiable {
     static let greetingKey = "maziar.openPrism.greeting"
     static let defaultGreeting = "Hello Farhad"
 
+    /// Spelling and grammar language for the OpenPrism editor (macOS checker codes). American by default.
+    static let spellLanguageKey = "maziar.openPrism.spellLanguage"
+    static let defaultSpellLanguage = "en_US"
+    static let spellLanguages: [(code: String, name: String)] = [("en_US", "English (US)"), ("en_GB", "English (UK)")]
+
     /// `text` as a JavaScript string literal (JSON, wrapped in an array so a bare string encodes fine).
     private static func jsString(_ text: String) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: [text]),
@@ -138,10 +143,13 @@ enum OpenPrismTheme: String, CaseIterable, Identifiable {
         return "(\(json))[0]"
     }
 
-    static func pageScript(dark: Bool, popOut: Bool, greeting: String, aiNote: String) -> String {
+    static func pageScript(dark: Bool, popOut: Bool, greeting: String, aiNote: String, spellLanguage: String = defaultSpellLanguage) -> String {
         """
         (function () {
           try { if (!localStorage.getItem('openprism-lang')) localStorage.setItem('openprism-lang', 'en-US'); } catch (e) {}
+          // Spelling/grammar language from Maziar's Settings; the editor reads it on load and listens for changes.
+          window.__maziarSpellLanguage = \(jsString(spellLanguage));
+          try { window.dispatchEvent(new CustomEvent('maziar-spell-language', { detail: window.__maziarSpellLanguage })); } catch (e) {}
           var root = document.documentElement;
           if (!document.getElementById('maziar-dark-style')) {
             var style = document.createElement('style');
@@ -264,6 +272,7 @@ private struct OpenPrismBrowser: View {
     @AppStorage("maziar.openPrism.theme") private var themeRaw = OpenPrismTheme.auto.rawValue
     @AppStorage("maziar.openPrism.popOutProjects") private var popOutProjects = true
     @AppStorage(OpenPrismTheme.greetingKey) private var greeting = OpenPrismTheme.defaultGreeting
+    @AppStorage(OpenPrismTheme.spellLanguageKey) private var spellLanguage = OpenPrismTheme.defaultSpellLanguage
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var webViewHolder = WebViewHolder()
 
@@ -293,7 +302,7 @@ private struct OpenPrismBrowser: View {
 
     private func applyPageSettings() {
         guard let view = webViewHolder.view else { return }
-        let script = OpenPrismTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote)
+        let script = OpenPrismTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote, spellLanguage: spellLanguage)
         let controller = view.configuration.userContentController
         controller.removeAllUserScripts()
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -359,12 +368,13 @@ private struct OpenPrismBrowser: View {
                 canGoForward: $canGoForward,
                 isLoading: $isLoading,
                 currentURL: $currentURL,
-                documentStartScript: OpenPrismTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote)
+                documentStartScript: OpenPrismTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote, spellLanguage: spellLanguage)
             )
         }
         .onChange(of: isDark) { _, _ in applyPageSettings() }
         .onChange(of: popOutProjects) { _, _ in applyPageSettings() }
         .onChange(of: greeting) { _, _ in applyPageSettings() }
+        .onChange(of: spellLanguage) { _, _ in applyPageSettings() }
         .onChange(of: aiNote) { _, _ in applyPageSettings() }
         .sheet(isPresented: $showLog) {
             VStack(alignment: .leading, spacing: 10) {

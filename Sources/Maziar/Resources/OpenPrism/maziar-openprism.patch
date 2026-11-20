@@ -915,7 +915,7 @@ index ec09d64..291a56c 100644
 +  font-style: normal !important;
 +}
 diff --git a/apps/frontend/src/app/EditorPage.tsx b/apps/frontend/src/app/EditorPage.tsx
-index f924bd7..47810f6 100644
+index f924bd7..b9a8b96 100644
 --- a/apps/frontend/src/app/EditorPage.tsx
 +++ b/apps/frontend/src/app/EditorPage.tsx
 @@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
@@ -939,7 +939,7 @@ index f924bd7..47810f6 100644
  import {
    arxivBibtex,
    arxivSearch,
-@@ -998,218 +1003,6 @@ function SplitDiffView({ rows }: { rows: ReturnType<typeof buildSplitDiff> }) {
+@@ -998,216 +1003,23 @@ function SplitDiffView({ rows }: { rows: ReturnType<typeof buildSplitDiff> }) {
    );
  }
  
@@ -1153,12 +1153,27 @@ index f924bd7..47810f6 100644
 -      }}
 -    />
 -  );
--}
--
++// Maziar: spelling/grammar language. American English by default; Maziar's Settings (US or UK) is passed in
++// as window.__maziarSpellLanguage. A change there wins once; after that the editor's own language menu
++// can still pick something else until the Maziar setting changes again.
++const SPELL_DEFAULT = 'en_US';
++function resolveSpellLanguage(fromMaziar?: string) {
++  try {
++    let stored = localStorage.getItem('maziar.spell.language') || '';
++    if (stored === 'en') stored = 'en_US'; // older default — macOS's "en" is American English
++    if (fromMaziar && localStorage.getItem('maziar.spell.maziarDefault') !== fromMaziar) {
++      localStorage.setItem('maziar.spell.maziarDefault', fromMaziar);
++      localStorage.setItem('maziar.spell.language', fromMaziar);
++      return fromMaziar;
++    }
++    return stored || fromMaziar || SPELL_DEFAULT;
++  } catch {
++    return fromMaziar || SPELL_DEFAULT;
++  }
+ }
+ 
  export default function EditorPage() {
-   const navigate = useNavigate();
-   const { t, i18n } = useTranslation();
-@@ -1261,6 +1054,19 @@ export default function EditorPage() {
+@@ -1261,6 +1073,17 @@ export default function EditorPage() {
    const [pdfOutline, setPdfOutline] = useState<{ title: string; page?: number; level: number }[]>([]);
    const [pdfAnnotations, setPdfAnnotations] = useState<{ id: string; page: number; x: number; y: number; text: string }[]>([]);
    const [pdfAnnotateMode, setPdfAnnotateMode] = useState(false);
@@ -1170,15 +1185,13 @@ index f924bd7..47810f6 100644
 +  const [spellEnabled, setSpellEnabled] = useState(() => {
 +    try { return localStorage.getItem('maziar.spell.enabled') !== '0'; } catch { return true; }
 +  });
-+  const [spellLanguage, setSpellLanguage] = useState(() => {
-+    try { return localStorage.getItem('maziar.spell.language') || 'en'; } catch { return 'en'; }
-+  });
++  const [spellLanguage, setSpellLanguage] = useState(() => resolveSpellLanguage((window as any).__maziarSpellLanguage));
 +  const [spellLanguageList, setSpellLanguageList] = useState<string[]>([]);
 +  const [spellInfo, setSpellInfo] = useState<{ checking: boolean; count: number; error?: string }>({ checking: false, count: 0 });
    const [engineName, setEngineName] = useState<string>('');
    const [isCompiling, setIsCompiling] = useState(false);
    const [isSaving, setIsSaving] = useState(false);
-@@ -1364,6 +1170,9 @@ export default function EditorPage() {
+@@ -1364,6 +1187,9 @@ export default function EditorPage() {
    const collabActiveRef = useRef(false);
    const collabColorRef = useRef<string>(pickCollabColor(collabName));
    const collabCompartment = useMemo(() => new Compartment(), []);
@@ -1188,7 +1201,7 @@ index f924bd7..47810f6 100644
  
    const {
      llmEndpoint,
-@@ -1581,7 +1390,10 @@ export default function EditorPage() {
+@@ -1581,7 +1407,10 @@ export default function EditorPage() {
      setFileOrder(res.fileOrder || {});
      if (!keepActive || !activePath || !res.items.find((item) => item.path === activePath)) {
        const main = res.items.find((item) => item.path.endsWith('main.tex'))?.path;
@@ -1200,7 +1213,7 @@ index f924bd7..47810f6 100644
        if (next) {
          await openFile(next);
        }
-@@ -1617,6 +1429,7 @@ export default function EditorPage() {
+@@ -1617,6 +1446,7 @@ export default function EditorPage() {
          }
        }
        if (update.selectionSet) {
@@ -1208,7 +1221,7 @@ index f924bd7..47810f6 100644
          const sel = update.state.selection.main;
          setSelectionRange([sel.from, sel.to]);
          const heading = findNearestHeading(update.state.doc.toString(), sel.head);
-@@ -1657,6 +1470,14 @@ export default function EditorPage() {
+@@ -1657,6 +1487,14 @@ export default function EditorPage() {
          key: 'Mod-/',
          run: toggleComment
        },
@@ -1223,7 +1236,7 @@ index f924bd7..47810f6 100644
        {
          key: 'Mod-Space',
          run: () => {
-@@ -1707,6 +1528,9 @@ export default function EditorPage() {
+@@ -1707,6 +1545,9 @@ export default function EditorPage() {
          editorTheme,
          collabCompartment.of([]),
          ghostField,
@@ -1233,7 +1246,7 @@ index f924bd7..47810f6 100644
          search(),
          autocompletion({ override: [latexCompletionSource] }),
          updateListener,
-@@ -1760,7 +1584,9 @@ export default function EditorPage() {
+@@ -1760,7 +1601,9 @@ export default function EditorPage() {
        setIsDirty(false);
        if (!collabTextFile) {
          setEditorDoc(cached);
@@ -1243,7 +1256,7 @@ index f924bd7..47810f6 100644
        return cached;
      }
      const data = await getFile(projectId, filePath);
-@@ -1770,13 +1596,76 @@ export default function EditorPage() {
+@@ -1770,13 +1613,76 @@ export default function EditorPage() {
      setIsDirty(false);
      if (!collabTextFile) {
        setEditorDoc(data.content);
@@ -1320,7 +1333,7 @@ index f924bd7..47810f6 100644
      const current = view.state.doc.toString();
      if (current === value) return;
      suppressDirtyRef.current = true;
-@@ -2639,11 +2528,42 @@ export default function EditorPage() {
+@@ -2639,11 +2545,42 @@ export default function EditorPage() {
      }
    };
  
@@ -1366,7 +1379,7 @@ index f924bd7..47810f6 100644
    };
  
    const handleVisionSubmit = async () => {
-@@ -2942,8 +2862,12 @@ export default function EditorPage() {
+@@ -2942,8 +2879,12 @@ export default function EditorPage() {
    useEffect(() => {
      if (texFiles.length === 0) return;
      if (!texFiles.includes(mainFile)) {
@@ -1380,7 +1393,7 @@ index f924bd7..47810f6 100644
      }
    }, [texFiles, mainFile]);
  
-@@ -3044,25 +2968,8 @@ export default function EditorPage() {
+@@ -3044,25 +2985,8 @@ export default function EditorPage() {
      );
    };
  
@@ -1408,7 +1421,7 @@ index f924bd7..47810f6 100644
    };
  
    const renderTree = (nodes: TreeNode[], depth = 0) =>
-@@ -3096,6 +3003,7 @@ export default function EditorPage() {
+@@ -3096,6 +3020,7 @@ export default function EditorPage() {
                }}
                onDrop={(event) => {
                  event.preventDefault();
@@ -1416,7 +1429,7 @@ index f924bd7..47810f6 100644
                  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
                    handleUpload(event.dataTransfer.files, node.path).catch((err) => setStatus(t('上传失败: {{error}}', { error: String(err) })));
                    setDragOverPath('');
-@@ -3187,10 +3095,16 @@ export default function EditorPage() {
+@@ -3187,10 +3112,16 @@ export default function EditorPage() {
            }}
            onDrop={(event) => {
              event.preventDefault();
@@ -1434,7 +1447,7 @@ index f924bd7..47810f6 100644
              if (!from) return;
              if (fileFilter.trim()) {
                setStatus(t('搜索过滤中无法拖拽排序。'));
-@@ -3290,6 +3204,22 @@ export default function EditorPage() {
+@@ -3290,6 +3221,22 @@ export default function EditorPage() {
      }
    };
  
@@ -1457,7 +1470,7 @@ index f924bd7..47810f6 100644
    const selectionText = useMemo(() => {
      const [start, end] = selectionRange;
      if (start === end) return '';
-@@ -3297,6 +3227,124 @@ export default function EditorPage() {
+@@ -3297,6 +3244,133 @@ export default function EditorPage() {
    }, [selectionRange, editorValue]);
  
    const compileErrors = useMemo(() => parseCompileErrors(compileLog), [compileLog]);
@@ -1554,6 +1567,15 @@ index f924bd7..47810f6 100644
 +    };
 +  }, []);
 +
++  useEffect(() => {
++    const onMaziarLanguage = (event: Event) => {
++      const detail = (event as CustomEvent<string>).detail;
++      if (detail) setSpellLanguage(resolveSpellLanguage(detail));
++    };
++    window.addEventListener('maziar-spell-language', onMaziarLanguage);
++    return () => window.removeEventListener('maziar-spell-language', onMaziarLanguage);
++  }, []);
++
 +  const spellApplies = /\.(tex|ltx|txt|md)$/i.test(activePath);
 +  useEffect(() => {
 +    try {
@@ -1582,7 +1604,7 @@ index f924bd7..47810f6 100644
    const pendingGrouped = useMemo(() => {
      const map = new Map<string, PendingChange>();
      pendingChanges.forEach((item) => {
-@@ -3326,13 +3374,7 @@ export default function EditorPage() {
+@@ -3326,13 +3400,7 @@ export default function EditorPage() {
      setPdfOutline([]);
    }, [pdfUrl]);
  
@@ -1597,7 +1619,7 @@ index f924bd7..47810f6 100644
  
    const breadcrumbParts = useMemo(() => (activePath ? activePath.split('/').filter(Boolean) : []), [activePath]);
  
-@@ -3808,14 +3850,30 @@ export default function EditorPage() {
+@@ -3808,14 +3876,30 @@ export default function EditorPage() {
                <>
                  <div className="panel-header">
                    <div>{t('Project Files')}</div>
@@ -1629,7 +1651,7 @@ index f924bd7..47810f6 100644
                      if (event.target) {
                        event.target.value = '';
                      }
-@@ -3828,7 +3886,7 @@ export default function EditorPage() {
+@@ -3828,7 +3912,7 @@ export default function EditorPage() {
                    style={{ display: 'none' }}
                    {...({ webkitdirectory: 'true', directory: 'true' } as Record<string, string>)}
                    onChange={(event) => {
@@ -1638,7 +1660,7 @@ index f924bd7..47810f6 100644
                      if (event.target) {
                        event.target.value = '';
                      }
-@@ -5042,6 +5100,31 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5042,6 +5126,35 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                <button className="toolbar-btn" onClick={insertLabelSnippet}>{t('Label')}</button>
              </div>
              <div className="toolbar-spacer" />
@@ -1661,16 +1683,20 @@ index f924bd7..47810f6 100644
 +                  disabled={!spellEnabled}
 +                  title={t('Document language')}
 +                >
-+                  {(spellLanguageList.length ? spellLanguageList : [spellLanguage]).map((code) => (
-+                    <option key={code} value={code}>{languageName(code)}</option>
-+                  ))}
++                  {['en_US', 'en_GB', ...spellLanguageList.filter((code) => !['en', 'en_US', 'en_GB'].includes(code))]
++                    .concat(spellLanguageList.length || ['en_US', 'en_GB'].includes(spellLanguage) ? [] : [spellLanguage])
++                    .map((code) => (
++                      <option key={code} value={code}>
++                        {code === 'en_US' ? t('English (US)') : code === 'en_GB' ? t('English (UK)') : languageName(code)}
++                      </option>
++                    ))}
 +                </select>
 +              </div>
 +            )}
              <div className="toolbar-group font-size-group">
                <button className="toolbar-btn icon-only" onClick={() => setEditorFontSize((s) => Math.max(8, s - 1))} title={t('放大')}>
                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-@@ -5058,7 +5141,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5058,7 +5171,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
            >
              <div className="editor-area" ref={editorAreaRef}>
                <div ref={editorHostRef} className="editor-host" style={{ '--editor-font-size': `${editorFontSize}px` } as React.CSSProperties} />
@@ -1679,7 +1705,7 @@ index f924bd7..47810f6 100644
                {(inlineSuggestionText || isSuggesting) && suggestionPos && (
                  <div
                    className={`suggestion-popover ${isSuggesting && !inlineSuggestionText ? 'loading' : ''}`}
-@@ -5129,26 +5212,26 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5129,26 +5242,26 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
            </div>
            <div className="right-body">
              <div className="view-content">
@@ -1718,7 +1744,7 @@ index f924bd7..47810f6 100644
                        <button className="btn ghost small" onClick={downloadPdf} disabled={!pdfUrl}>{t('下载 PDF')}</button>
                        <button
                          className={`btn ghost small ${pdfSpread ? 'active' : ''}`}
-@@ -5167,36 +5250,66 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5167,36 +5280,66 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                      </div>
                    </div>
                    {pdfUrl ? (
@@ -1804,7 +1830,7 @@ index f924bd7..47810f6 100644
                    {pdfAnnotations.length > 0 && (
                      <div className="pdf-annotations">
                        <div className="muted">{t('注释')}</div>
-@@ -5223,8 +5336,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5223,8 +5366,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                        </div>
                      </div>
                    )}
@@ -1814,7 +1840,7 @@ index f924bd7..47810f6 100644
                {rightView === 'toc' && (
                  <div className="toc-panel">
                    <div className="toc-title">{t('目录')}</div>
-@@ -5345,17 +5457,18 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
+@@ -5345,17 +5487,18 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                        )}
                      </button>
                    </div>

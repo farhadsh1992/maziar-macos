@@ -49,6 +49,7 @@ struct SettingsView: View {
 private struct AppearanceSettingsTab: View {
     @EnvironmentObject var settings: AppSettings
     @AppStorage(OpenPrismTheme.greetingKey) private var openPrismGreeting = OpenPrismTheme.defaultGreeting
+    @AppStorage(OpenPrismTheme.spellLanguageKey) private var openPrismSpellLanguage = OpenPrismTheme.defaultSpellLanguage
 
     var body: some View {
         Form {
@@ -69,10 +70,13 @@ private struct AppearanceSettingsTab: View {
                     openPrismGreeting = OpenPrismTheme.defaultGreeting
                 }
                 .disabled(openPrismGreeting == OpenPrismTheme.defaultGreeting)
+                Picker("Spelling & grammar", selection: $openPrismSpellLanguage) {
+                    ForEach(OpenPrismTheme.spellLanguages, id: \.code) { Text($0.name).tag($0.code) }
+                }
             } header: {
                 Text("OpenPrism")
             } footer: {
-                Text("The big title on OpenPrism's start page, in place of \u{201c}OpenPrism is Here\u{201d}. Leave it empty to show OpenPrism's own title. Takes effect right away.")
+                Text("Start page title: the big title on OpenPrism's start page, in place of \u{201c}OpenPrism is Here\u{201d} (leave it empty for OpenPrism's own). Spelling & grammar: American or British English for the editor's checking \u{2014} the editor's own language menu can still pick another language for a while. Both take effect right away.")
                     .font(.caption)
             }
 

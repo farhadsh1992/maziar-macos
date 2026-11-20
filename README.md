@@ -1983,7 +1983,9 @@ OpenPrism runs unchanged and the log says so. What it adds:
 - **Problems panel** — compiles with `-file-line-error` and an unwrapped log; errors, warnings and
   over/underfull boxes are listed with file:line (`apps/frontend/src/latex/diagnostics.ts`), clicking one
   opens and flashes the line, affected lines are tinted in the editor, and "Full log" stays available.
-- **Spelling & grammar** — through macOS's own checker via the small `MaziarSpell` helper executable
+- **Spelling & grammar** — American English by default; Settings → Appearance → OpenPrism → "Spelling &
+  grammar" switches between English (US) and (UK) (`maziar.openPrism.spellLanguage`, passed to the page as
+  `window.__maziarSpellLanguage`). through macOS's own checker via the small `MaziarSpell` helper executable
   (second SPM target, copied next to Maziar's binary by `build_app.sh`, path passed as
   `MAZIAR_SPELL_HELPER`). The LaTeX source is masked first (commands, math, citation keys, labels,
   paths, code and verbatim blanked) so only prose is checked (`apps/frontend/src/latex/spell.ts`).
@@ -1991,8 +1993,10 @@ OpenPrism runs unchanged and the log says so. What it adds:
   editor toolbar. Nothing leaves the Mac.
 
 To try OpenPrism changes in a normal browser, `scripts/openprism-dev.sh` runs the checkout on port 8790
-with the same projects folder and the debug spell helper (`swift build` first). Regenerate the patch
-from the checkout with `git add -N` on new files and `git diff`, excluding the two runtime edits
+with the same projects folder and the debug spell helper (`swift build` first). Make OpenPrism changes in a separate
+clone with the patch applied, not in Maziar's own checkout — Maziar resets that checkout and re-applies the
+bundled patch whenever the patch changes, discarding uncommitted edits. Regenerate the patch
+from the clone with `git add -N` on new files and `git diff`, excluding the two runtime edits
 `patchBackend()` makes (`host: '127.0.0.1'` and the `MAZIAR_LLM_LOCKED` lines).
 
 ## Google Drive account sync
