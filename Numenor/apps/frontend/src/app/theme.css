@@ -2023,3 +2023,107 @@ select.input {
 .nm-folders-add {
   margin-top: 4px;
 }
+
+/* Start-page title ("Welcome to Numenor", or the greeting Maziar sets): one colour, #101B29 on the
+   light theme; ivory on the dark theme, where #101B29 would disappear into the navy background. */
+:root { --nm-title: #101b29; }
+:root[data-theme="dark"] { --nm-title: #f3ecdc; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --nm-title: #f3ecdc; }
+}
+
+.landing-title .landing-title-accent,
+.landing-title .landing-title-dark {
+  color: var(--nm-title) !important;
+}
+
+.landing-title .landing-cursor {
+  background: var(--nm-title) !important;
+}
+
+/* ---------- Start page (follows the theme like the other screens) ---------- */
+.landing-page {
+  background:
+    radial-gradient(ellipse at 50% -10%, var(--nm-gold-soft) 0%, transparent 55%),
+    var(--nm-bg) !important;
+  color: var(--nm-text);
+}
+
+.landing-title {
+  font-family: var(--nm-serif) !important;
+  font-size: clamp(38px, 5.6vw, 68px) !important;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .landing-title { white-space: normal; }
+}
+
+.landing-subtitle {
+  color: var(--nm-muted) !important;
+}
+
+.landing-subtitle strong,
+.landing-subtitle b {
+  color: var(--nm-text) !important;
+}
+
+.landing-announce {
+  background: var(--nm-surface) !important;
+  border: 1px solid var(--nm-line-strong) !important;
+  color: var(--nm-text-2) !important;
+}
+
+.landing-announce-link {
+  color: var(--nm-gold-text) !important;
+}
+
+.landing-btn-primary {
+  background: var(--nm-gold) !important;
+  color: var(--nm-on-gold) !important;
+  border: 1px solid var(--nm-gold-line) !important;
+  box-shadow: none !important;
+}
+
+.landing-btn-primary:hover {
+  background: var(--nm-gold-hover) !important;
+}
+
+.landing-btn-secondary,
+.landing-badge,
+.carousel-tab,
+.carousel-card {
+  background: var(--nm-surface) !important;
+  color: var(--nm-text-2) !important;
+  border: 1px solid var(--nm-line-strong) !important;
+  box-shadow: none !important;
+}
+
+.landing-badge svg,
+.carousel-card-icon {
+  color: var(--nm-gold-text) !important;
+}
+
+.carousel-card-icon {
+  background: var(--nm-gold-soft) !important;
+}
+
+.carousel-card-title {
+  color: var(--nm-text) !important;
+}
+
+.carousel-tab.active {
+  background: var(--nm-gold) !important;
+  color: var(--nm-on-gold) !important;
+  border-color: var(--nm-gold-line) !important;
+}
+
+.carousel-dot,
+.carousel-dots span {
+  background: var(--nm-line-strong) !important;
+}
+
+.carousel-dot.active,
+.carousel-dots span.active {
+  background: var(--nm-gold) !important;
+}

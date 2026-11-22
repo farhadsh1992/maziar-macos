@@ -129,7 +129,7 @@ enum NumenorTheme: String, CaseIterable, Identifiable {
     /// Runs before Numenor's own scripts on every load (and live when the theme changes): presets
     /// English once, then switches the dark stylesheet on or off.
     static let greetingKey = "maziar.openPrism.greeting"
-    static let defaultGreeting = "Hello Farhad"
+    static let defaultGreeting = "Welcome to Numenor"
 
     /// Spelling and grammar language for the Numenor editor (macOS checker codes). American by default.
     static let spellLanguageKey = "maziar.openPrism.spellLanguage"
@@ -162,7 +162,7 @@ enum NumenorTheme: String, CaseIterable, Identifiable {
           // into window.open() so the project gets its own Maziar window and the project list stays put.
           // Pages that are themselves popups (window.opener set) navigate normally, and if the window can't
           // be opened (no user gesture, e.g. right after "create project") it falls back to in-page.
-          // Start-page title: Numenor builds "Numenor is Here" letter by letter, so rather than fight its
+          // Start-page title: Numenor builds its title letter by letter, so rather than fight its
           // re-renders the original heading is hidden and a same-styled one with the greeting sits next to it.
           // Empty text restores Numenor's own heading.
           window.__maziarGreeting = \(jsString(greeting));

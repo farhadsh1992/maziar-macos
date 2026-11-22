@@ -76,7 +76,7 @@ private struct AppearanceSettingsTab: View {
             } header: {
                 Text("Numenor")
             } footer: {
-                Text("Start page title: the big title on Numenor's start page, in place of \u{201c}Numenor is Here\u{201d} (leave it empty for Numenor's own). Spelling & grammar: American or British English for the editor's checking \u{2014} the editor's own language menu can still pick another language for a while. Both take effect right away.")
+                Text("Start page title: the big title on Numenor's start page, in place of Numenor's own \u{201c}Welcome to Numenor\u{201d} (leave it empty for Numenor's own). Spelling & grammar: American or British English for the editor's checking \u{2014} the editor's own language menu can still pick another language for a while. Both take effect right away.")
                     .font(.caption)
             }
 

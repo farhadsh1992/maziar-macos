@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-const TITLE_TEXT = 'Numenor is Here';
+const TITLE_TEXT = 'Welcome to Numenor';
 const FEATURE_KEYS = ['completion', 'vision', 'plot', 'search', 'agent', 'review'] as const;
 const AUTO_INTERVAL = 4000;
 
