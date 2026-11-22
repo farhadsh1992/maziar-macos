@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/frontend/public/numenor-logo.png" alt="Numenor logo" width="160">
+</p>
+
 # Numenor
 
 A local LaTeX writing workspace: a project file tree, a code editor and a live PDF preview side by side,

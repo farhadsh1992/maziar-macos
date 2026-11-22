@@ -78,13 +78,16 @@ export default function LandingPage() {
           </a>
         </div>
 
+        {/* Logo */}
+        <img className="landing-logo" src="/numenor-logo.png" alt="Numenor logo" width={148} height={148} />
+
         {/* Main title with typewriter effect */}
         <h1 className="landing-title">
           {TITLE_TEXT.split('').map((ch, i) => (
             <span
               key={i}
               className={
-                i < 9
+                i < 'Numenor'.length
                   ? 'landing-title-accent'
                   : 'landing-title-dark'
               }
