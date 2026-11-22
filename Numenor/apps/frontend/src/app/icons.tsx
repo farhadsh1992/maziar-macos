@@ -48,3 +48,5 @@ export const IconSpinner = (p: P) => <Svg {...p}><path d="M12 3a9 9 0 1 0 9 9" /
 export function NumenorMark({ size = 36 }: { size?: number }) {
   return <img className="nm-mark" src="/numenor-logo.png" alt="" width={size} height={size} style={{ width: size, height: size, borderRadius: Math.round(size * 0.22) }} />;
 }
+export const IconCopy = (p: P) => <Svg {...p}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></Svg>;
+export const IconCheck = (p: P) => <Svg {...p}><path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>;

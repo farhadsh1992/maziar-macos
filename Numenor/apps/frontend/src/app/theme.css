@@ -1952,3 +1952,74 @@ select.input {
   row-gap: 6px !important;
   overflow-x: visible !important;
 }
+
+/* Project folders: full path under the label, with a copy button; chips wrap instead of scrolling. */
+.nm-folders {
+  align-items: flex-start;
+}
+
+.nm-folders-label {
+  padding-top: 9px;
+}
+
+.nm-folders-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.nm-folder-chip {
+  max-width: 100%;
+  align-items: center;
+}
+
+.nm-folder-main {
+  min-width: 0;
+  text-align: left;
+}
+
+.nm-folder-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  white-space: normal !important;
+  overflow: visible !important;
+}
+
+.nm-folder-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.nm-folder-path {
+  font-family: var(--nm-mono);
+  font-size: 11.5px;
+  color: var(--nm-muted);
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.nm-folder-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px !important;
+  color: var(--nm-muted) !important;
+}
+
+.nm-folder-copy:hover {
+  background: var(--nm-hover) !important;
+  color: var(--nm-text) !important;
+}
+
+.nm-folder-copy.done {
+  color: var(--nm-success) !important;
+}
+
+.nm-folders-add {
+  margin-top: 4px;
+}

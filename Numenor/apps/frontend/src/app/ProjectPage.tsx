@@ -26,7 +26,7 @@ import TransferPanel from './TransferPanel';
 import FolderPicker from './FolderPicker';
 import {
   NumenorMark, IconFolder, IconFile, IconArchive, IconTrash, IconTag, IconGear, IconSearch, IconChevronDown,
-  IconPlus, IconDots, IconStar
+  IconPlus, IconDots, IconStar, IconCopy, IconCheck
 } from './icons';
 
 const TARGET_FOLDER_KEY = 'numenor.projects.targetFolder';
@@ -102,6 +102,7 @@ export default function ProjectPage() {
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [folderFilter, setFolderFilter] = useState('');
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [copiedFolder, setCopiedFolder] = useState('');
   const [moveTarget, setMoveTarget] = useState<ProjectMeta | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
   const [moreMenuId, setMoreMenuId] = useState('');
@@ -186,6 +187,30 @@ export default function ProjectPage() {
   const chooseTargetFolder = (path: string) => {
     setTargetFolder(path);
     try { localStorage.setItem(TARGET_FOLDER_KEY, path); } catch { /* ignore */ }
+  };
+
+  /** Copies a folder's full path; falls back to a hidden text field where the clipboard API isn't allowed. */
+  const copyFolderPath = async (path: string) => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(path);
+      ok = true;
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = path;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      area.remove();
+    }
+    if (ok) {
+      setCopiedFolder(path);
+      window.setTimeout(() => setCopiedFolder((current) => (current === path ? '' : current)), 1600);
+    } else {
+      setStatus(t('Couldn’t copy — select the path and copy it by hand.'));
+    }
   };
 
   const handleAddFolder = async (path: string) => {
@@ -660,7 +685,18 @@ export default function ProjectPage() {
                   >
                     <button className="nm-folder-main" onClick={() => setFolderFilter(folderFilter === folder.path ? '' : folder.path)}>
                       <IconFolder size={17} />
-                      <span className="nm-folder-name">{folder.cloud === 'google' ? `Google Drive / ${folderLabel(folder.path).split(' / ').pop()}` : folderLabel(folder.path)}</span>
+                      <span className="nm-folder-name">
+                        <span className="nm-folder-label">{folder.cloud === 'google' ? `Google Drive / ${folderLabel(folder.path).split(' / ').pop()}` : folderLabel(folder.path)}</span>
+                        <span className="nm-folder-path">{folder.path}</span>
+                      </span>
+                    </button>
+                    <button
+                      className={`nm-folder-copy ${copiedFolder === folder.path ? 'done' : ''}`}
+                      onClick={() => copyFolderPath(folder.path)}
+                      title={copiedFolder === folder.path ? t('Copied') : t('Copy the full path')}
+                      aria-label={t('Copy the full path')}
+                    >
+                      {copiedFolder === folder.path ? <IconCheck size={15} /> : <IconCopy size={15} />}
                     </button>
                     <button
                       className={`nm-folder-star ${isTarget ? 'on' : ''}`}
