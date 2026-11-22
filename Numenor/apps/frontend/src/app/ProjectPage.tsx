@@ -24,8 +24,18 @@ import {
 import type { ProjectMeta, TemplateMeta, TemplateCategory, ProjectFolder } from '../api/client';
 import TransferPanel from './TransferPanel';
 import FolderPicker from './FolderPicker';
+import {
+  NumenorMark, IconFolder, IconFile, IconArchive, IconTrash, IconTag, IconGear, IconSearch, IconChevronDown,
+  IconPlus, IconDots, IconStar
+} from './icons';
 
 const TARGET_FOLDER_KEY = 'numenor.projects.targetFolder';
+
+/** "Numenor / data" — the last two parts of a folder path, as a readable label. */
+function folderLabel(p: string) {
+  const parts = p.split('/').filter(Boolean);
+  return parts.slice(-2).join(' / ') || p;
+}
 
 /** "…/My Drive/Papers" — the last two parts of a folder path, for compact labels. */
 function shortFolder(p: string) {
@@ -385,6 +395,21 @@ export default function ProjectPage() {
     await loadProjects();
   };
 
+  // Bulk actions on the checked rows.
+  const bulkRun = async (action: (id: string) => Promise<unknown>) => {
+    const ids = [...selectedIds];
+    for (const id of ids) {
+      try { await action(id); } catch (err) { setStatus(String(err)); }
+    }
+    setSelectedIds(new Set());
+    await Promise.all([loadProjects(), loadFolders()]);
+  };
+
+  const bulkDeleteForever = async () => {
+    if (!window.confirm(t('Delete {{count}} projects forever? Their folders are removed from disk. This can’t be undone.', { count: selectedIds.size }))) return;
+    await bulkRun((id) => permanentDeleteProject(id));
+  };
+
   const handleAddTag = async (id: string, tag: string) => {
     const proj = projects.find((p) => p.id === id);
     if (!proj) return;
@@ -498,10 +523,10 @@ export default function ProjectPage() {
 
 
   const navIcons: Record<ViewFilter, React.ReactNode> = {
-    all: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 4.5h12M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5l1.5-2h9l1.5 2"/></svg>,
-    mine: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2H4.5a1 1 0 00-1 1v10a1 1 0 001 1h7a1 1 0 001-1V5.5L9 2z"/><path d="M9 2v3.5h3.5M6 8.5h4M6 11h2.5"/></svg>,
-    archived: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2.5" width="12" height="3" rx=".5"/><path d="M3 5.5v7.5a1 1 0 001 1h8a1 1 0 001-1V5.5"/><path d="M6.5 8.5h3"/></svg>,
-    trash: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4.5h10M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5"/><path d="M4.5 4.5l.5 8.5a1 1 0 001 1h4a1 1 0 001-1l.5-8.5"/></svg>,
+    all: <IconFolder size={18} />,
+    mine: <IconFile size={18} />,
+    archived: <IconArchive size={18} />,
+    trash: <IconTrash size={18} />,
   };
   const navItems: { key: ViewFilter; label: string }[] = [
     { key: 'all', label: t('所有项目') },
@@ -514,13 +539,16 @@ export default function ProjectPage() {
     <div className="project-shell">
       {/* ── Sidebar ── */}
       <aside className="project-sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-title">Numenor</div>
-          <div className="brand-sub">{t('Projects Workspace')}</div>
+        <div className="sidebar-brand nm-brand">
+          <NumenorMark size={40} />
+          <div>
+            <div className="brand-title">Numenor</div>
+            <div className="brand-sub">{t('Projects Workspace')}</div>
+          </div>
         </div>
 
-        <button className="sidebar-create-btn" onClick={() => setCreateOpen(true)}>
-          + {t('新建项目')}
+        <button className="sidebar-create-btn nm-primary" onClick={() => setCreateOpen(true)}>
+          <IconPlus size={16} /> {t('新建项目')}
         </button>
         <div className="sidebar-actions-row">
           <button className="btn ghost" style={{ flex: 1 }} onClick={() => setImportOpen(true)}>{t('导入项目')}</button>
@@ -543,7 +571,8 @@ export default function ProjectPage() {
 
         <div className="sidebar-tags-section">
           <div className="sidebar-tags-header" onClick={() => setTagsExpanded(!tagsExpanded)}>
-            <span>{tagsExpanded ? '\u25BE' : '\u25B8'} {t('整理标签')}</span>
+            <span className="nm-tags-title"><IconTag size={16} /> {t('Tags')}</span>
+            <span className="nm-tags-caret">{tagsExpanded ? <IconChevronDown size={14} /> : <IconChevronDown size={14} style={{ transform: 'rotate(-90deg)' }} />}</span>
           </div>
           {tagsExpanded && (
             <div className="sidebar-tags-list">
@@ -575,7 +604,7 @@ export default function ProjectPage() {
                 />
               ) : (
                 <div className="sidebar-new-tag-btn" onClick={() => setAddingSidebarTag(true)}>
-                  + {t('新建标签')}
+                  <IconPlus size={13} /> {t('新建标签')}
                 </div>
               )}
             </div>
@@ -613,48 +642,47 @@ export default function ProjectPage() {
                 </div>
               )}
             </div>
-            <button className="btn ghost" onClick={() => setSettingsOpen(true)}>{t('设置')}</button>
+            <button className="nm-icon-btn" onClick={() => setSettingsOpen(true)}><IconGear size={16} /> {t('设置')}</button>
           </div>
         </header>
 
         {folders.length > 0 && (
-          <div className="project-folders">
-            <div className="project-folders-label">{t('Projects are stored in')}</div>
-            <div className="project-folders-list">
-              {folders.map((folder) => (
-                <div
-                  key={folder.path}
-                  className={`folder-chip ${folderFilter === folder.path ? 'active' : ''} ${folder.exists ? '' : 'missing'} ${folder.cloud === 'google' ? 'google' : ''}`}
-                  title={folder.exists ? folder.path : t('{{path}} is not available right now', { path: folder.path })}
-                >
-                  <button className="folder-chip-main" onClick={() => setFolderFilter(folderFilter === folder.path ? '' : folder.path)}>
-                    <span className="folder-chip-icon">{folder.cloud === 'google' ? '☁︎' : folder.primary ? '🏠' : '📁'}</span>
-                    <span className={`folder-chip-path ${folder.primary ? 'full' : ''}`}>{folder.primary ? folder.path : shortFolder(folder.path)}</span>
-                    <span className="folder-chip-count">{folder.projectCount}</span>
-                  </button>
-                  <button
-                    className={`folder-chip-target ${newProjectFolder === folder.path ? 'on' : ''}`}
-                    onClick={() => chooseTargetFolder(folder.path)}
-                    title={newProjectFolder === folder.path ? t('New projects are created here') : t('Create new projects here')}
+          <div className="nm-folders" aria-label={t('Project folders')}>
+            <div className="nm-folders-label">{t('Project folders')}</div>
+            <div className="nm-folders-chips">
+              {folders.map((folder) => {
+                const isTarget = newProjectFolder === folder.path;
+                return (
+                  <div
+                    key={folder.path}
+                    className={`nm-folder-chip ${folderFilter === folder.path ? 'active' : ''} ${folder.exists ? '' : 'missing'}`}
+                    title={`${folder.path}${folder.exists ? '' : ` — ${t('not available right now')}`}\n${folderFilter === folder.path ? t('Click to show all projects') : t('Click to show only this folder')}`}
                   >
-                    {newProjectFolder === folder.path ? '★' : '☆'}
-                  </button>
-                  {!folder.primary && (
-                    <button className="folder-chip-remove" onClick={() => handleRemoveFolder(folder)} title={t('Stop listing this folder (files are kept)')}>
-                      ✕
+                    <button className="nm-folder-main" onClick={() => setFolderFilter(folderFilter === folder.path ? '' : folder.path)}>
+                      <IconFolder size={17} />
+                      <span className="nm-folder-name">{folder.cloud === 'google' ? `Google Drive / ${folderLabel(folder.path).split(' / ').pop()}` : folderLabel(folder.path)}</span>
                     </button>
-                  )}
-                </div>
-              ))}
-              <button className="btn ghost small folder-add" onClick={() => setFolderPickerOpen(true)}>
-                + {t('Add folder')}
-              </button>
+                    <button
+                      className={`nm-folder-star ${isTarget ? 'on' : ''}`}
+                      onClick={() => chooseTargetFolder(folder.path)}
+                      title={isTarget ? t('New projects are created here') : t('Create new projects here')}
+                      aria-label={isTarget ? t('Default location') : t('Make default location')}
+                    >
+                      <IconStar size={15} filled={isTarget} />
+                    </button>
+                    <span className="nm-folder-count">{folder.projectCount}</span>
+                    {!folder.primary && (
+                      <button className="nm-folder-remove" onClick={() => handleRemoveFolder(folder)} title={t('Stop listing this folder (files are kept)')} aria-label={t('Remove folder')}>
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="muted project-folders-hint">
-              {folderFilter
-                ? t('Showing projects in {{path}} — click it again to show all.', { path: shortFolder(folderFilter) })
-                : t('Click a folder to show only its projects · ★ marks where new projects are created')}
-            </div>
+            <button className="nm-icon-btn nm-folders-add" onClick={() => setFolderPickerOpen(true)}>
+              <IconPlus size={14} /> {t('Add folder')}
+            </button>
           </div>
         )}
 
@@ -732,12 +760,15 @@ export default function ProjectPage() {
         )}
 
         <div className="project-toolbar">
-          <input
-            className="project-search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder={t('搜索项目...')}
-          />
+          <label className="nm-search">
+            <IconSearch size={17} />
+            <input
+              className="project-search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder={t('搜索项目...')}
+            />
+          </label>
           <div className="ios-select-wrapper">
             <button className="ios-select-trigger" onClick={() => setSortDropdownOpen(!sortDropdownOpen)}>
               <span>{sortBy === 'updatedAt' ? t('最近修改') : sortBy === 'name' ? t('按名称') : t('创建时间')}</span>
@@ -759,6 +790,28 @@ export default function ProjectPage() {
             )}
           </div>
         </div>
+
+        {selectedIds.size > 0 && (
+          <div className="nm-bulk">
+            <span>{t('{{count}} selected', { count: selectedIds.size })}</span>
+            {viewFilter === 'trash' ? (
+              <>
+                <button className="nm-icon-btn" onClick={() => bulkRun((id) => trashProject(id, false))}>{t('恢复')}</button>
+                <button className="nm-icon-btn danger-text" onClick={() => bulkDeleteForever()}>{t('Delete forever')}</button>
+              </>
+            ) : (
+              <>
+                <button className="nm-icon-btn" onClick={() => bulkRun((id) => archiveProject(id, viewFilter !== 'archived'))}>
+                  <IconArchive size={15} /> {viewFilter === 'archived' ? t('取消归档') : t('归档')}
+                </button>
+                <button className="nm-icon-btn danger-text" onClick={() => bulkRun((id) => deleteProject(id))}>
+                  <IconTrash size={15} /> {t('Move to Trash')}
+                </button>
+              </>
+            )}
+            <button className="nm-icon-btn borderless" onClick={() => setSelectedIds(new Set())}>{t('Clear selection')}</button>
+          </div>
+        )}
 
         {/* ── Project Table ── */}
         <div className="project-table-wrapper">
@@ -809,8 +862,12 @@ export default function ProjectPage() {
                         onBlur={() => setRenameState(null)}
                       />
                     ) : (
-                      <span className="project-name-link" onClick={() => navigate(`/editor/${project.id}`)}>
-                        {project.name}
+                      <span className="nm-name">
+                        <IconFile size={18} />
+                        <span className="project-name-link" onClick={() => navigate(`/editor/${project.id}`)} title={project.name}>
+                          {project.name}
+                        </span>
+                        {project.archived && !project.trashed && <span className="nm-badge">{t('已归档')}</span>}
                       </span>
                     )}
                     {project.folder && project.folder !== primaryFolder && renameState?.id !== project.id && (
@@ -850,11 +907,12 @@ export default function ProjectPage() {
                             onBlur={() => { setTagEditId(null); setTagInput(''); }}
                           />
                         ) : (
-                          <span
-                            className="project-tag-pill"
-                            style={{ cursor: 'pointer', opacity: 0.5 }}
+                          <button
+                            className="nm-tag-add"
                             onClick={() => { setTagEditId(project.id); setTagInput(''); }}
-                          >+</span>
+                            title={t('添加标签')}
+                            aria-label={t('添加标签')}
+                          ><IconPlus size={13} /></button>
                         )
                       )}
                     </div>
@@ -864,31 +922,46 @@ export default function ProjectPage() {
                   </td>
                   <td className="col-actions">
                     <div className="col-actions-inner">
-                      {viewFilter === 'trash' ? (<>
-                        <button className="btn ghost" onClick={() => handleTrash(project.id, false)}>{t('恢复')}</button>
-                        <button className="btn ghost danger" onClick={() => handlePermanentDelete(project.id, project.name)}>{t('Delete forever')}</button>
-                      </>) : (<>
-                        <button className="btn ghost" onClick={() => navigate(`/editor/${project.id}`)}>{t('打开')}</button>
-                        <button className="btn ghost" onClick={() => downloadZip(project)} title={t('Download the project as a .zip')}>{t('Download')}</button>
-                        <button className="btn ghost" onClick={() => setMoveTarget(project)} title={t('Move to another projects folder, e.g. Google Drive')}>{t('Move…')}</button>
-                        <div className="row-more">
-                          <button className="btn ghost" onClick={() => setMoreMenuId(moreMenuId === project.id ? '' : project.id)}>{t('More')} ▾</button>
-                          {moreMenuId === project.id && (
-                            <>
-                              <div className="row-more-backdrop" onClick={() => setMoreMenuId('')} />
-                              <div className="ios-dropdown dropdown-down row-more-menu" onClick={() => setMoreMenuId('')}>
-                                <div className="ios-dropdown-item" onClick={() => setRenameState({ id: project.id, value: project.name })}>{t('重命名')}</div>
-                                <div className="ios-dropdown-item" onClick={() => handleCopy(project.id, project.name)}>{t('复制')}</div>
-                                <div className="ios-dropdown-item" onClick={() => { setTransferSource({ id: project.id, name: project.name }); setTransferOpen(true); }}>{t('转换')}</div>
-                                {project.archived
-                                  ? <div className="ios-dropdown-item" onClick={() => handleArchive(project.id, false)}>{t('取消归档')}</div>
-                                  : <div className="ios-dropdown-item" onClick={() => handleArchive(project.id, true)}>{t('归档')}</div>}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        <button className="btn ghost danger" onClick={() => handleDelete(project.id, project.name)} title={t('Move to Trash (you can restore it from Trash)')}>{t('删除')}</button>
-                      </>)}
+                      {viewFilter === 'trash' ? (
+                        <button className="nm-open" onClick={() => handleTrash(project.id, false)}>{t('恢复')}</button>
+                      ) : (
+                        <button className="nm-open" onClick={() => navigate(`/editor/${project.id}`)}>{t('打开')}</button>
+                      )}
+                      <div className="nm-menu">
+                        <button
+                          className="nm-icon-btn nm-dots"
+                          onClick={() => setMoreMenuId(moreMenuId === project.id ? '' : project.id)}
+                          aria-label={t('More actions')}
+                          aria-haspopup="menu"
+                          aria-expanded={moreMenuId === project.id}
+                        >
+                          <IconDots size={18} />
+                        </button>
+                        {moreMenuId === project.id && (
+                          <>
+                            <div className="nm-menu-backdrop" onClick={() => setMoreMenuId('')} />
+                            <div className="nm-menu-list" role="menu" onClick={() => setMoreMenuId('')}>
+                              {viewFilter === 'trash' ? (
+                                <button className="nm-menu-item danger" role="menuitem" onClick={() => handlePermanentDelete(project.id, project.name)}>{t('Delete forever')}</button>
+                              ) : (
+                                <>
+                                  <button className="nm-menu-item" role="menuitem" onClick={() => setRenameState({ id: project.id, value: project.name })}>{t('重命名')}</button>
+                                  <button className="nm-menu-item" role="menuitem" onClick={() => handleCopy(project.id, project.name)}>{t('复制')}</button>
+                                  <button className="nm-menu-item" role="menuitem" onClick={() => { setTransferSource({ id: project.id, name: project.name }); setTransferOpen(true); }}>{t('转换')}</button>
+                                  {project.archived
+                                    ? <button className="nm-menu-item" role="menuitem" onClick={() => handleArchive(project.id, false)}>{t('取消归档')}</button>
+                                    : <button className="nm-menu-item" role="menuitem" onClick={() => handleArchive(project.id, true)}>{t('归档')}</button>}
+                                  <div className="nm-menu-sep" />
+                                  <button className="nm-menu-item" role="menuitem" onClick={() => setMoveTarget(project)}>{t('Move to folder…')}</button>
+                                  <button className="nm-menu-item" role="menuitem" onClick={() => downloadZip(project)}>{t('Download .zip')}</button>
+                                  <div className="nm-menu-sep" />
+                                  <button className="nm-menu-item danger" role="menuitem" onClick={() => handleDelete(project.id, project.name)}>{t('Move to Trash')}</button>
+                                </>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -901,7 +974,7 @@ export default function ProjectPage() {
         </div>
 
         <div className="project-footer">
-          {t('显示 {{shown}} / {{total}} 个项目', { shown: filteredProjects.length, total: projects.length })}
+          {filteredProjects.length === 1 ? t('1 project') : t('{{count}} projects', { count: filteredProjects.length })}
         </div>
       </div>
 

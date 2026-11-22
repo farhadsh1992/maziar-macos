@@ -14,6 +14,10 @@ but it runs perfectly well on its own.
 
 ## What it does
 
+- **Look** — midnight-navy dark theme and warm off-white light theme with antique-gold accents (serif
+  headings, monospaced source, white PDF paper in both). It follows the system appearance, or the app
+  embedding it (Maziar sets `data-theme` on the page). Theme tokens live in `apps/frontend/src/app/theme.css`.
+
 - **Projects** — create projects from templates (ACL, CVPR, NeurIPS, ICML …), import a zip or an arXiv
   source, organize files and folders, upload images by drag-and-drop into any folder.
 - **Project folders** — the Projects page shows where projects are stored; add more folders (e.g. one

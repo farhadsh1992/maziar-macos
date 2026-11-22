@@ -151,16 +151,12 @@ enum NumenorTheme: String, CaseIterable, Identifiable {
           window.__maziarSpellLanguage = \(jsString(spellLanguage));
           try { window.dispatchEvent(new CustomEvent('maziar-spell-language', { detail: window.__maziarSpellLanguage })); } catch (e) {}
           var root = document.documentElement;
-          if (!document.getElementById('maziar-dark-style')) {
-            var style = document.createElement('style');
-            style.id = 'maziar-dark-style';
-            style.textContent =
-              'html.maziar-dark { filter: invert(1) hue-rotate(180deg) brightness(0.92); background: #fff; }' +
-              'html.maziar-dark img, html.maziar-dark video, html.maziar-dark canvas, html.maziar-dark object,' +
-              'html.maziar-dark iframe { filter: invert(1) hue-rotate(180deg); }';
-            (document.head || root).appendChild(style);
-          }
-          root.classList.toggle('maziar-dark', \(dark ? "true" : "false"));
+          // Numenor has its own light and dark themes: tell it which one Maziar is showing (no colour
+          // inversion any more). Transitions pause for a moment so the switch doesn't flicker.
+          root.classList.remove('maziar-dark');
+          root.classList.add('nm-theme-switching');
+          root.setAttribute('data-theme', \(dark ? "'dark'" : "'light'"));
+          requestAnimationFrame(function () { requestAnimationFrame(function () { root.classList.remove('nm-theme-switching'); }); });
 
           // Opening a project is a client-side route change to /editor/<id>. When pop-out is on, turn that
           // into window.open() so the project gets its own Maziar window and the project list stays put.

@@ -6,12 +6,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { basicSetup } from 'codemirror';
 import { latex, strongComments } from '../latex/lang';
-import { Compartment, EditorState, StateEffect, StateField } from '@codemirror/state';
+import { Compartment, EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, DecorationSet, WidgetType, keymap, gutter, GutterMarker } from '@codemirror/view';
 import { search, searchKeymap } from '@codemirror/search';
 import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
-import { toggleComment } from '@codemirror/commands';
-import { foldKeymap, foldService, indentOnInput } from '@codemirror/language';
+import { toggleComment, undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
+import { foldKeymap, foldService, indentOnInput, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags as hlTags } from '@lezer/highlight';
 import { GlobalWorkerOptions, getDocument, renderTextLayer } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -19,6 +20,11 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import PdfViewer, { type PdfViewerHandle, type PdfZoomMode } from './PdfViewer';
 import { parseLatexLog, diagnosticsExtension, showDiagnostics, revealLine, type LatexDiagnostic } from '../latex/diagnostics';
 import { spellExtension } from '../latex/spell';
+import {
+  NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconGear, IconUpload,
+  IconSearch, IconSection, IconList, IconSigma, IconInsert, IconUndo, IconRedo, IconPlus, IconMinus, IconSync,
+  IconDownload, IconDots, IconCheckCircle, IconAlert, IconLayers, IconLog, IconSpinner, IconClose
+} from './icons';
 import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, type ShareState } from '../api/client';
 import {
   arxivBibtex,
@@ -818,40 +824,65 @@ const scopeGutter = gutter({
   },
 });
 
+// Numenor theme for the source editor: colours come from theme.css variables, so it follows light/dark.
 const editorTheme = EditorView.theme(
   {
     '&': {
       height: '100%',
-      background: 'transparent'
+      background: 'var(--nm-pane)',
+      color: 'var(--nm-text)'
     },
     '.cm-scroller': {
-      fontFamily: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
+      fontFamily: 'var(--nm-mono)',
       fontSize: 'var(--editor-font-size, 11px)',
-      lineHeight: '1.6'
+      lineHeight: '1.65'
     },
     '.cm-content': {
-      padding: '16px'
+      padding: '14px 16px 40px 8px',
+      caretColor: 'var(--nm-gold)'
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: 'var(--nm-gold)',
+      borderLeftWidth: '2px'
     },
     '.cm-gutters': {
-      background: 'transparent',
+      background: 'var(--nm-pane)',
       border: 'none',
-      color: 'rgba(122, 111, 103, 0.6)'
+      color: 'var(--nm-gutter)'
     },
     '.cm-lineNumbers .cm-gutterElement': {
-      padding: '0 8px 0 12px'
+      padding: '0 10px 0 14px'
     },
     '.cm-activeLine': {
-      background: 'rgba(180, 74, 47, 0.08)'
+      background: 'var(--nm-hover)'
     },
     '.cm-activeLineGutter': {
-      background: 'transparent'
+      background: 'transparent',
+      color: 'var(--nm-text-2)'
     },
-    '.cm-selectionBackground': {
-      background: 'rgba(180, 74, 47, 0.18)'
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
+      background: 'var(--nm-gold-soft) !important'
+    },
+    '.cm-matchingBracket': {
+      background: 'var(--nm-gold-soft)',
+      outline: '1px solid var(--nm-gold-line)'
+    },
+    '.cm-foldPlaceholder': {
+      background: 'var(--nm-chip)',
+      border: 'none',
+      color: 'var(--nm-text-2)'
     }
-  },
-  { dark: false }
+  }
 );
+
+// LaTeX token colours: commands and their arguments' braces in gold, comments in a muted gold.
+const numenorHighlight = HighlightStyle.define([
+  { tag: hlTags.keyword, color: 'var(--nm-syn-command)' },
+  { tag: hlTags.comment, color: 'var(--nm-syn-comment)', fontStyle: 'normal' },
+  { tag: hlTags.bracket, color: 'var(--nm-syn-bracket)' },
+  { tag: hlTags.number, color: 'var(--nm-syn-math)' },
+  { tag: hlTags.string, color: 'var(--nm-syn-math)' }
+]);
 
 function buildSplitDiff(original: string, proposed: string) {
   const parts = diffLines(original, proposed);
@@ -1074,7 +1105,20 @@ export default function EditorPage() {
   const [pdfAnnotations, setPdfAnnotations] = useState<{ id: string; page: number; x: number; y: number; text: string }[]>([]);
   const [pdfAnnotateMode, setPdfAnnotateMode] = useState(false);
   const [pdfZoom, setPdfZoom] = useState<{ scale: number; mode: PdfZoomMode }>({ scale: 1, mode: 'fitWidth' });
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  // Redesign: result of the last compile (status bar), PDF page indicator, toolbar menus.
+  const [compileState, setCompileState] = useState<'idle' | 'ok' | 'failed'>('idle');
+  const [pdfPage, setPdfPage] = useState({ page: 0, total: 0 });
+  const [nmMenu, setNmMenu] = useState('');
+  // Page asked for by the ‹ › buttons while the scroll is still moving there, so quick clicks add up.
+  const requestedPageRef = useRef<{ page: number; at: number }>({ page: 0, at: 0 });
+  const goToPdfPage = (delta: number) => {
+    const recent = Date.now() - requestedPageRef.current.at < 1500 ? requestedPageRef.current.page : 0;
+    const from = recent || pdfPage.page || 1;
+    const target = Math.min(Math.max(1, from + delta), Math.max(1, pdfPage.total));
+    requestedPageRef.current = { page: target, at: Date.now() };
+    pdfViewerRef.current?.scrollToPage(target);
+  };
   const [uploadError, setUploadError] = useState('');
   const [docTick, setDocTick] = useState(0);
   const [spellAvailable, setSpellAvailable] = useState(false);
@@ -1618,6 +1662,7 @@ export default function EditorPage() {
         foldService.of(latexFoldService),
         EditorView.lineWrapping,
         editorTheme,
+        Prec.high(syntaxHighlighting(numenorHighlight)),
         collabCompartment.of([]),
         ghostField,
         diagnosticsExtension(),
@@ -3286,10 +3331,12 @@ export default function EditorPage() {
       }
       setPdfUrl(nextUrl);
       setRightView('pdf');
+      setCompileState('ok');
       setStatus(t('编译完成 ({{engine}})', { engine: result.engine }));
     } catch (err) {
       console.error('Compilation error:', err);
       setCompileLog(`${t('编译错误: {{error}}', { error: String(err) })}\n${(err as Error).stack || ''}`);
+      setCompileState('failed');
       setStatus(t('编译失败: {{error}}', { error: String(err) }));
     } finally {
       setIsCompiling(false);
@@ -3868,66 +3915,66 @@ export default function EditorPage() {
 
   return (
     <div className="app-shell">
-      <header className="top-bar">
-        <div className="brand">
-          <div className="brand-title">Numenor</div>
-          <div className="brand-sub">{projectName || t('Editor Workspace')}</div>
-        </div>
-        <div className="toolbar">
-          <Link to="/projects" className="btn ghost">{t('Projects')}</Link>
-          <button className="btn ghost" onClick={() => setSidebarOpen((prev) => !prev)}>
-            {sidebarOpen ? t('隐藏侧栏') : t('显示侧栏')}
+      <header className="top-bar nm-topbar">
+        <div className="nm-topbar-left">
+          <button
+            className="nm-icon-btn borderless"
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            title={sidebarOpen ? t('隐藏侧栏') : t('显示侧栏')}
+            aria-label={sidebarOpen ? t('隐藏侧栏') : t('显示侧栏')}
+          >
+            <IconSidebar size={17} />
           </button>
-          <div className="ios-select-wrapper">
-            <button className="ios-select-trigger" onClick={(e) => {
+          <Link to="/projects" className="nm-brand-link" title={t('Projects')}>
+            <NumenorMark size={30} />
+            <span className="nm-star" aria-hidden="true">✦</span>
+            <span className="nm-wordmark">Numenor</span>
+          </Link>
+          <span className="nm-topbar-sep" />
+          <Link to="/projects" className="nm-crumb-link"><IconArrowLeft size={15} /> {t('Projects')}</Link>
+          <IconChevronRight size={14} className="nm-crumb-sep" />
+          <span className="nm-project-name" title={projectName}>{projectName || t('Project')}</span>
+        </div>
+        <div className="nm-topbar-right">
+          <div className="ios-select-wrapper nm-select">
+            <button className="ios-select-trigger" title={t('Root document')} onClick={(e) => {
               const opening = !mainFileDropdownOpen;
               setMainFileDropdownOpen(opening); setEngineDropdownOpen(false); setLangDropdownOpen(false);
               if (opening) { const r = e.currentTarget.getBoundingClientRect(); setTopBarDropdownRect({ top: r.bottom + 6, left: r.left, width: r.width }); }
             }}>
-              <span>{mainFile}</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={mainFileDropdownOpen ? 'rotate' : ''}><path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <span className="nm-select-text">{mainFile}</span>
+              <IconChevronDown size={14} className={mainFileDropdownOpen ? 'rotate' : ''} />
             </button>
           </div>
-          <div className="ios-select-wrapper">
-            <button className="ios-select-trigger" onClick={(e) => {
+          <div className="ios-select-wrapper nm-select">
+            <button className="ios-select-trigger" title={t('Compiler')} onClick={(e) => {
               const opening = !engineDropdownOpen;
               setEngineDropdownOpen(opening); setMainFileDropdownOpen(false); setLangDropdownOpen(false);
               if (opening) { const r = e.currentTarget.getBoundingClientRect(); setTopBarDropdownRect({ top: r.bottom + 6, left: r.left, width: r.width }); }
             }}>
-              <span>{({'pdflatex':'pdfLaTeX','xelatex':'XeLaTeX','lualatex':'LuaLaTeX','latexmk':'Latexmk','tectonic':'Tectonic'} as Record<string,string>)[compileEngine] || compileEngine}</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={engineDropdownOpen ? 'rotate' : ''}><path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <span className="nm-select-text">{({'pdflatex':'pdfLaTeX','xelatex':'XeLaTeX','lualatex':'LuaLaTeX','latexmk':'Latexmk','tectonic':'Tectonic'} as Record<string,string>)[compileEngine] || compileEngine}</span>
+              <IconChevronDown size={14} className={engineDropdownOpen ? 'rotate' : ''} />
             </button>
           </div>
-          <button onClick={saveActiveFile} className="btn ghost">{t('保存')}</button>
-          <button onClick={compile} className="btn" disabled={isCompiling}>
+          <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>
+          <button onClick={compile} className="btn nm-primary nm-compile" disabled={isCompiling}>
             {isCompiling ? t('编译中...') : t('编译 PDF')}
           </button>
-          <button className="btn ghost" onClick={() => setSettingsOpen(true)}>{t('设置')}</button>
-          <div className="ios-select-wrapper">
+          <button className="nm-icon-btn borderless nm-settings" onClick={() => setSettingsOpen(true)} title={t('设置')}>
+            <IconGear size={16} /> <span className="nm-hide-narrow">{t('设置')}</span>
+          </button>
+          <div className="ios-select-wrapper nm-select nm-lang">
             <button className="ios-select-trigger" onClick={(e) => {
               const opening = !langDropdownOpen;
               setLangDropdownOpen(opening); setMainFileDropdownOpen(false); setEngineDropdownOpen(false);
               if (opening) { const r = e.currentTarget.getBoundingClientRect(); setTopBarDropdownRect({ top: r.bottom + 6, left: r.left, width: r.width }); }
             }}>
-              <span>{i18n.language === 'zh-CN' ? t('中文') : t('English')}</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={langDropdownOpen ? 'rotate' : ''}><path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <span className="nm-select-text">{i18n.language === 'zh-CN' ? t('中文') : t('English')}</span>
+              <IconChevronDown size={14} className={langDropdownOpen ? 'rotate' : ''} />
             </button>
           </div>
         </div>
       </header>
-
-      <div className="status-bar">
-        <div className="status-left">
-          <div>{status}</div>
-          <div className={`save-indicator ${isSaving ? 'saving' : isDirty ? 'dirty' : 'saved'} ${savePulse ? 'pulse' : ''}`}>
-            <span className="dot" />
-            <span>{isSaving ? t('保存中...') : isDirty ? t('未保存') : t('已保存')}</span>
-          </div>
-        </div>
-        <div className="status-right">
-          {t('Compile')}: {compileEngine} · {t('Engine')}: {engineName || t('未初始化')}
-        </div>
-      </div>
 
       <main
         className="workspace"
@@ -4012,14 +4059,14 @@ export default function EditorPage() {
             </div>
             {activeSidebar === 'files' ? (
               <>
-                <div className="panel-header">
-                  <div>{t('Project Files')}</div>
+                <div className="panel-header nm-pane-head">
+                  <div className="nm-pane-title">{t('Project Files')}</div>
                   <button
-                    className="btn ghost small upload-btn"
+                    className="nm-icon-btn nm-upload"
                     onClick={() => fileInputRef.current?.click()}
-                    title={t('Upload files (images, .tex, .bib …) into the selected folder')}
+                    title={t('Upload into {{folder}} — or drop files onto a folder', { folder: uploadFolder || t('project root') })}
                   >
-                    {t('Upload')}
+                    <IconPlus size={14} /> {t('Upload')}
                   </button>
                 </div>
                 <div className="upload-target muted">
@@ -4056,7 +4103,8 @@ export default function EditorPage() {
                     }
                   }}
                 />
-                <div className="panel-search">
+                <div className="panel-search nm-search-field">
+                  <IconSearch size={15} />
                   <input
                     className="input"
                     value={fileFilter}
@@ -5263,40 +5311,74 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
         )}
 
         <section className="panel editor-panel">
-          <div className="panel-header">{t('Editor')}</div>
-          <div className="breadcrumb-bar">
-            <span className="breadcrumb-item">{projectName || t('Project')}</span>
-            {breadcrumbParts.map((part, idx) => (
-              <span key={`${part}-${idx}`} className="breadcrumb-item">{part}</span>
-            ))}
-            {currentHeading && (
-              <span className="breadcrumb-item heading">{currentHeading.title}</span>
-            )}
+          <div className="nm-file-tabs">
+            <div className="nm-file-tab active" title={activePath}>
+              <span className="nm-file-tab-name">{activePath ? activePath.split('/').pop() : t('No file')}</span>
+              {currentHeading && <span className="nm-file-tab-heading">· {currentHeading.title}</span>}
+            </div>
           </div>
-          <div className="editor-toolbar">
-            <div className="toolbar-group">
-              <button className="toolbar-btn" onClick={insertSectionSnippet}>{t('Section')}</button>
-              <button className="toolbar-btn" onClick={insertSubsectionSnippet}>{t('Subsection')}</button>
-              <button className="toolbar-btn" onClick={insertSubsubsectionSnippet}>{t('Subsubsection')}</button>
+          <div className="editor-toolbar nm-insert-bar">
+            <div className="nm-menu">
+              <button className="nm-icon-btn" onClick={() => setNmMenu(nmMenu === 'section' ? '' : 'section')} aria-haspopup="menu">
+                <IconSection size={15} /> {t('Section')} <IconChevronDown size={13} />
+              </button>
+              {nmMenu === 'section' && (
+                <>
+                  <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
+                  <div className="nm-menu-list left" role="menu" onClick={() => setNmMenu('')}>
+                    <button className="nm-menu-item" onClick={insertSectionSnippet}>\section</button>
+                    <button className="nm-menu-item" onClick={insertSubsectionSnippet}>\subsection</button>
+                    <button className="nm-menu-item" onClick={insertSubsubsectionSnippet}>\subsubsection</button>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="toolbar-divider" />
-            <div className="toolbar-group">
-              <button className="toolbar-btn" onClick={insertItemizeSnippet}>{t('Itemize')}</button>
-              <button className="toolbar-btn" onClick={insertEnumerateSnippet}>{t('Enumerate')}</button>
-              <button className="toolbar-btn" onClick={insertEquationSnippet}>{t('Equation')}</button>
-              <button className="toolbar-btn" onClick={insertAlgorithmSnippet}>{t('Algorithm')}</button>
+            <div className="nm-menu">
+              <button className="nm-icon-btn" onClick={() => setNmMenu(nmMenu === 'list' ? '' : 'list')} aria-haspopup="menu">
+                <IconList size={15} /> {t('List')} <IconChevronDown size={13} />
+              </button>
+              {nmMenu === 'list' && (
+                <>
+                  <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
+                  <div className="nm-menu-list left" role="menu" onClick={() => setNmMenu('')}>
+                    <button className="nm-menu-item" onClick={insertItemizeSnippet}>{t('Itemize')}</button>
+                    <button className="nm-menu-item" onClick={insertEnumerateSnippet}>{t('Enumerate')}</button>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="toolbar-divider" />
-            <div className="toolbar-group">
-              <button className="toolbar-btn" onClick={insertFigureTemplate}>{t('Figure')}</button>
-              <button className="toolbar-btn" onClick={insertTableSnippet}>{t('Table')}</button>
-              <button className="toolbar-btn" onClick={insertListingSnippet}>{t('Listing')}</button>
+            <div className="nm-menu">
+              <button className="nm-icon-btn" onClick={() => setNmMenu(nmMenu === 'equation' ? '' : 'equation')} aria-haspopup="menu">
+                <IconSigma size={15} /> {t('Equation')} <IconChevronDown size={13} />
+              </button>
+              {nmMenu === 'equation' && (
+                <>
+                  <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
+                  <div className="nm-menu-list left" role="menu" onClick={() => setNmMenu('')}>
+                    <button className="nm-menu-item" onClick={insertEquationSnippet}>{t('Equation')}</button>
+                    <button className="nm-menu-item" onClick={insertAlgorithmSnippet}>{t('Algorithm')}</button>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="toolbar-divider" />
-            <div className="toolbar-group">
-              <button className="toolbar-btn" onClick={insertCiteSnippet}>{t('Cite')}</button>
-              <button className="toolbar-btn" onClick={insertRefSnippet}>{t('Ref')}</button>
-              <button className="toolbar-btn" onClick={insertLabelSnippet}>{t('Label')}</button>
+            <div className="nm-menu">
+              <button className="nm-icon-btn" onClick={() => setNmMenu(nmMenu === 'insert' ? '' : 'insert')} aria-haspopup="menu" title={t('Figure, table, listing, citation, reference, label')}>
+                <IconInsert size={15} /> <span className="nm-hide-narrow">{t('Insert')}</span> <IconChevronDown size={13} />
+              </button>
+              {nmMenu === 'insert' && (
+                <>
+                  <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
+                  <div className="nm-menu-list left" role="menu" onClick={() => setNmMenu('')}>
+                    <button className="nm-menu-item" onClick={insertFigureTemplate}>{t('Figure')}</button>
+                    <button className="nm-menu-item" onClick={insertTableSnippet}>{t('Table')}</button>
+                    <button className="nm-menu-item" onClick={insertListingSnippet}>{t('Listing')}</button>
+                    <div className="nm-menu-sep" />
+                    <button className="nm-menu-item" onClick={insertCiteSnippet}>{t('Cite')}</button>
+                    <button className="nm-menu-item" onClick={insertRefSnippet}>{t('Ref')}</button>
+                    <button className="nm-menu-item" onClick={insertLabelSnippet}>{t('Label')}</button>
+                  </div>
+                </>
+              )}
             </div>
             <div className="toolbar-spacer" />
             {spellAvailable && (
@@ -5328,22 +5410,13 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                 </select>
               </div>
             )}
-            <div className="toolbar-group font-size-group">
-              <button className="toolbar-btn icon-only" onClick={() => setEditorFontSize((s) => Math.max(8, s - 1))} title={t('放大')}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-              </button>
-              <span
-                className="font-size-label"
-                onClick={() => editorZoomRef.current('reset')}
-                title={t('Editor zoom — Cmd/Ctrl + scroll or pinch over the text, Cmd/Ctrl + = / −. Click to reset.')}
-                style={{ cursor: 'pointer' }}
-              >
-                {Math.round((editorFontSize / 11) * 100)}%
-              </span>
-              <button className="toolbar-btn icon-only" onClick={() => setEditorFontSize((s) => Math.min(24, s + 1))} title={t('放大')}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-              </button>
+            <div className="nm-zoom" title={t('Editor zoom — Cmd/Ctrl + scroll or pinch over the text, Cmd/Ctrl + = / −')}>
+              <button className="nm-icon-btn borderless" onClick={() => editorZoomRef.current(-1)} aria-label={t('Zoom out')}><IconMinus size={14} /></button>
+              <button className="nm-zoom-label" onClick={() => editorZoomRef.current('reset')}>{Math.round((editorFontSize / 11) * 100)}%</button>
+              <button className="nm-icon-btn borderless" onClick={() => editorZoomRef.current(1)} aria-label={t('Zoom in')}><IconPlus size={14} /></button>
             </div>
+            <button className="nm-icon-btn borderless" onClick={() => { const v = cmViewRef.current; if (v) { cmUndo(v); v.focus(); } }} title={t('Undo (Cmd/Ctrl + Z)')} aria-label={t('Undo')}><IconUndo size={16} /></button>
+            <button className="nm-icon-btn borderless" onClick={() => { const v = cmViewRef.current; if (v) { cmRedo(v); v.focus(); } }} title={t('Redo (Cmd/Ctrl + Shift + Z)')} aria-label={t('Redo')}><IconRedo size={16} /></button>
           </div>
           <div
             className="editor-split"
@@ -5411,7 +5484,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
 
         <section className="panel pdf-panel">
           <div className="panel-header">
-            <div>{t('Preview')}</div>
+            <div className="nm-pane-title">{rightView === 'pdf' ? t('PDF Preview') : t('Preview')}</div>
             <div className="header-controls">
               <div className="ios-select-wrapper">
                 <button
@@ -5451,39 +5524,60 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
             <div className="view-content">
               {/* Maziar: kept mounted while other views are shown, so the PDF keeps its place and zoom. */}
               <div className="pdf-view-wrap" style={rightView === 'pdf' ? undefined : { display: 'none' }}>
-                  <div className="pdf-toolbar">
-                    <div className="toolbar-group">
-                      <button className="icon-btn" onClick={() => pdfViewerRef.current?.zoomOut()} disabled={!pdfUrl} title={t('Zoom out — or Cmd/Ctrl + scroll, or pinch')}>−</button>
-                      <div className="zoom-label">{pdfScaleLabel}</div>
-                      <button className="icon-btn" onClick={() => pdfViewerRef.current?.zoomIn()} disabled={!pdfUrl} title={t('Zoom in — or Cmd/Ctrl + scroll, or pinch')}>＋</button>
-                      <button className={`btn ghost small ${pdfZoom.mode === 'fitWidth' ? 'active' : ''}`} onClick={() => pdfViewerRef.current?.fitWidth()} disabled={!pdfUrl}>{t('适合宽度')}</button>
-                      <button className={`btn ghost small ${pdfZoom.mode === 'fitPage' ? 'active' : ''}`} onClick={() => pdfViewerRef.current?.fitPage()} disabled={!pdfUrl}>{t('Fit page')}</button>
-                      <button className="btn ghost small" onClick={() => pdfViewerRef.current?.actualSize()} disabled={!pdfUrl}>100%</button>
+                  <div className="pdf-toolbar nm-pdf-toolbar">
+                    <div className="nm-pager">
+                      <button className="nm-icon-btn borderless" disabled={!pdfUrl || pdfPage.page <= 1} onClick={() => goToPdfPage(-1)} aria-label={t('Previous page')}><IconChevronLeft size={16} /></button>
+                      <span className="nm-page-pill">{pdfPage.total ? `${pdfPage.page} / ${pdfPage.total}` : '– / –'}</span>
+                      <button className="nm-icon-btn borderless" disabled={!pdfUrl || pdfPage.page >= pdfPage.total} onClick={() => goToPdfPage(1)} aria-label={t('Next page')}><IconChevronRight size={16} /></button>
                     </div>
-                    <div className="toolbar-group">
-                      <button
-                        className="btn ghost small"
-                        onClick={() => forwardSyncRef.current()}
-                        disabled={!pdfUrl}
-                        title={t('Show the cursor’s line in the PDF (Cmd/Ctrl + Shift + J). Double-click the PDF to jump back to the source.')}
-                      >
-                        {t('Source → PDF')}
+                    <div className="nm-seg">
+                      <button className="nm-icon-btn borderless" onClick={() => pdfViewerRef.current?.zoomOut()} disabled={!pdfUrl} title={t('Zoom out — or Cmd/Ctrl + scroll, or pinch')} aria-label={t('Zoom out')}><IconMinus size={15} /></button>
+                      <button className="nm-icon-btn borderless" onClick={() => pdfViewerRef.current?.zoomIn()} disabled={!pdfUrl} title={t('Zoom in — or Cmd/Ctrl + scroll, or pinch')} aria-label={t('Zoom in')}><IconPlus size={15} /></button>
+                    </div>
+                    <div className="nm-menu">
+                      <button className="nm-icon-btn" disabled={!pdfUrl} onClick={() => setNmMenu(nmMenu === 'fit' ? '' : 'fit')} aria-haspopup="menu" title={pdfScaleLabel}>
+                        {pdfZoom.mode === 'fitWidth' ? t('适合宽度') : pdfZoom.mode === 'fitPage' ? t('Fit page') : pdfScaleLabel} <IconChevronDown size={13} />
                       </button>
-                      <button className="btn ghost small" onClick={downloadPdf} disabled={!pdfUrl}>{t('下载 PDF')}</button>
-                      <button
-                        className={`btn ghost small ${pdfSpread ? 'active' : ''}`}
-                        onClick={() => setPdfSpread((prev) => !prev)}
-                        disabled={!pdfUrl}
-                      >
-                        {t('双页')}
-                      </button>
-                      <button
-                        className={`btn ghost small ${pdfAnnotateMode ? 'active' : ''}`}
-                        onClick={() => setPdfAnnotateMode((prev) => !prev)}
-                        disabled={!pdfUrl}
-                      >
-                        {t('注释')}
-                      </button>
+                      {nmMenu === 'fit' && (
+                        <>
+                          <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
+                          <div className="nm-menu-list left" role="menu" onClick={() => setNmMenu('')}>
+                            <button className={`nm-menu-item ${pdfZoom.mode === 'fitWidth' ? 'on' : ''}`} onClick={() => pdfViewerRef.current?.fitWidth()}>{t('适合宽度')}</button>
+                            <button className={`nm-menu-item ${pdfZoom.mode === 'fitPage' ? 'on' : ''}`} onClick={() => pdfViewerRef.current?.fitPage()}>{t('Fit page')}</button>
+                            <button className={`nm-menu-item ${pdfZoom.mode === 'custom' && Math.abs(pdfZoom.scale - 1) < 0.01 ? 'on' : ''}`} onClick={() => pdfViewerRef.current?.actualSize()}>100%</button>
+                            <div className="nm-menu-sep" />
+                            <div className="nm-menu-label">{t('Zoom')}: {pdfScaleLabel}</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      className="nm-icon-btn"
+                      onClick={() => forwardSyncRef.current()}
+                      disabled={!pdfUrl}
+                      title={t('Show the cursor’s line in the PDF (Cmd/Ctrl + Shift + J). Double-click the PDF to jump back to the source.')}
+                    >
+                      <IconSync size={15} /> {t('Sync')}
+                    </button>
+                    <div className="nm-spacer" />
+                    <button className="nm-icon-btn" onClick={downloadPdf} disabled={!pdfUrl} title={t('下载 PDF')} aria-label={t('下载 PDF')}><IconDownload size={16} /></button>
+                    <div className="nm-menu">
+                      <button className="nm-icon-btn borderless" onClick={() => setNmMenu(nmMenu === 'pdfmore' ? '' : 'pdfmore')} aria-haspopup="menu" aria-label={t('More PDF tools')}><IconDots size={18} /></button>
+                      {nmMenu === 'pdfmore' && (
+                        <>
+                          <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
+                          <div className="nm-menu-list" role="menu" onClick={() => setNmMenu('')}>
+                            <button className={`nm-menu-item ${pdfSpread ? 'on' : ''}`} disabled={!pdfUrl} onClick={() => setPdfSpread((prev) => !prev)}>{pdfSpread ? '✓ ' : ''}{t('双页')}</button>
+                            <button className={`nm-menu-item ${pdfAnnotateMode ? 'on' : ''}`} disabled={!pdfUrl} onClick={() => setPdfAnnotateMode((prev) => !prev)}>{pdfAnnotateMode ? '✓ ' : ''}{t('注释')}</button>
+                            <div className="nm-menu-sep" />
+                            <button className="nm-menu-item" disabled={!pdfUrl} onClick={() => forwardSyncRef.current()}>{t('Source → PDF')}</button>
+                            <button className="nm-menu-item" disabled={!pdfUrl} onClick={() => reverseSyncFromPdf()}>{t('PDF → Source')}</button>
+                            <div className="nm-menu-sep" />
+                            <button className="nm-menu-item" onClick={() => setDiagnosticsOpen(true)}>{t('Problems')}</button>
+                            <button className="nm-menu-item" onClick={() => setRightView('log')}>{t('Full log')}</button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                   {pdfUrl ? (
@@ -5493,6 +5587,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                       spread={pdfSpread}
                       onOutline={handlePdfOutline}
                       onZoomChange={setPdfZoom}
+                      onPageChange={(page, total) => setPdfPage({ page, total })}
                       rememberKey={`maziar.numenor.${projectId}.pdfPos`}
                       onReverseSync={(page, x, y) => {
                         reverseSync(page, x, y).catch(() => {});
@@ -5505,11 +5600,10 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                   ) : (
                     <div className="muted pdf-empty-message">{t('尚未生成 PDF')}</div>
                   )}
-                  {pdfUrl && <div className="pdf-hint muted">{t('Double-click the PDF to jump to the source · Cmd/Ctrl + scroll or pinch to zoom · hold Space and drag to pan')}</div>}
-                  {(diagnostics.length > 0 || (compileLog && !isCompiling)) && (
-                    <div className={`diag-panel ${diagnosticsOpen ? 'open' : ''}`}>
-                      <div className="diag-header" onClick={() => setDiagnosticsOpen((prev) => !prev)} role="button">
-                        <span className="diag-caret">{diagnosticsOpen ? '▾' : '▸'}</span>
+
+                  {diagnosticsOpen && (
+                    <div className="diag-panel open">
+                      <div className="diag-header">
                         <span className="diag-title">{t('Problems')}</span>
                         <span className={`diag-count error ${diagnosticCounts.error ? '' : 'zero'}`}>{t('{{count}} errors', { count: diagnosticCounts.error })}</span>
                         <span className={`diag-count warning ${diagnosticCounts.warning ? '' : 'zero'}`}>{t('{{count}} warnings', { count: diagnosticCounts.warning })}</span>
@@ -5524,6 +5618,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                         >
                           {t('Full log')}
                         </button>
+                        <button className="nm-icon-btn borderless" onClick={() => setDiagnosticsOpen(false)} aria-label={t('Close')}><IconClose size={14} /></button>
                       </div>
                       {diagnosticsOpen && (
                         <div className="diag-list">
@@ -5729,6 +5824,35 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
           </div>
         </section>
       </main>
+
+      {/* Redesign: slim status bar — compile/save state, problem counts, latest message, log. */}
+      <footer className="nm-statusbar" role="status">
+        <span className={`nm-stat ${isCompiling ? 'busy' : compileState === 'failed' ? 'bad' : compileState === 'ok' ? 'good' : ''}`}>
+          {isCompiling ? <IconSpinner size={15} className="nm-spin" /> : compileState === 'failed' ? <IconAlert size={15} /> : compileState === 'ok' ? <IconCheckCircle size={15} /> : <IconAlert size={15} />}
+          {isCompiling ? t('Compiling…') : compileState === 'failed' ? t('Compile failed') : compileState === 'ok' ? t('Compiled') : t('Not compiled')}
+        </span>
+        <span className="nm-stat-sep" />
+        <span className={`nm-stat ${isSaving ? 'busy' : isDirty ? 'warn' : 'good'} ${savePulse ? 'pulse' : ''}`}>
+          {isSaving ? <IconSpinner size={15} className="nm-spin" /> : isDirty ? <span className="nm-dirty-dot" /> : <IconCheckCircle size={15} />}
+          {isSaving ? t('保存中...') : isDirty ? t('未保存') : t('已保存')}
+        </span>
+        <span className="nm-stat-sep" />
+        <button className={`nm-stat-btn ${diagnosticCounts.error ? 'bad' : ''}`} onClick={() => { setRightView('pdf'); setDiagnosticsOpen(true); }}>
+          {t('{{count}} errors', { count: diagnosticCounts.error })}
+        </button>
+        <span className="nm-stat-sep" />
+        <button className={`nm-stat-btn ${diagnosticCounts.warning ? 'warn' : ''}`} onClick={() => { setRightView('pdf'); setDiagnosticsOpen(true); }}>
+          {t('{{count}} warnings', { count: diagnosticCounts.warning })}
+        </button>
+        <span className="nm-stat-sep" />
+        <button className="nm-stat-btn" onClick={() => { setRightView('pdf'); setDiagnosticsOpen(true); }} title={t('Overfull and underfull boxes')}>
+          <IconLayers size={15} /> {t('{{count}} layout', { count: diagnosticCounts.badbox })}
+        </button>
+        <span className="nm-stat-msg" title={status}>{status}</span>
+        <button className="nm-icon-btn nm-viewlog" onClick={() => setRightView('log')}>
+          <IconLog size={15} /> {t('View log')}
+        </button>
+      </footer>
 
       {/* Top-bar dropdown portals — rendered outside top-bar to escape backdrop-filter stacking context */}
       {(mainFileDropdownOpen || engineDropdownOpen || langDropdownOpen) && (

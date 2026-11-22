@@ -43,6 +43,8 @@ type Props = {
   /** localStorage key under which the reading position is remembered, so the first PDF shown for a
    *  project (e.g. after reopening it) opens where you left off. */
   rememberKey?: string;
+  /** Page at the top of the view and the page count, whenever either changes. */
+  onPageChange?: (page: number, total: number) => void;
   containerRef?: RefObject<HTMLDivElement>;
 };
 
@@ -82,7 +84,7 @@ function loadZoom(): { mode: PdfZoomMode; scale: number } {
 }
 
 const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
-  { pdfUrl, spread, annotations, annotateMode, onAddAnnotation, onOutline, onZoomChange, onReverseSync, rememberKey, containerRef: externalRef },
+  { pdfUrl, spread, annotations, annotateMode, onAddAnnotation, onOutline, onZoomChange, onReverseSync, rememberKey, onPageChange, containerRef: externalRef },
   ref
 ) {
   const { t } = useTranslation();
@@ -101,8 +103,18 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   const rememberKeyRef = useRef(rememberKey);
   rememberKeyRef.current = rememberKey;
   const annotationsRef = useRef(annotations);
-  const callbacksRef = useRef({ onZoomChange, onReverseSync, onAddAnnotation, onOutline, annotateMode });
-  callbacksRef.current = { onZoomChange, onReverseSync, onAddAnnotation, onOutline, annotateMode };
+  const callbacksRef = useRef({ onZoomChange, onReverseSync, onAddAnnotation, onOutline, annotateMode, onPageChange });
+  callbacksRef.current = { onZoomChange, onReverseSync, onAddAnnotation, onOutline, annotateMode, onPageChange };
+  const lastPageRef = useRef({ page: 0, total: 0 });
+  const reportPage = () => {
+    const anchor = slotsRef.current.length ? captureAnchor() : null;
+    const total = slotsRef.current.length;
+    const page = anchor ? Math.min(anchor.page + (anchor.fy > 0.55 ? 1 : 0), total) : 0;
+    if (page !== lastPageRef.current.page || total !== lastPageRef.current.total) {
+      lastPageRef.current = { page, total };
+      callbacksRef.current.onPageChange?.(page, total);
+    }
+  };
   annotationsRef.current = annotations;
 
   const reportZoom = useCallback(() => {
@@ -455,6 +467,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
         observe(slots);
         placeAnnotations();
         reportZoom();
+        reportPage();
         previousDoc?.destroy();
 
         const onOutline = callbacksRef.current.onOutline;
@@ -645,6 +658,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
     let saveTimer: number | null = null;
     const onScroll = () => {
+      reportPage();
       if (saveTimer) window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(() => {
         saveTimer = null;

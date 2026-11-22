@@ -1961,7 +1961,8 @@ How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
 - Maziar's settings go in through the environment: `NUMENOR_HOST=127.0.0.1` (this Mac only),
   `NUMENOR_LLM_LOCKED=1` + `NUMENOR_LLM_*` (Maziar's AI provider/model/key from Settings → AI; Claude and
   Gemini via their OpenAI-compatible endpoints), `NUMENOR_DATA_DIR`, `MAZIAR_SPELL_HELPER`.
-- `NumenorTheme.pageScript` (injected into the page) adds English-by-default, a dark mode, the custom
+- `NumenorTheme.pageScript` (injected into the page) adds English-by-default, sets Numenor's own light or
+  dark theme from Maziar's appearance setting (`data-theme`; no colour inversion any more), the custom
   start-page title and the spelling language (Settings → Appearance → Numenor), and hides Numenor's own
   AI dialog. Opening a project gives it its own editor-sized window.
 - Stored setting names still say `openPrism` (`maziar.openPrism.*`, `maziar.ai.openPrismProvider`,
