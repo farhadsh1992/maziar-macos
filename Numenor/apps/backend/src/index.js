@@ -18,6 +18,7 @@ import { registerCollabRoutes } from './routes/collab.js';
 import { registerTransferRoutes } from './routes/transfer.js';
 import { registerSynctexRoutes } from './routes/synctex.js';
 import { registerSpellRoutes } from './routes/spell.js';
+import { registerFolderRoutes } from './routes/folders.js';
 import { tryStartTunnel } from './services/tunnel.js';
 import { requireAuthIfRemote } from './utils/authUtils.js';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +60,7 @@ registerCollabRoutes(fastify);
 registerTransferRoutes(fastify);
 registerSynctexRoutes(fastify);
 registerSpellRoutes(fastify);
+registerFolderRoutes(fastify);
 
 // Serve frontend static files in tunnel/production mode
 const __filename = fileURLToPath(import.meta.url);

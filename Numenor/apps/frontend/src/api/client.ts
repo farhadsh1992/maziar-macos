@@ -7,6 +7,8 @@ export interface ProjectMeta {
   archived: boolean;
   trashed: boolean;
   trashedAt: string | null;
+  /** The project folder it lives in (absolute path). */
+  folder?: string;
 }
 
 export interface FileItem {
@@ -118,7 +120,7 @@ export function listProjects() {
   return request<{ projects: ProjectMeta[] }>('/api/projects');
 }
 
-export function createProject(payload: { name: string; template?: string }) {
+export function createProject(payload: { name: string; template?: string; folder?: string }) {
   return request<ProjectMeta>('/api/projects', {
     method: 'POST',
     body: JSON.stringify(payload)
@@ -450,13 +452,13 @@ export function callLLM(payload: {
   });
 }
 
-export async function importZip(payload: { file: File; projectName?: string }) {
+export async function importZip(payload: { file: File; projectName?: string; folder?: string }) {
   const form = new FormData();
   form.append('zip', payload.file);
   if (payload.projectName) {
     form.append('projectName', payload.projectName);
   }
-  const res = await fetch('/api/projects/import-zip', {
+  const res = await fetch(`/api/projects/import-zip${payload.folder ? `?folder=${encodeURIComponent(payload.folder)}` : ''}`, {
     method: 'POST',
     body: form,
     headers: {
@@ -471,12 +473,13 @@ export async function importZip(payload: { file: File; projectName?: string }) {
 }
 
 export function importArxivSSE(
-  payload: { arxivIdOrUrl: string; projectName?: string },
+  payload: { arxivIdOrUrl: string; projectName?: string; folder?: string },
   onProgress?: (data: { phase: string; percent: number; received?: number; total?: number }) => void
 ): Promise<{ ok: boolean; project?: ProjectMeta; error?: string }> {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams({ arxivIdOrUrl: payload.arxivIdOrUrl });
     if (payload.projectName) params.set('projectName', payload.projectName);
+    if (payload.folder) params.set('folder', payload.folder);
     const token = getCollabToken();
     if (token) params.set('token', token);
     const es = new EventSource(`/api/projects/import-arxiv-sse?${params.toString()}`);
@@ -627,4 +630,34 @@ export async function mineruTransferUploadPdf(jobId: string, pdfFile: File) {
     throw new Error(await res.text());
   }
   return res.json() as Promise<{ ok: boolean; pdfPath?: string }>;
+}
+
+// Project folders (the main one plus any added, e.g. inside Google Drive).
+
+export type ProjectFolder = { path: string; primary: boolean; exists: boolean; projectCount: number; cloud: 'google' | null };
+export type FolderSuggestion = { label: string; path: string; kind: string };
+export type FolderListing = { path: string; parent: string | null; entries: { name: string; path: string; isProject: boolean }[]; projectCount: number };
+
+export function listFolders() {
+  return maziarRequest<{ ok: true; primary: string; folders: ProjectFolder[] }>('/api/folders');
+}
+
+export function folderSuggestions() {
+  return maziarRequest<{ ok: true; suggestions: FolderSuggestion[]; home: string }>('/api/folders/suggestions');
+}
+
+export function addFolder(path: string) {
+  return maziarRequest<{ ok: true; primary: string; folders: ProjectFolder[] }>('/api/folders', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+export function removeFolder(path: string) {
+  return maziarRequest<{ ok: true; primary: string; folders: ProjectFolder[] }>(`/api/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+}
+
+export function browseFolder(path?: string) {
+  return maziarRequest<{ ok: true } & FolderListing>(`/api/folders/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`);
+}
+
+export function makeFolder(parent: string, name: string) {
+  return maziarRequest<{ ok: true; path: string }>('/api/folders/mkdir', { method: 'POST', body: JSON.stringify({ parent, name }) });
 }

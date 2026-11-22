@@ -16,6 +16,9 @@ but it runs perfectly well on its own.
 
 - **Projects** — create projects from templates (ACL, CVPR, NeurIPS, ICML …), import a zip or an arXiv
   source, organize files and folders, upload images by drag-and-drop into any folder.
+- **Project folders** — the Projects page shows where projects are stored; add more folders (e.g. one
+  inside Google Drive, iCloud or Dropbox — detected automatically) or remove them, filter by folder, and
+  choose where new projects go. Removing a folder only stops listing it; nothing is deleted.
 - **Compile and preview** — pdfLaTeX, XeLaTeX, LuaLaTeX, latexmk or Tectonic, with bibliography passes.
   Opening a project compiles it and shows the PDF where you last left it.
 - **PDF viewer** — keeps your page, position and zoom across recompiles; pinch or Cmd/Ctrl + scroll zooms

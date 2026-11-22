@@ -9,22 +9,33 @@ import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { isTextFile, extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject } from '../services/templateService.js';
-import { getProjectRoot } from '../services/projectService.js';
+import { getProjectRoot, getProjectFolders, resolveTargetFolder } from '../services/projectService.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { getLang, t } from '../i18n/index.js';
 
 export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects', async () => {
     await ensureDir(DATA_DIR);
-    const entries = await fs.readdir(DATA_DIR, { withFileTypes: true });
     const projects = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const metaPath = path.join(DATA_DIR, entry.name, 'project.json');
+    const seen = new Set();
+    // Every project folder (the main one plus any added on the Projects page); `folder` says which.
+    for (const folder of await getProjectFolders()) {
+      let entries = [];
+      try {
+        entries = await fs.readdir(folder, { withFileTypes: true });
+      } catch {
+        continue; // e.g. a Google Drive folder that isn't available right now
+      }
+      for (const entry of entries) {
+      if (!entry.isDirectory() || seen.has(entry.name)) continue;
+      const metaPath = path.join(folder, entry.name, 'project.json');
       try {
         const meta = await readJson(metaPath);
+        seen.add(entry.name);
         projects.push({
           ...meta,
+          id: entry.name,
+          folder,
           updatedAt: meta.updatedAt || meta.createdAt,
           tags: meta.tags || [],
           archived: meta.archived || false,
@@ -34,15 +45,16 @@ export function registerProjectRoutes(fastify) {
       } catch {
         // ignore
       }
+      }
     }
     return { projects };
   });
 
   fastify.post('/api/projects', async (req, reply) => {
     await ensureDir(DATA_DIR);
-    const { name = 'Untitled', template } = req.body || {};
+    const { name = 'Untitled', template, folder } = req.body || {};
     const id = crypto.randomUUID();
-    const projectRoot = path.join(DATA_DIR, id);
+    const projectRoot = path.join(await resolveTargetFolder(folder), id);
     await ensureDir(projectRoot);
     const meta = { id, name, createdAt: new Date().toISOString() };
     await writeJson(path.join(projectRoot, 'project.json'), meta);
@@ -57,7 +69,7 @@ export function registerProjectRoutes(fastify) {
     const lang = getLang(req);
     await ensureDir(DATA_DIR);
     const id = crypto.randomUUID();
-    const projectRoot = path.join(DATA_DIR, id);
+    const projectRoot = path.join(await resolveTargetFolder(req.query?.folder), id);
     await ensureDir(projectRoot);
     let projectName = 'Imported Project';
     let hasZip = false;
@@ -105,7 +117,7 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/import-arxiv-sse', async (req, reply) => {
     const lang = getLang(req);
     await ensureDir(DATA_DIR);
-    const { arxivIdOrUrl, projectName } = req.query;
+    const { arxivIdOrUrl, projectName, folder } = req.query;
     const arxivId = extractArxivId(arxivIdOrUrl);
     req.log.info({ arxivId, arxivIdOrUrl }, 'import-arxiv-sse: parsed id');
 
@@ -125,7 +137,7 @@ export function registerProjectRoutes(fastify) {
     }
 
     const id = crypto.randomUUID();
-    const projectRoot = path.join(DATA_DIR, id);
+    const projectRoot = path.join(await resolveTargetFolder(folder), id);
     await ensureDir(projectRoot);
     const meta = {
       id,
@@ -184,7 +196,8 @@ export function registerProjectRoutes(fastify) {
     const srcRoot = await getProjectRoot(id);
     const srcMeta = await readJson(path.join(srcRoot, 'project.json'));
     const newId = crypto.randomUUID();
-    const destRoot = path.join(DATA_DIR, newId);
+    // A copy stays in the same folder as the original.
+    const destRoot = path.join(path.dirname(srcRoot), newId);
     await copyDir(srcRoot, destRoot);
     const newMeta = {
       ...srcMeta,

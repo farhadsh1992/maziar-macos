@@ -7,6 +7,7 @@ import { resolveLLMConfig } from '../services/llmService.js';
 import { resolveMineruConfig } from '../services/mineruService.js';
 import { readTemplateManifest } from '../services/templateService.js';
 import { DATA_DIR, TEMPLATE_DIR } from '../config/constants.js';
+import { getProjectRoot } from '../services/projectService.js';
 import { ensureDir, readJson, writeJson, copyDir } from '../utils/fsUtils.js';
 
 // In-memory job store: jobId → { graph, state, status, progressLog }
@@ -44,13 +45,15 @@ export function registerTransferRoutes(fastify) {
     // Create a new project from the template
     await ensureDir(DATA_DIR);
     const newProjectId = crypto.randomUUID();
-    const projectRoot = path.join(DATA_DIR, newProjectId);
+    // The converted project goes next to its source (which may be in an added project folder).
+    const sourceRoot = await getProjectRoot(sourceProjectId).catch(() => null);
+    const projectRoot = path.join(sourceRoot ? path.dirname(sourceRoot) : DATA_DIR, newProjectId);
     await ensureDir(projectRoot);
 
     // Read source project name for the new project name
     let sourceName = 'Untitled';
     try {
-      const srcMeta = await readJson(path.join(DATA_DIR, sourceProjectId, 'project.json'));
+      const srcMeta = await readJson(path.join(sourceRoot || path.join(DATA_DIR, sourceProjectId), 'project.json'));
       sourceName = srcMeta.name || 'Untitled';
     } catch { /* ignore */ }
 
@@ -224,13 +227,14 @@ export function registerTransferRoutes(fastify) {
     // Create new project from template
     await ensureDir(DATA_DIR);
     const newProjectId = crypto.randomUUID();
-    const projectRoot = path.join(DATA_DIR, newProjectId);
+    const sourceRoot = sourceProjectId ? await getProjectRoot(sourceProjectId).catch(() => null) : null;
+    const projectRoot = path.join(sourceRoot ? path.dirname(sourceRoot) : DATA_DIR, newProjectId);
     await ensureDir(projectRoot);
 
     let sourceName = 'Untitled';
     if (sourceProjectId) {
       try {
-        const srcMeta = await readJson(path.join(DATA_DIR, sourceProjectId, 'project.json'));
+        const srcMeta = await readJson(path.join(sourceRoot || path.join(DATA_DIR, sourceProjectId), 'project.json'));
         sourceName = srcMeta.name || 'Untitled';
       } catch { /* ignore */ }
     }
@@ -313,9 +317,10 @@ export function registerTransferRoutes(fastify) {
     }
 
     // Save PDF to target project directory
-    const pdfPath = path.join(job.state.targetProjectId
-      ? path.join(DATA_DIR, job.state.targetProjectId)
-      : DATA_DIR, '_uploaded_source.pdf');
+    const targetRoot = job.state.targetProjectId
+      ? await getProjectRoot(job.state.targetProjectId).catch(() => path.join(DATA_DIR, job.state.targetProjectId))
+      : DATA_DIR;
+    const pdfPath = path.join(targetRoot, '_uploaded_source.pdf');
     await ensureDir(path.dirname(pdfPath));
     await fs.writeFile(pdfPath, pdfBuffer);
 

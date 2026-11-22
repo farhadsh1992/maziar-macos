@@ -1952,7 +1952,10 @@ How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
   `~/Library/Application Support/Maziar/Numenor/app`, runs `npm install` (only when `package-lock.json`
   changed) and `npm run build`, then starts `node apps/backend/src/index.js` on a free localhost port
   (from 8787). So a Maziar update brings its Numenor along; no download, no patching.
-- Projects live in `…/Maziar/Numenor/data/<id>/`, outside the code folder. Installs from the OpenPrism
+- Projects live in `…/Maziar/Numenor/data/<id>/`, outside the code folder. More project folders can be
+  added on Numenor's Projects page (e.g. one inside Google Drive); that list is per Mac
+  (`data/.numenor-folders.json`), and Maziar's own Drive sync (below) covers only the main folder — a
+  folder inside Google Drive is kept in sync by Google Drive for desktop itself. Installs from the OpenPrism
   days (`…/Maziar/OpenPrism`) are moved over automatically (projects, backups, and the downloaded
   node_modules), before Drive sync or the server touch the new folder.
 - Maziar's settings go in through the environment: `NUMENOR_HOST=127.0.0.1` (this Mac only),

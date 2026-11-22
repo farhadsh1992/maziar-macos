@@ -14,10 +14,22 @@ import {
   trashProject,
   updateProjectTags,
   permanentDeleteProject,
-  uploadTemplate
+  uploadTemplate,
+  listFolders,
+  addFolder,
+  removeFolder
 } from '../api/client';
-import type { ProjectMeta, TemplateMeta, TemplateCategory } from '../api/client';
+import type { ProjectMeta, TemplateMeta, TemplateCategory, ProjectFolder } from '../api/client';
 import TransferPanel from './TransferPanel';
+import FolderPicker from './FolderPicker';
+
+const TARGET_FOLDER_KEY = 'numenor.projects.targetFolder';
+
+/** "…/My Drive/Papers" — the last two parts of a folder path, for compact labels. */
+function shortFolder(p: string) {
+  const parts = p.split('/').filter(Boolean);
+  return parts.length <= 2 ? p : `…/${parts.slice(-2).join('/')}`;
+}
 
 type ViewFilter = 'all' | 'mine' | 'archived' | 'trash';
 type SortBy = 'updatedAt' | 'name' | 'createdAt';
@@ -74,6 +86,13 @@ export default function ProjectPage() {
   const { t, i18n } = useTranslation();
 
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  // Project folders: the main one plus any added ones (e.g. inside Google Drive).
+  const [folders, setFolders] = useState<ProjectFolder[]>([]);
+  const [folderFilter, setFolderFilter] = useState('');
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [targetFolder, setTargetFolder] = useState(() => {
+    try { return localStorage.getItem(TARGET_FOLDER_KEY) || ''; } catch { return ''; }
+  });
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
   const [status, setStatus] = useState('');
@@ -131,6 +150,48 @@ export default function ProjectPage() {
     setProjects(res.projects || []);
   }, []);
 
+  const loadFolders = useCallback(async () => {
+    try {
+      const res = await listFolders();
+      setFolders(res.folders);
+    } catch {
+      setFolders([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFolders();
+  }, [loadFolders]);
+
+  const primaryFolder = folders.find((f) => f.primary)?.path || '';
+  // Where new projects go: the chosen folder if it's still in the list, else the main one.
+  const newProjectFolder = folders.some((f) => f.path === targetFolder) ? targetFolder : primaryFolder;
+  const chooseTargetFolder = (path: string) => {
+    setTargetFolder(path);
+    try { localStorage.setItem(TARGET_FOLDER_KEY, path); } catch { /* ignore */ }
+  };
+
+  const handleAddFolder = async (path: string) => {
+    const res = await addFolder(path);
+    setFolders(res.folders);
+    await loadProjects();
+    setFolderPickerOpen(false);
+    setStatus(t('Added {{path}}', { path }));
+  };
+
+  const handleRemoveFolder = async (folder: ProjectFolder) => {
+    const ok = window.confirm(t('Stop listing projects from {{path}}? The folder and its projects stay on disk.', { path: folder.path }));
+    if (!ok) return;
+    try {
+      const res = await removeFolder(folder.path);
+      setFolders(res.folders);
+      if (folderFilter === folder.path) setFolderFilter('');
+      await loadProjects();
+    } catch (err) {
+      setStatus(String((err as Error).message || err));
+    }
+  };
+
   useEffect(() => {
     loadProjects().catch((err) => setStatus(t('加载项目失败: {{error}}', { error: String(err) })));
   }, [loadProjects, t]);
@@ -160,6 +221,7 @@ export default function ProjectPage() {
     else if (viewFilter === 'mine') list = list.filter((p) => !p.archived && !p.trashed);
     else list = list.filter((p) => !p.trashed);
     if (activeTag) list = list.filter((p) => (p.tags || []).includes(activeTag));
+    if (folderFilter) list = list.filter((p) => p.folder === folderFilter);
     const term = filter.trim().toLowerCase();
     if (term) list = list.filter((p) => p.name.toLowerCase().includes(term));
     list = [...list].sort((a, b) => {
@@ -168,7 +230,7 @@ export default function ProjectPage() {
       return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
     });
     return list;
-  }, [projects, viewFilter, activeTag, filter, sortBy]);
+  }, [projects, viewFilter, activeTag, filter, sortBy, folderFilter]);
 
   const viewCounts = useMemo(() => ({
     all: projects.filter((p) => !p.trashed).length,
@@ -197,7 +259,7 @@ export default function ProjectPage() {
       return;
     }
     try {
-      const created = await createProject({ name, template: createTemplate || undefined });
+      const created = await createProject({ name, template: createTemplate || undefined, folder: newProjectFolder || undefined });
       setCreateOpen(false);
       setCreateName('');
       await loadProjects();
@@ -340,7 +402,7 @@ export default function ProjectPage() {
   const handleImportZip = async (file: File) => {
     setImporting(true);
     try {
-      const res = await importZip({ file, projectName: file.name.replace(/\.zip$/i, '') || t('Imported Project') });
+      const res = await importZip({ file, projectName: file.name.replace(/\.zip$/i, '') || t('Imported Project'), folder: newProjectFolder || undefined });
       if (!res.ok || !res.project) {
         throw new Error(res.error || t('导入失败'));
       }
@@ -363,7 +425,7 @@ export default function ProjectPage() {
     setImportProgress({ phase: 'download', percent: 0 });
     try {
       const res = await importArxivSSE(
-        { arxivIdOrUrl: arxivInput.trim() },
+        { arxivIdOrUrl: arxivInput.trim(), folder: newProjectFolder || undefined },
         (prog) => setImportProgress(prog)
       );
       if (!res.ok || !res.project) {
@@ -502,6 +564,55 @@ export default function ProjectPage() {
           </div>
         </header>
 
+        {folders.length > 0 && (
+          <div className="project-folders">
+            <div className="project-folders-label">{t('Projects are stored in')}</div>
+            <div className="project-folders-list">
+              {folders.map((folder) => (
+                <div
+                  key={folder.path}
+                  className={`folder-chip ${folderFilter === folder.path ? 'active' : ''} ${folder.exists ? '' : 'missing'} ${folder.cloud === 'google' ? 'google' : ''}`}
+                  title={folder.exists ? folder.path : t('{{path}} is not available right now', { path: folder.path })}
+                >
+                  <button className="folder-chip-main" onClick={() => setFolderFilter(folderFilter === folder.path ? '' : folder.path)}>
+                    <span className="folder-chip-icon">{folder.cloud === 'google' ? '☁︎' : folder.primary ? '🏠' : '📁'}</span>
+                    <span className={`folder-chip-path ${folder.primary ? 'full' : ''}`}>{folder.primary ? folder.path : shortFolder(folder.path)}</span>
+                    <span className="folder-chip-count">{folder.projectCount}</span>
+                  </button>
+                  <button
+                    className={`folder-chip-target ${newProjectFolder === folder.path ? 'on' : ''}`}
+                    onClick={() => chooseTargetFolder(folder.path)}
+                    title={newProjectFolder === folder.path ? t('New projects are created here') : t('Create new projects here')}
+                  >
+                    {newProjectFolder === folder.path ? '★' : '☆'}
+                  </button>
+                  {!folder.primary && (
+                    <button className="folder-chip-remove" onClick={() => handleRemoveFolder(folder)} title={t('Stop listing this folder (files are kept)')}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button className="btn ghost small folder-add" onClick={() => setFolderPickerOpen(true)}>
+                + {t('Add folder')}
+              </button>
+            </div>
+            <div className="muted project-folders-hint">
+              {folderFilter
+                ? t('Showing projects in {{path}} — click it again to show all.', { path: shortFolder(folderFilter) })
+                : t('Click a folder to show only its projects · ★ marks where new projects are created')}
+            </div>
+          </div>
+        )}
+
+        {folderPickerOpen && (
+          <FolderPicker
+            existing={folders.map((f) => f.path)}
+            onChoose={handleAddFolder}
+            onClose={() => setFolderPickerOpen(false)}
+          />
+        )}
+
         {status && <div className="status-bar"><div>{status}</div></div>}
 
         <div className="project-toolbar">
@@ -584,6 +695,12 @@ export default function ProjectPage() {
                     ) : (
                       <span className="project-name-link" onClick={() => navigate(`/editor/${project.id}`)}>
                         {project.name}
+                      </span>
+                    )}
+                    {project.folder && project.folder !== primaryFolder && renameState?.id !== project.id && (
+                      <span className="project-folder-badge" title={project.folder}>
+                        {/CloudStorage\/GoogleDrive-|\/Google Drive\//.test(project.folder) ? '☁︎ ' : '📁 '}
+                        {shortFolder(project.folder)}
                       </span>
                     )}
                   </td>
@@ -694,6 +811,16 @@ export default function ProjectPage() {
                   placeholder={t('My Paper')}
                 />
               </div>
+              {folders.length > 1 && (
+                <div className="field">
+                  <label>{t('Location')}</label>
+                  <select className="input" value={newProjectFolder} onChange={(e) => chooseTargetFolder(e.target.value)}>
+                    {folders.map((f) => (
+                      <option key={f.path} value={f.path}>{f.primary ? `${t('Main folder')} — ${f.path}` : f.path}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="field">
                 <label>{t('模板')}</label>
                 <div className="ios-select-wrapper">
