@@ -1969,6 +1969,17 @@ How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
   settings and break syncing with a Mac on an older Maziar. The sidebar section's stored value is
   `openPrism` too, so its saved order and icon carry over.
 
+### Sharing a project
+
+Numenor's Collab tab has **Share this project**: it opens a public link through a tunnel (Cloudflare if
+`cloudflared` is installed, else ngrok using the token in the ngrok app's config, else localtunnel),
+creates a 24-hour invite for that project and copies it. Maziar's Numenor toolbar shows a green
+**Sharing** item while a link is live, with **Stop sharing** (also in the ⋯ menu). Security model
+(`Numenor/apps/backend/src/utils/authUtils.js`): only requests made on this Mac — loopback, addressed to
+localhost, no proxy headers — are trusted; everything through the tunnel needs an invite token, and a
+token only reaches its own project (no other projects, folders, sharing controls or AI routes). Invites
+are signed with a random per-install secret (`data/.numenor-collab-secret`).
+
 ### Changing Numenor and publishing it
 
 - Edit `Numenor/` in this repo — it is the one source of truth. Try changes in a browser with

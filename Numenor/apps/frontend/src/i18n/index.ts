@@ -10,7 +10,9 @@ function getInitialLang() {
   if (typeof window === 'undefined') return defaultLang;
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === 'zh-CN' || stored === 'en-US') return stored;
-  return defaultLang;
+  // First visit (e.g. someone opening an invite link): follow the browser's language.
+  const browser = (window.navigator?.language || '').toLowerCase();
+  return browser.startsWith('zh') ? 'zh-CN' : 'en-US';
 }
 
 void i18n

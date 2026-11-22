@@ -14,7 +14,7 @@ import { downloadArxivSource, extractArxivId } from '../services/arxivService.js
 import { getLang, t } from '../i18n/index.js';
 
 export function registerProjectRoutes(fastify) {
-  fastify.get('/api/projects', async () => {
+  fastify.get('/api/projects', async (req) => {
     await ensureDir(DATA_DIR);
     const projects = [];
     const seen = new Set();
@@ -47,6 +47,8 @@ export function registerProjectRoutes(fastify) {
       }
       }
     }
+    // An invited visitor sees only the project they were invited to.
+    if (req.collabAuth?.projectId) return { projects: projects.filter((p) => p.id === req.collabAuth.projectId) };
     return { projects };
   });
 

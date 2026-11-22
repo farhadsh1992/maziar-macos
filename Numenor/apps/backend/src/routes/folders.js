@@ -6,15 +6,12 @@
 import { promises as fs, existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { DATA_DIR, TUNNEL_MODE } from '../config/constants.js';
-import { getClientIp, isLocalAddress } from '../utils/authUtils.js';
+import { DATA_DIR } from '../config/constants.js';
+import { isLocalRequest } from '../utils/authUtils.js';
 import { expandHome, getExtraFolders, setExtraFolders, getProjectFolders } from '../services/projectService.js';
 
 function isThisComputer(req) {
-  const tunnelActive = !['false', '0', 'no'].includes(String(TUNNEL_MODE).toLowerCase().trim());
-  if (tunnelActive) return false; // behind a tunnel every request looks local
-  if (req.headers?.['x-forwarded-for']) return false;
-  return isLocalAddress(getClientIp(req));
+  return isLocalRequest(req);
 }
 
 function localOnly(req, reply) {

@@ -49,6 +49,16 @@ final class NumenorServer: ObservableObject {
     /// Output of the setup steps and of the server itself (last ~30 000 characters).
     @Published private(set) var log = ""
 
+    /// Public share link state, as reported by Numenor (`/api/share/status`). Sharing is started from a
+    /// project's Collab tab ("Share this project"); Maziar shows it and can stop it.
+    struct Share: Equatable {
+        var active = false
+        var url = ""
+        var provider = ""
+    }
+    @Published private(set) var share = Share()
+    private var shareTimer: Timer?
+
     private var process: Process?
     private var stopRequested = false
     private var starting = false
@@ -365,7 +375,10 @@ final class NumenorServer: ObservableObject {
 
             let url = URL(string: "http://127.0.0.1:\(port)/")!
             if await waitUntilHealthy(port: port) {
-                if self.process === process { state = .running(url) }
+                if self.process === process {
+                    state = .running(url)
+                    startSharePolling()
+                }
             } else if self.process === process {
                 terminateProcess()
                 state = .failed("Numenor did not start. See the log below.")
@@ -384,6 +397,9 @@ final class NumenorServer: ObservableObject {
     }
 
     private func terminateProcess() {
+        shareTimer?.invalidate()
+        shareTimer = nil
+        share = Share()
         stopRequested = true
         if let proc = process, proc.isRunning { proc.terminate() }
         process = nil
@@ -401,6 +417,44 @@ final class NumenorServer: ObservableObject {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
         return false
+    }
+
+    // MARK: - Sharing
+
+    private func shareEndpoint(_ path: String) -> URL? {
+        guard case .running(let base) = state else { return nil }
+        return URL(string: path, relativeTo: base)
+    }
+
+    private func startSharePolling() {
+        shareTimer?.invalidate()
+        refreshShare()
+        shareTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+            Task { @MainActor in NumenorServer.shared.refreshShare() }
+        }
+    }
+
+    func refreshShare() {
+        guard let url = shareEndpoint("/api/share/status") else { return }
+        Task {
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+            let next = Share(active: json["active"] as? Bool ?? false, url: json["url"] as? String ?? "", provider: json["provider"] as? String ?? "")
+            if next != share { share = next }
+        }
+    }
+
+    /// Turns the public link off — every invite link stops working.
+    func stopSharing() {
+        guard let url = shareEndpoint("/api/share/stop") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        Task {
+            _ = try? await URLSession.shared.data(for: request)
+            refreshShare()
+        }
     }
 
     // MARK: - Shell helpers

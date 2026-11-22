@@ -19,7 +19,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import PdfViewer, { type PdfViewerHandle, type PdfZoomMode } from './PdfViewer';
 import { parseLatexLog, diagnosticsExtension, showDiagnostics, revealLine, type LatexDiagnostic } from '../latex/diagnostics';
 import { spellExtension } from '../latex/spell';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, type ShareState } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -1166,6 +1166,10 @@ export default function EditorPage() {
   const [collabStatus, setCollabStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [collabInviteBusy, setCollabInviteBusy] = useState(false);
   const [collabInviteLink, setCollabInviteLink] = useState('');
+  // Maziar/Numenor sharing: the public link invited collaborators come in through (owner only).
+  const [share, setShare] = useState<ShareState | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const isGuest = Boolean(getCollabToken());
   const [collabServer, setCollabServerState] = useState(() => getCollabServer() || (typeof window === 'undefined' ? '' : window.location.origin));
   const [collabName, setCollabName] = useState(() => loadCollabName() || 'Guest');
   const [collabToken] = useState(() => getCollabToken());
@@ -1384,7 +1388,8 @@ export default function EditorPage() {
       if (!res.ok || !res.token) {
         throw new Error(t('邀请生成失败'));
       }
-      const baseInput = normalizeServerUrl(collabServer) || (typeof window === 'undefined' ? '' : window.location.origin);
+      // When sharing is on, invites point at the public link; otherwise at the address typed above.
+      const baseInput = (share?.active && share.url) || normalizeServerUrl(collabServer) || (typeof window === 'undefined' ? '' : window.location.origin);
       const base = baseInput.replace(/\/$/, '');
       const link = `${base}/collab?token=${encodeURIComponent(res.token)}`;
       setCollabInviteLink(link);
@@ -1397,7 +1402,63 @@ export default function EditorPage() {
     } finally {
       setCollabInviteBusy(false);
     }
-  }, [collabServer, projectId, t]);
+  }, [collabServer, projectId, share, t]);
+
+  // ---------- Maziar: one-click sharing ----------
+  useEffect(() => {
+    if (isGuest || activeSidebar !== 'collab') return;
+    let stop = false;
+    const poll = () => shareStatus().then((s) => { if (!stop) setShare(s); }).catch(() => { if (!stop) setShare(null); });
+    poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [activeSidebar, isGuest]);
+
+  /** Starts the public link if needed, creates an invite for this project and copies it. */
+  const shareThisProject = useCallback(async () => {
+    if (!projectId) return;
+    setShareBusy(true);
+    try {
+      let current = await shareStatus();
+      if (!current.active) {
+        setStatus(t('Starting a share link… (can take up to 30 seconds)'));
+        current = await startShare();
+      }
+      setShare(current);
+      const res = await createCollabInvite(projectId);
+      if (!res.ok || !res.token) throw new Error(t('邀请生成失败'));
+      const link = `${current.url.replace(/\/$/, '')}/collab?token=${encodeURIComponent(res.token)}`;
+      setCollabInviteLink(link);
+      if (!collabEnabled && activePath && isTextPath(activePath)) setCollabEnabled(true);
+      try {
+        await navigator.clipboard.writeText(link);
+        setStatus(t('Invite link copied — send it to the people you want to edit this project.'));
+      } catch {
+        setStatus(t('Invite link ready — copy it from the Collab tab.'));
+      }
+    } catch (err) {
+      setStatus(t('Couldn’t share: {{error}}', { error: (err as Error).message }));
+      shareStatus().then(setShare).catch(() => {});
+    } finally {
+      setShareBusy(false);
+    }
+  }, [projectId, collabEnabled, activePath, t]);
+
+  const stopSharingNow = useCallback(async () => {
+    setShareBusy(true);
+    try {
+      setShare(await stopShare());
+      setCollabInviteLink('');
+      setStatus(t('Sharing stopped — invite links no longer work.'));
+    } catch (err) {
+      setStatus(String((err as Error).message || err));
+    } finally {
+      setShareBusy(false);
+    }
+  }, [t]);
 
   const copyInviteLink = useCallback(async () => {
     if (!collabInviteLink) return;
@@ -4103,6 +4164,41 @@ export default function EditorPage() {
                   </div>
                 </div>
                 <div className="collab-panel">
+                  {isGuest ? (
+                    <div className="share-box guest">
+                      <div className="share-title">{t('You were invited to this project')}</div>
+                      <div className="muted share-text">{t('Your edits appear for everyone working on it, live. Connect below if you are not connected yet.')}</div>
+                    </div>
+                  ) : (
+                    <div className={`share-box ${share?.active ? 'on' : ''}`}>
+                      <div className="share-head">
+                        <span className={`share-dot ${share?.active ? 'on' : share?.starting || shareBusy ? 'starting' : ''}`} />
+                        <span className="share-title">
+                          {share?.active
+                            ? t('Sharing is on')
+                            : share?.starting || shareBusy
+                              ? t('Starting…')
+                              : t('Share this project with other people')}
+                        </span>
+                        {share?.active && <span className="share-provider">{share.provider}</span>}
+                      </div>
+                      <div className="muted share-text">
+                        {t('People with the invite link can open and edit this project — only this one — in their browser, live, while Numenor is running on this computer. Links expire after 24 hours or when you stop sharing. AI features stay yours.')}
+                      </div>
+                      {share?.note && <div className="share-note">{share.note}</div>}
+                      {share?.error && !share.active && <div className="share-error">{share.error}</div>}
+                      <div className="collab-row">
+                        <button className="ios-btn primary" onClick={() => shareThisProject()} disabled={shareBusy || !projectId}>
+                          {shareBusy ? t('Working…') : share?.active ? t('New invite link') : t('Share this project')}
+                        </button>
+                        {share?.active && (
+                          <button className="ios-btn secondary" onClick={() => stopSharingNow()} disabled={shareBusy}>
+                            {t('Stop sharing')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="collab-row">
                     <input
                       className="input"
@@ -4955,7 +5051,7 @@ export default function EditorPage() {
                       <div className="vision-result">
                         <div className="muted">{t('预览')}</div>
                         <img
-                          src={`/api/projects/${projectId}/blob?path=${encodeURIComponent(plotAssetPath)}`}
+                          src={blobUrl(projectId, plotAssetPath)}
                           alt={plotAssetPath}
                           style={{ width: '100%', borderRadius: '8px' }}
                         />
@@ -5540,9 +5636,9 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                   <div className="figure-display">
                     {selectedFigure ? (
                       selectedFigure.toLowerCase().endsWith('.pdf') ? (
-                        <object data={`/api/projects/${projectId}/blob?path=${encodeURIComponent(selectedFigure)}`} type="application/pdf" />
+                        <object data={blobUrl(projectId, selectedFigure)} type="application/pdf" />
                       ) : (
-                        <img src={`/api/projects/${projectId}/blob?path=${encodeURIComponent(selectedFigure)}`} alt={selectedFigure} />
+                        <img src={blobUrl(projectId, selectedFigure)} alt={selectedFigure} />
                       )
                     ) : (
                       <div className="figure-empty">

@@ -661,3 +661,25 @@ export function browseFolder(path?: string) {
 export function makeFolder(parent: string, name: string) {
   return maziarRequest<{ ok: true; path: string }>('/api/folders/mkdir', { method: 'POST', body: JSON.stringify({ parent, name }) });
 }
+
+// Sharing (a public link for invited collaborators; only the computer running Numenor can turn it on).
+
+export type ShareState = { active: boolean; starting: boolean; url: string; provider: string; note: string; error: string; startedAt: string | null };
+
+export function shareStatus() {
+  return maziarRequest<{ ok: true } & ShareState>('/api/share/status');
+}
+
+export function startShare() {
+  return maziarRequest<{ ok: true } & ShareState>('/api/share/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export function stopShare() {
+  return maziarRequest<{ ok: true } & ShareState>('/api/share/stop', { method: 'POST', body: JSON.stringify({}) });
+}
+
+/** URL of a project file for <img>/<object> — carries the invite token for invited visitors. */
+export function blobUrl(projectId: string, filePath: string) {
+  const token = getCollabToken();
+  return `/api/projects/${projectId}/blob?path=${encodeURIComponent(filePath)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+}

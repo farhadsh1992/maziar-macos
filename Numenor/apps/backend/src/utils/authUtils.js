@@ -1,5 +1,5 @@
 import { verifyToken } from '../services/collab/tokenService.js';
-import { COLLAB_REQUIRE_TOKEN, TUNNEL_MODE } from '../config/constants.js';
+import { COLLAB_REQUIRE_TOKEN } from '../config/constants.js';
 
 export function isLocalAddress(ip) {
   if (!ip) return false;
@@ -8,16 +8,32 @@ export function isLocalAddress(ip) {
   return false;
 }
 
+// Headers a tunnel or reverse proxy adds. A request carrying any of them came from outside, even though
+// the tunnel client itself connects from 127.0.0.1.
+const PROXY_HEADERS = ['x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'cf-connecting-ip', 'forwarded', 'true-client-ip'];
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/** The visitor's address: the real one behind a tunnel/proxy, else the socket's. */
 export function getClientIp(req) {
-  // In tunnel mode, ignore x-forwarded-for since the tunnel proxy is local
-  const tunnelActive = !['false', '0', 'no'].includes(TUNNEL_MODE.toLowerCase().trim());
-  if (!tunnelActive) {
-    const forwarded = req.headers?.['x-forwarded-for'];
-    if (forwarded) {
-      return String(forwarded).split(',')[0].trim();
-    }
-  }
+  const forwarded = req.headers?.['cf-connecting-ip'] || req.headers?.['x-forwarded-for'];
+  if (forwarded) return String(forwarded).split(',')[0].trim();
   return req.ip;
+}
+
+/**
+ * True only for requests made on this computer: from a loopback address, addressed to localhost, and not
+ * relayed by a tunnel or proxy. Everything else — LAN visitors and anyone coming through a share link —
+ * is remote and needs an invite token.
+ */
+export function isLocalRequest(req) {
+  const socketIp = req.socket?.remoteAddress || req.raw?.socket?.remoteAddress || req.ip;
+  if (!isLocalAddress(socketIp)) return false;
+  for (const header of PROXY_HEADERS) {
+    if (req.headers?.[header]) return false;
+  }
+  const host = String(req.headers?.host || '').toLowerCase();
+  const hostname = host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
+  return !hostname || LOCAL_HOSTS.has(hostname);
 }
 
 export function getBearerToken(req) {
@@ -33,12 +49,39 @@ export function getQueryToken(req) {
   return String(token);
 }
 
+/**
+ * What an invited (remote) visitor may call: the invited project and the few routes its editor needs.
+ * Anything touching other projects, the computer's folders, templates, imports or the owner's AI key is
+ * refused.
+ */
+export function remoteRequestAllowed(req, payload) {
+  const url = String(req.url || '').split('?')[0];
+  const method = req.method;
+  const projectMatch = url.match(/^\/api\/projects\/([^/]+)(\/.*)?$/);
+  if (projectMatch) {
+    const [, id, rest = ''] = projectMatch;
+    if (decodeURIComponent(id) !== payload.projectId) return false;
+    if (rest === '' && method !== 'GET') return false; // no trashing/deleting the project itself
+    if (/^\/(permanent|copy|archive|unarchive|restore|tags|rename-project|collab\/invite)$/.test(rest)) return false;
+    return true;
+  }
+  if (url === '/api/projects' && method === 'GET') return true; // filtered to the invited project
+  if (url === '/api/compile' && method === 'POST') return req.body?.projectId === payload.projectId;
+  if (url.startsWith('/api/spell/')) return true;
+  if (url === '/api/collab/resolve') return true;
+  return false;
+}
+
 export function requireAuthIfRemote(req) {
-  if (!COLLAB_REQUIRE_TOKEN) return { ok: true, payload: null };
-  const clientIp = getClientIp(req);
-  if (isLocalAddress(clientIp)) return { ok: true, payload: null };
+  if (isLocalRequest(req)) return { ok: true, payload: null, local: true };
   const token = getBearerToken(req) || getQueryToken(req);
   const payload = verifyToken(token);
-  if (!payload) return { ok: false, payload: null };
-  return { ok: true, payload };
+  if (!payload) {
+    // NUMENOR_COLLAB_REQUIRE_TOKEN=0 restores open access on a trusted network (never through a share link).
+    if (!COLLAB_REQUIRE_TOKEN && !req.headers?.['x-forwarded-for'] && !req.headers?.['cf-connecting-ip']) {
+      return { ok: true, payload: null, local: false };
+    }
+    return { ok: false, payload: null, local: false };
+  }
+  return { ok: true, payload, local: false };
 }

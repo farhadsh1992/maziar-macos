@@ -1,4 +1,6 @@
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -8,7 +10,28 @@ export const DATA_DIR = process.env.NUMENOR_DATA_DIR || path.join(REPO_ROOT, 'da
 export const TEMPLATE_DIR = path.join(REPO_ROOT, 'templates');
 export const TEMPLATE_MANIFEST = path.join(TEMPLATE_DIR, 'manifest.json');
 export const PORT = Number(process.env.PORT || 8787);
-export const COLLAB_TOKEN_SECRET = process.env.NUMENOR_COLLAB_TOKEN_SECRET || 'numenor-collab-dev';
+// Invite links are signed with this secret. Without NUMENOR_COLLAB_TOKEN_SECRET a random one is created
+// once per install (kept next to the projects, readable only by this user) — a fixed default would let
+// anyone who knows it forge an invite.
+function loadCollabSecret() {
+  if (process.env.NUMENOR_COLLAB_TOKEN_SECRET) return process.env.NUMENOR_COLLAB_TOKEN_SECRET;
+  const file = path.join(DATA_DIR, '.numenor-collab-secret');
+  try {
+    const existing = fs.readFileSync(file, 'utf8').trim();
+    if (existing.length >= 32) return existing;
+  } catch {
+    /* create below */
+  }
+  const secret = crypto.randomBytes(32).toString('hex');
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(file, secret, { mode: 0o600 });
+  } catch {
+    /* keep it in memory for this run */
+  }
+  return secret;
+}
+export const COLLAB_TOKEN_SECRET = loadCollabSecret();
 export const COLLAB_TOKEN_TTL = Number(process.env.NUMENOR_COLLAB_TOKEN_TTL || 24 * 60 * 60);
 const requireTokenEnv = process.env.NUMENOR_COLLAB_REQUIRE_TOKEN;
 export const COLLAB_REQUIRE_TOKEN = requireTokenEnv

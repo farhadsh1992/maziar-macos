@@ -5,7 +5,7 @@ import { safeJoin } from '../utils/pathUtils.js';
 import { isTextFile } from '../utils/texUtils.js';
 import { issueToken, verifyToken } from '../services/collab/tokenService.js';
 import { getOrCreateDoc, setupConnection, flushDocNow, getDocDiagnostics } from '../services/collab/docStore.js';
-import { getClientIp, isLocalAddress } from '../utils/authUtils.js';
+import { isLocalRequest } from '../utils/authUtils.js';
 
 export function registerCollabRoutes(fastify) {
   fastify.post('/api/projects/:id/collab/invite', async (req) => {
@@ -59,7 +59,7 @@ export function registerCollabRoutes(fastify) {
     const tokenValue = Array.isArray(token) ? token[0] : token;
     const filePath = Array.isArray(file) ? file[0] : file;
     const projectParam = Array.isArray(projectId) ? projectId[0] : projectId;
-    const isLocal = isLocalAddress(getClientIp(req));
+    const isLocal = isLocalRequest(req);
     let payload = null;
     if (tokenValue) {
       payload = verifyToken(tokenValue);

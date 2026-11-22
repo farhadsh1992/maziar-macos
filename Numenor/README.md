@@ -32,7 +32,11 @@ but it runs perfectly well on its own.
 - **AI** (any OpenAI-compatible endpoint) — chat and agent editing with diff review, autocomplete,
   compile-error diagnosis, paper search, charts from tables, formula/table recognition from images, and
   template transfer between venues.
-- **Collaboration** — real-time multi-user editing via an invite link.
+- **Share a project** — in a project's Collab tab, **Share this project** opens a public link (Cloudflare
+  Tunnel if `cloudflared` is installed, else ngrok if you have an ngrok account token, else localtunnel),
+  creates an invite and copies it. Invited people edit that project — and only that project — live in
+  their browser while Numenor runs; links expire after 24 hours or when you press **Stop sharing**.
+  Invited visitors can't see other projects, your folders, or use your AI key.
 - **Spelling and grammar** — LaTeX-aware (commands, math, citations and paths are skipped). This uses
   macOS's own checker and is available when Numenor runs inside Maziar.
 
@@ -70,7 +74,8 @@ Set these as environment variables before `npm start` (all optional):
 | `NUMENOR_HOST` | Address to listen on (default `0.0.0.0`; `127.0.0.1` = this computer only) |
 | `NUMENOR_LLM_LOCKED` | `1` = use only the server's AI settings, ignore ones entered in the browser |
 | `NUMENOR_MINERU_API_BASE`, `NUMENOR_MINERU_TOKEN` | MinerU service for PDF → LaTeX template transfer |
-| `NUMENOR_TUNNEL` | `localtunnel`, `cloudflared` or `ngrok` to share a public link for collaboration |
+| `NUMENOR_TUNNEL` | Start a share link at launch: `auto`, `cloudflared`, `ngrok` or `localtunnel` (or use the Collab tab) |
+| `NUMENOR_COLLAB_TOKEN_SECRET` | Secret for signing invite links (default: a random one created per install) |
 
 The AI endpoint, key and model can also be entered in the Settings panel in the browser. Older
 `OPENPRISM_*` variable names still work.

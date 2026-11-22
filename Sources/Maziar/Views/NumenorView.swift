@@ -321,6 +321,21 @@ private struct NumenorBrowser: View {
                 Text("Numenor · localhost:\(url.port ?? 0)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if isLoading { ProgressView().controlSize(.small) }
+                if server.share.active {
+                    Menu {
+                        Text("Shared through \(server.share.provider)")
+                        Text(server.share.url)
+                        Divider()
+                        Text("Invite people from a project\u{2019}s Collab tab (\u{201c}Share this project\u{201d}).")
+                        Button("Stop sharing") { server.stopSharing() }
+                    } label: {
+                        Label("Sharing", systemImage: "dot.radiowaves.left.and.right")
+                            .foregroundStyle(.green)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("A project is shared — invited people can edit it while Numenor runs. Click to stop.")
+                }
                 Menu {
                     Picker("Appearance", selection: $themeRaw) {
                         ForEach(NumenorTheme.allCases) { Text($0.title).tag($0.rawValue) }
@@ -345,6 +360,12 @@ private struct NumenorBrowser: View {
                         Text("Keys and models: Settings \u{2192} AI")
                     }
                     Toggle("Open projects in a separate window", isOn: $popOutProjects)
+                    Divider()
+                    if server.share.active {
+                        Button("Stop sharing") { server.stopSharing() }
+                    } else {
+                        Text("To share a project: open it \u{2192} Collab tab \u{2192} Share this project")
+                    }
                     Divider()
                     Button("Restart server") { server.restart() }
                     Button("Rebuild Numenor") { server.rebuild() }

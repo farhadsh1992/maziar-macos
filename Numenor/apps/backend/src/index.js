@@ -19,8 +19,9 @@ import { registerTransferRoutes } from './routes/transfer.js';
 import { registerSynctexRoutes } from './routes/synctex.js';
 import { registerSpellRoutes } from './routes/spell.js';
 import { registerFolderRoutes } from './routes/folders.js';
-import { tryStartTunnel } from './services/tunnel.js';
-import { requireAuthIfRemote } from './utils/authUtils.js';
+import { registerShareRoutes } from './routes/share.js';
+import { setSharePort, startSharing } from './services/shareService.js';
+import { requireAuthIfRemote, remoteRequestAllowed } from './utils/authUtils.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -40,10 +41,14 @@ fastify.addHook('preHandler', async (req, reply) => {
   if (!req.url.startsWith('/api')) return;
   if (req.method === 'OPTIONS') return;
   if (req.url.startsWith('/api/health')) return;
-  if (req.url.startsWith('/api/collab')) return;
+  if (req.url.startsWith('/api/collab')) return; // token-checked in the collab routes themselves
   const auth = requireAuthIfRemote(req);
   if (!auth.ok) {
-    reply.code(401).send({ ok: false, error: 'Unauthorized' });
+    return reply.code(401).send({ ok: false, error: 'This needs a valid invite link.' });
+  }
+  // An invited visitor only gets the invited project (see remoteRequestAllowed).
+  if (auth.payload && !remoteRequestAllowed(req, auth.payload)) {
+    return reply.code(403).send({ ok: false, error: 'Not available through an invite link.' });
   }
   req.collabAuth = auth.payload || null;
 });
@@ -61,6 +66,7 @@ registerTransferRoutes(fastify);
 registerSynctexRoutes(fastify);
 registerSpellRoutes(fastify);
 registerFolderRoutes(fastify);
+registerShareRoutes(fastify);
 
 // Serve frontend static files in tunnel/production mode
 const __filename = fileURLToPath(import.meta.url);
@@ -95,23 +101,20 @@ console.log('');
 console.log(`  Numenor started at http://localhost:${PORT}`);
 console.log('');
 
+setSharePort(PORT);
 const tunnelMode = TUNNEL_MODE.toLowerCase().trim();
 if (tunnelMode !== 'false' && tunnelMode !== '0' && tunnelMode !== 'no') {
-  console.log('  Tunnel starting...');
-  const result = await tryStartTunnel(PORT);
-  if (result) {
-    console.log(`  Tunnel active (${result.provider}):`);
-    console.log(`  Public URL: ${result.url}`);
-    console.log('  Share this URL to collaborate remotely!');
-    console.log('');
+  console.log('  Starting a share link...');
+  const status = await startSharing(tunnelMode);
+  if (status.active) {
+    console.log(`  Public URL (${status.provider}): ${status.url}`);
+    console.log('  Invite people from a project\'s Collab tab — the URL alone opens nothing.');
   } else {
-    console.log('  Tunnel failed to start. Check that the provider is installed.');
-    console.log('');
+    console.log(`  ${status.error}`);
   }
+  console.log('');
 } else {
-  console.log('  Want remote collaboration? Start with tunnel:');
-  console.log('    NUMENOR_TUNNEL=localtunnel npm start');
-  console.log('    NUMENOR_TUNNEL=cloudflared npm start');
-  console.log('    NUMENOR_TUNNEL=ngrok npm start');
+  console.log('  Share a project from its Collab tab ("Share this project"), or start with');
+  console.log('  NUMENOR_TUNNEL=auto npm start (Cloudflare, ngrok or localtunnel).');
   console.log('');
 }
