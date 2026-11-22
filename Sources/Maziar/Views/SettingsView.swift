@@ -48,8 +48,8 @@ struct SettingsView: View {
 
 private struct AppearanceSettingsTab: View {
     @EnvironmentObject var settings: AppSettings
-    @AppStorage(OpenPrismTheme.greetingKey) private var openPrismGreeting = OpenPrismTheme.defaultGreeting
-    @AppStorage(OpenPrismTheme.spellLanguageKey) private var openPrismSpellLanguage = OpenPrismTheme.defaultSpellLanguage
+    @AppStorage(NumenorTheme.greetingKey) private var numenorGreeting = NumenorTheme.defaultGreeting
+    @AppStorage(NumenorTheme.spellLanguageKey) private var numenorSpellLanguage = NumenorTheme.defaultSpellLanguage
 
     var body: some View {
         Form {
@@ -65,18 +65,18 @@ private struct AppearanceSettingsTab: View {
             }
 
             Section {
-                TextField("Start page title", text: $openPrismGreeting, prompt: Text(OpenPrismTheme.defaultGreeting))
-                Button("Reset to \u{201c}\(OpenPrismTheme.defaultGreeting)\u{201d}") {
-                    openPrismGreeting = OpenPrismTheme.defaultGreeting
+                TextField("Start page title", text: $numenorGreeting, prompt: Text(NumenorTheme.defaultGreeting))
+                Button("Reset to \u{201c}\(NumenorTheme.defaultGreeting)\u{201d}") {
+                    numenorGreeting = NumenorTheme.defaultGreeting
                 }
-                .disabled(openPrismGreeting == OpenPrismTheme.defaultGreeting)
-                Picker("Spelling & grammar", selection: $openPrismSpellLanguage) {
-                    ForEach(OpenPrismTheme.spellLanguages, id: \.code) { Text($0.name).tag($0.code) }
+                .disabled(numenorGreeting == NumenorTheme.defaultGreeting)
+                Picker("Spelling & grammar", selection: $numenorSpellLanguage) {
+                    ForEach(NumenorTheme.spellLanguages, id: \.code) { Text($0.name).tag($0.code) }
                 }
             } header: {
-                Text("OpenPrism")
+                Text("Numenor")
             } footer: {
-                Text("Start page title: the big title on OpenPrism's start page, in place of \u{201c}OpenPrism is Here\u{201d} (leave it empty for OpenPrism's own). Spelling & grammar: American or British English for the editor's checking \u{2014} the editor's own language menu can still pick another language for a while. Both take effect right away.")
+                Text("Start page title: the big title on Numenor's start page, in place of \u{201c}Numenor is Here\u{201d} (leave it empty for Numenor's own). Spelling & grammar: American or British English for the editor's checking \u{2014} the editor's own language menu can still pick another language for a while. Both take effect right away.")
                     .font(.caption)
             }
 

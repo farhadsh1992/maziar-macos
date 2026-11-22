@@ -63,12 +63,12 @@ final class GoogleDriveAccount: ObservableObject {
     }
     @Published var statusMessage: String?
     @Published var errorMessage: String?
-    /// Result of the last OpenPrism-projects pass, shown under its toggle in Settings → Accounts.
-    @Published private(set) var openPrismStatus: String?
-    /// Whether OpenPrism projects are synced too. Kept on this Mac (`maziar.googleDrive.` key) — it's a
+    /// Result of the last Numenor-projects pass, shown under its toggle in Settings → Accounts.
+    @Published private(set) var numenorStatus: String?
+    /// Whether Numenor projects are synced too. Kept on this Mac (`maziar.googleDrive.` key) — it's a
     /// per-Mac choice, not something one Mac should switch on for the other.
-    @Published var syncOpenPrism: Bool {
-        didSet { UserDefaults.standard.set(syncOpenPrism, forKey: Self.syncOpenPrismKey) }
+    @Published var syncNumenor: Bool {
+        didSet { UserDefaults.standard.set(syncNumenor, forKey: Self.syncNumenorKey) }
     }
 
     var isSignedIn: Bool { KeychainHelper.get(forKey: Self.refreshTokenKey) != nil }
@@ -84,7 +84,7 @@ final class GoogleDriveAccount: ObservableObject {
     private static let lastSyncDefaultsKey = "maziar.googleDrive.lastSync"
     private static let stateFileName = "maziar-state.plist"
     private static let autoSyncKey = "maziar.googleDrive.autoSync"
-    private static let syncOpenPrismKey = "maziar.googleDrive.syncOpenPrism"
+    private static let syncNumenorKey = "maziar.googleDrive.syncOpenPrism"
     private static let lastRemoteKey = "maziar.googleDrive.lastRemoteModified"
     private static let dirtyKey = "maziar.googleDrive.localDirty"
 
@@ -132,7 +132,7 @@ final class GoogleDriveAccount: ObservableObject {
         email = UserDefaults.standard.string(forKey: Self.emailDefaultsKey)
         lastSync = UserDefaults.standard.object(forKey: Self.lastSyncDefaultsKey) as? Date
         autoSync = UserDefaults.standard.object(forKey: Self.autoSyncKey) as? Bool ?? true
-        syncOpenPrism = UserDefaults.standard.object(forKey: Self.syncOpenPrismKey) as? Bool ?? true
+        syncNumenor = UserDefaults.standard.object(forKey: Self.syncNumenorKey) as? Bool ?? true
         profileImage = UserDefaults.standard.data(forKey: Self.pictureKey).flatMap(NSImage.init(data:))
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey) ?? ""
     }
@@ -383,22 +383,22 @@ final class GoogleDriveAccount: ObservableObject {
     /// Everything that rides along with the settings snapshot but is stored as separate files.
     private func syncExtras(token: String) async {
         await syncProjectImages(token: token)
-        await syncOpenPrismProjects(token: token)
+        await syncNumenorProjects(token: token)
     }
 
-    private func syncOpenPrismProjects(token: String) async {
-        guard syncOpenPrism else { return }
+    private func syncNumenorProjects(token: String) async {
+        guard syncNumenor else { return }
         do {
-            let summary = try await DriveOpenPrismSync.sync(token: token)
-            openPrismStatus = "OpenPrism projects: \(summary.text)"
+            let summary = try await DriveNumenorSync.sync(token: token)
+            numenorStatus = "Numenor projects: \(summary.text)"
             if let failure = summary.failures.first {
-                errorMessage = "Couldn\u{2019}t sync an OpenPrism project (\(failure))"
+                errorMessage = "Couldn\u{2019}t sync an Numenor project (\(failure))"
             }
             if summary.didChangeLocalFiles {
-                NotificationCenter.default.post(name: .openPrismProjectsChanged, object: nil)
+                NotificationCenter.default.post(name: .numenorProjectsChanged, object: nil)
             }
         } catch {
-            errorMessage = "Couldn\u{2019}t sync OpenPrism projects: \(error.localizedDescription)"
+            errorMessage = "Couldn\u{2019}t sync Numenor projects: \(error.localizedDescription)"
         }
     }
 

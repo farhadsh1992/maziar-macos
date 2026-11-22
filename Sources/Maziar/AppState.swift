@@ -10,7 +10,8 @@ enum Route: Equatable {
 enum AppSection: String, CaseIterable, Identifiable {
     case papers
     case projects
-    case openPrism
+    /// Stored as "openPrism" (its name before it became Numenor) so saved section order and icons carry over.
+    case numenor = "openPrism"
     case conferences
     case journals
     case library
@@ -22,7 +23,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .papers: return "Projects"
         case .projects: return "Editor"
-        case .openPrism: return "OpenPrism"
+        case .numenor: return "Numenor"
         case .conferences: return "Conferences"
         case .journals: return "Journals"
         case .library: return "Library"
@@ -34,7 +35,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .papers: return "doc.badge.clock"
         case .projects: return "doc.richtext"
-        case .openPrism: return "triangle"
+        case .numenor: return "triangle"
         case .conferences: return "calendar.badge.clock"
         case .journals: return "book.closed"
         case .library: return "books.vertical"
@@ -66,7 +67,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 @MainActor
 final class AppState: ObservableObject {
     @Published var route: Route = .projectList
-    @Published var section: AppSection = .papers
+    /// Start-up section. `open Maziar.app --args -MaziarOpenSection <rawValue>` (e.g. `openPrism` for
+    /// Numenor) opens a specific one — handy for checking a section after a build without clicking.
+    @Published var section: AppSection = UserDefaults.standard.string(forKey: "MaziarOpenSection")
+        .flatMap(AppSection.init(rawValue:)) ?? .papers
     /// Non-nil when a user-added custom page (Settings → Custom Pages) is the active sidebar
     /// selection instead of one of the fixed `AppSection` cases — kept separate from `section`
     /// since `AppSection` is a fixed, `CaseIterable` enum that can't grow a case per custom page.

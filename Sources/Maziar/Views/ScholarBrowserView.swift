@@ -209,7 +209,7 @@ struct ScholarBrowserView: NSViewRepresentable {
         /// is what makes the popup share the parent page's session/cookies, letting an OAuth-style
         /// popup flow actually complete), hosted in a real, separate `NSWindow`.
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            // An OpenPrism project opened in its own window (see `OpenPrismTheme.pageScript`) is a full
+            // An Numenor project opened in its own window (see `NumenorTheme.pageScript`) is a full
             // editor, not a small sign-in popup — give it an editor-sized, properly titled window.
             let isEditorWindow = navigationAction.request.url?.path.hasPrefix("/editor/") == true
             let width = windowFeatures.width?.doubleValue ?? (isEditorWindow ? 1280 : 520)
@@ -225,7 +225,7 @@ struct ScholarBrowserView: NSViewRepresentable {
                 backing: .buffered,
                 defer: false
             )
-            window.title = isEditorWindow ? "OpenPrism" : "Sign In"
+            window.title = isEditorWindow ? "Numenor" : "Sign In"
             window.contentView = popupWebView
             window.delegate = self
             // `NSWindow`'s default `isReleasedWhenClosed = true` makes AppKit itself release the

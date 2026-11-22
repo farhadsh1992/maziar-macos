@@ -1,8 +1,8 @@
 import AppKit
 
 // MaziarSpell — a small helper that exposes macOS's spelling and grammar checker (NSSpellChecker) to the
-// OpenPrism editor Maziar embeds. OpenPrism's Node backend starts it once (path in MAZIAR_SPELL_HELPER,
-// set by OpenPrismServer) and talks to it over stdin/stdout, one JSON object per line:
+// Numenor editor Maziar embeds. Numenor's Node backend starts it once (path in MAZIAR_SPELL_HELPER,
+// set by NumenorServer) and talks to it over stdin/stdout, one JSON object per line:
 //
 //   → {"id":1,"op":"check","text":"…","language":"en","grammar":true}
 //   ← {"id":1,"issues":[{"from":4,"to":8,"kind":"spelling","message":"…","suggestions":["…"]}]}

@@ -24,10 +24,15 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$BIN_NAME"
-# Spelling/grammar helper the embedded OpenPrism editor talks to (found next to the main executable).
+# Spelling/grammar helper the embedded Numenor editor talks to (found next to the main executable).
 if [ -f ".build/$CONFIG/MaziarSpell" ]; then
   cp ".build/$CONFIG/MaziarSpell" "$APP_DIR/Contents/MacOS/MaziarSpell"
 fi
+
+# Numenor's source (the second editor, also github.com/farhadsh1992/numenor). NumenorServer copies it into
+# Application Support, installs its packages and builds it on first use and whenever it changes.
+rsync -a --delete --exclude node_modules --exclude 'apps/frontend/dist' --exclude data --exclude .DS_Store \
+  Numenor/ "$APP_DIR/Contents/Resources/Numenor/"
 
 RESOURCE_BUNDLE=".build/$CONFIG/${BIN_NAME}_${BIN_NAME}.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then

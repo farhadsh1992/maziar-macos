@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+.env
+.env.local
+apps/frontend/dist/
+apps/frontend/.vite/
+apps/backend/.cache/
+data/
+
+AGENTS.md

@@ -17,7 +17,7 @@ struct ContentView: View {
     /// session, so they're left as a plain conditional switch — cheap to recreate, no reason to
     /// keep them alive off-screen.
     @State private var hasActivatedDiagrams = false
-    @State private var hasActivatedOpenPrism = false
+    @State private var hasActivatedNumenor = false
     @State private var activatedCustomPageIDs: Set<UUID> = []
 
     var body: some View {
@@ -28,7 +28,7 @@ struct ContentView: View {
                     OuterSectionSidebar()
                     Divider().opacity(0.4)
                     ZStack {
-                        if appState.selectedCustomPageID == nil && appState.section != .diagrams && appState.section != .openPrism {
+                        if appState.selectedCustomPageID == nil && appState.section != .diagrams && appState.section != .numenor {
                             switch appState.section {
                             case .papers:
                                 PapersView()
@@ -40,7 +40,7 @@ struct ContentView: View {
                                 JournalsView()
                             case .library:
                                 LibraryView()
-                            case .diagrams, .openPrism:
+                            case .diagrams, .numenor:
                                 EmptyView() // unreachable; handled below, kept permanently mounted
                             }
                         }
@@ -52,9 +52,9 @@ struct ContentView: View {
                                 .allowsHitTesting(isActive)
                         }
 
-                        if hasActivatedOpenPrism {
-                            let isActive = appState.selectedCustomPageID == nil && appState.section == .openPrism
-                            OpenPrismView()
+                        if hasActivatedNumenor {
+                            let isActive = appState.selectedCustomPageID == nil && appState.section == .numenor
+                            NumenorView()
                                 .opacity(isActive ? 1 : 0)
                                 .allowsHitTesting(isActive)
                         }
@@ -71,14 +71,14 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onChange(of: appState.section) { _, newValue in
                         if newValue == .diagrams { hasActivatedDiagrams = true }
-                        if newValue == .openPrism { hasActivatedOpenPrism = true }
+                        if newValue == .numenor { hasActivatedNumenor = true }
                     }
                     .onChange(of: appState.selectedCustomPageID) { _, newValue in
                         if let newValue { activatedCustomPageIDs.insert(newValue) }
                     }
                     .onAppear {
                         if appState.section == .diagrams { hasActivatedDiagrams = true }
-                        if appState.section == .openPrism { hasActivatedOpenPrism = true }
+                        if appState.section == .numenor { hasActivatedNumenor = true }
                         if let id = appState.selectedCustomPageID { activatedCustomPageIDs.insert(id) }
                     }
                 }

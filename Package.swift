@@ -11,8 +11,7 @@ let package = Package(
             resources: [
                 .copy("Resources/Templates"),
                 .copy("Resources/Logo.png"),
-                .copy("Resources/CVAutoFillLogo.png"),
-                .copy("Resources/OpenPrism")
+                .copy("Resources/CVAutoFillLogo.png")
             ]
         ),
         // Spelling/grammar helper for the embedded OpenPrism editor (see Sources/MaziarSpell/main.swift).

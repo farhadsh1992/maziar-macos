@@ -165,14 +165,14 @@ final class AISettings: ObservableObject {
     @Published var codePageModel: String = "" {
         didSet { UserDefaults.standard.set(codePageModel, forKey: Self.codePageModelKey) }
     }
-    /// Which provider the OpenPrism editor's AI uses — nil means "same as the AI Assistant". The model is
-    /// that provider's model from Settings \u{2192} AI, and OpenPrism never asks for a key of its own.
-    @Published var openPrismProvider: AIProviderKind? {
+    /// Which provider the Numenor editor's AI uses — nil means "same as the AI Assistant". The model is
+    /// that provider's model from Settings \u{2192} AI, and Numenor never asks for a key of its own.
+    @Published var numenorProvider: AIProviderKind? {
         didSet {
-            if let openPrismProvider {
-                UserDefaults.standard.set(openPrismProvider.rawValue, forKey: Self.openPrismProviderKey)
+            if let numenorProvider {
+                UserDefaults.standard.set(numenorProvider.rawValue, forKey: Self.numenorProviderKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: Self.openPrismProviderKey)
+                UserDefaults.standard.removeObject(forKey: Self.numenorProviderKey)
             }
         }
     }
@@ -200,7 +200,7 @@ final class AISettings: ObservableObject {
     private static let deckModelKey = "maziar.ai.deckModel"
     private static let codePageProviderKey = "maziar.ai.codePageProvider"
     private static let codePageModelKey = "maziar.ai.codePageModel"
-    private static let openPrismProviderKey = "maziar.ai.openPrismProvider"
+    private static let numenorProviderKey = "maziar.ai.openPrismProvider"
     private static let inputPriceKey = "maziar.ai.inputPricePerMillion"
     private static let outputPriceKey = "maziar.ai.outputPricePerMillion"
 
@@ -308,7 +308,7 @@ final class AISettings: ObservableObject {
             codePageProvider = nil
         }
         codePageModel = UserDefaults.standard.string(forKey: Self.codePageModelKey) ?? ""
-        openPrismProvider = UserDefaults.standard.string(forKey: Self.openPrismProviderKey).flatMap(AIProviderKind.init(rawValue:))
+        numenorProvider = UserDefaults.standard.string(forKey: Self.numenorProviderKey).flatMap(AIProviderKind.init(rawValue:))
 
         inputPricePerMillion = Self.loadPricing(key: Self.inputPriceKey, defaults: Self.defaultInputPricePerMillion)
         outputPricePerMillion = Self.loadPricing(key: Self.outputPriceKey, defaults: Self.defaultOutputPricePerMillion)
@@ -476,22 +476,22 @@ final class AISettings: ObservableObject {
 }
 
 
-// MARK: - OpenPrism
+// MARK: - Numenor
 
 extension AISettings {
-    /// Which provider the OpenPrism editor should use right now.
-    var effectiveOpenPrismProvider: AIProviderKind { openPrismProvider ?? activeProvider }
+    /// Which provider the Numenor editor should use right now.
+    var effectiveNumenorProvider: AIProviderKind { numenorProvider ?? activeProvider }
 
-    /// Providers that have an API key saved — the ones OpenPrism can actually be pointed at.
-    var openPrismSelectableProviders: [AIProviderKind] {
+    /// Providers that have an API key saved — the ones Numenor can actually be pointed at.
+    var numenorSelectableProviders: [AIProviderKind] {
         AIProviderKind.allCases.filter { isConfigured($0) }
     }
 
-    /// What the OpenPrism server needs to call the chosen provider, or nil when that provider has no key.
-    /// OpenPrism speaks the OpenAI chat-completions protocol, so providers that don't natively
+    /// What the Numenor server needs to call the chosen provider, or nil when that provider has no key.
+    /// Numenor speaks the OpenAI chat-completions protocol, so providers that don't natively
     /// (Claude, Gemini) go through their own OpenAI-compatible endpoints.
-    func openPrismConfig() -> OpenPrismServer.AIConfig? {
-        let provider = effectiveOpenPrismProvider
+    func numenorConfig() -> NumenorServer.AIConfig? {
+        let provider = effectiveNumenorProvider
         guard let key = apiKey(for: provider), !key.isEmpty else { return nil }
         let base = baseURL(for: provider).trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         let endpoint: String
@@ -501,6 +501,6 @@ extension AISettings {
             endpoint = base + "/chat/completions"
         }
         let modelName = model(for: provider)
-        return OpenPrismServer.AIConfig(endpoint: endpoint, apiKey: key, model: modelName, label: "\(provider.displayName) \u{B7} \(modelName)")
+        return NumenorServer.AIConfig(endpoint: endpoint, apiKey: key, model: modelName, label: "\(provider.displayName) \u{B7} \(modelName)")
     }
 }

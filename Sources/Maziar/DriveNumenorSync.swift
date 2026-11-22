@@ -1,21 +1,23 @@
 import Foundation
 import CryptoKit
 
-/// Keeps OpenPrism projects (`…/Maziar/OpenPrism/data/<project id>/`) the same on every Mac, through the
+/// Keeps Numenor projects (`…/Maziar/Numenor/data/<project id>/`) the same on every Mac, through the
 /// Drive app-data folder the settings snapshot already uses (scope `drive.appdata`, nothing else).
 ///
-/// Each project is stored in Drive as one zip, `op-<project id>.zip`. Per project, a pass compares three
+/// Each project is stored in Drive as one zip, `op-<project id>.zip` (the name and the
+/// `maziar.googleDrive.openPrismState` key date from when the editor was OpenPrism; they're kept so Macs
+/// on older and newer Maziar versions stay in sync). Per project, a pass compares three
 /// things — this Mac's folder, the Drive zip, and what this Mac recorded at its last successful sync — and
 /// then does exactly one of: nothing, upload, download, or (when both sides changed) keep the newer side.
 /// Nothing is ever destroyed silently: whatever gets replaced or removed here is first zipped into
-/// `…/OpenPrism/sync-backups/`, and a Drive copy that gets overwritten is saved there first.
+/// `…/Numenor/sync-backups/`, and a Drive copy that gets overwritten is saved there first.
 ///
 /// Deletions follow the same rule: a project removed on one Mac is removed from Drive and then, on the
 /// other Mac, moved to the backups folder — but only if that Mac hasn't changed it since.
 ///
-/// Left out on purpose: OpenPrism's compile output (`.compile/`, rebuilt on demand), and OpenPrism's own
+/// Left out on purpose: Numenor's compile output (`.compile/`, rebuilt on demand), and Numenor's own
 /// settings (API keys live in its page storage, not in these folders, and secrets stay on each Mac).
-enum DriveOpenPrismSync {
+enum DriveNumenorSync {
     static let namePrefix = "op-"
     static let nameSuffix = ".zip"
     private static let stateKey = "maziar.googleDrive.openPrismState"
@@ -45,10 +47,14 @@ enum DriveOpenPrismSync {
 
     // MARK: - Locations
 
-    static var baseDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Maziar/OpenPrism", isDirectory: true)
-    }
+    /// `…/Application Support/Maziar/Numenor`. The first time it's asked for, a folder from the OpenPrism
+    /// days (`…/Maziar/OpenPrism`) is moved here — before the server or a sync pass can touch either.
+    static let baseDirectory: URL = {
+        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Maziar/Numenor", isDirectory: true)
+        NumenorServer.migrateLegacyFolder(into: url)
+        return url
+    }()
     static var dataDirectory: URL { baseDirectory.appendingPathComponent("data", isDirectory: true) }
     static var backupDirectory: URL { baseDirectory.appendingPathComponent("sync-backups", isDirectory: true) }
 
@@ -345,6 +351,6 @@ enum DriveOpenPrismSync {
 }
 
 extension Notification.Name {
-    /// Posted after OpenPrism project folders were changed by a Drive sync.
-    static let openPrismProjectsChanged = Notification.Name("maziar.openPrismProjectsChanged")
+    /// Posted after Numenor project folders were changed by a Drive sync.
+    static let numenorProjectsChanged = Notification.Name("maziar.openPrismProjectsChanged")
 }

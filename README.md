@@ -1938,32 +1938,44 @@ Finder" button couldn't be click-tested in this environment — no Screen Record
 permission here — so that part rests on the build succeeding and the store-level logic underneath
 it being verified for real, same caveat as the rest of this app's UI throughout this README.
 
-## OpenPrism
+## Numenor
 
-A second, web-based LaTeX editor in its own sidebar section, built on
-[OpenDCAI/OpenPrism](https://github.com/OpenDCAI/OpenPrism) (a Node app: React + Fastify).
-Maziar runs it as a child process instead of linking it:
+A second, web-based LaTeX editor in its own sidebar section: **Numenor**, a Node app (React + Fastify)
+based on [OpenPrism](https://github.com/OpenDCAI/OpenPrism) (MIT). Its full source lives in this repo's
+[`Numenor/`](Numenor/) folder and is also published on its own at
+[farhadsh1992/numenor](https://github.com/farhadsh1992/numenor) for anyone who wants just the editor.
 
-- `OpenPrismServer.swift` clones it into `~/Library/Application Support/Maziar/OpenPrism/repo`,
-  runs `npm install` + `npm run build` on first use, then starts `node apps/backend/src/index.js` on
-  a free localhost port (from 8787). Projects live in `…/OpenPrism/data/<id>/`, outside the checkout.
-  A force-quit leaves the node child running, so `server.pid` is used to reap it on the next start.
-- `Views/OpenPrismView.swift` embeds the UI via `ScholarBrowserView`. Opening a project gives it its
-  own editor-sized window.
-- Nothing is forked. On each start Maziar patches the checkout (binds to 127.0.0.1; ignores the
-  page's own AI settings), and `OpenPrismTheme.pageScript` adds English-by-default, a dark mode,
-  the custom start-page title (Settings → Appearance → OpenPrism) and hides OpenPrism's own AI dialog.
-- Its AI is Maziar's: the provider/model from Settings → AI is passed in as `OPENPRISM_LLM_*`
-  environment variables (Claude and Gemini through their OpenAI-compatible endpoints), so
-  changing the provider restarts the server. OpenPrism never asks for its own API key.
+How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
 
-### OpenPrism editor improvements (Phase 10)
+- `build_app.sh` copies `Numenor/` into the app bundle. On first use — and whenever the bundled source
+  changes, tracked by a digest in `…/Maziar/Numenor/app/.maziar-source` — Maziar copies it to
+  `~/Library/Application Support/Maziar/Numenor/app`, runs `npm install` (only when `package-lock.json`
+  changed) and `npm run build`, then starts `node apps/backend/src/index.js` on a free localhost port
+  (from 8787). So a Maziar update brings its Numenor along; no download, no patching.
+- Projects live in `…/Maziar/Numenor/data/<id>/`, outside the code folder. Installs from the OpenPrism
+  days (`…/Maziar/OpenPrism`) are moved over automatically (projects, backups, and the downloaded
+  node_modules), before Drive sync or the server touch the new folder.
+- Maziar's settings go in through the environment: `NUMENOR_HOST=127.0.0.1` (this Mac only),
+  `NUMENOR_LLM_LOCKED=1` + `NUMENOR_LLM_*` (Maziar's AI provider/model/key from Settings → AI; Claude and
+  Gemini via their OpenAI-compatible endpoints), `NUMENOR_DATA_DIR`, `MAZIAR_SPELL_HELPER`.
+- `NumenorTheme.pageScript` (injected into the page) adds English-by-default, a dark mode, the custom
+  start-page title and the spelling language (Settings → Appearance → Numenor), and hides Numenor's own
+  AI dialog. Opening a project gives it its own editor-sized window.
+- Stored setting names still say `openPrism` (`maziar.openPrism.*`, `maziar.ai.openPrismProvider`,
+  `maziar.googleDrive.syncOpenPrism`, Drive files `op-<id>.zip`), on purpose: renaming them would reset
+  settings and break syncing with a Mac on an older Maziar. The sidebar section's stored value is
+  `openPrism` too, so its saved order and icon carry over.
 
-Maziar's changes to OpenPrism's editor ship as one patch against upstream,
-`Sources/Maziar/Resources/OpenPrism/maziar-openprism.patch`. `OpenPrismServer.applyMaziarPatchIfNeeded`
-applies it to a clean checkout whenever the patch or the upstream commit changes (tracked in
-`repo/.maziar-patch`) and rebuilds the interface; if upstream moves so far that it no longer applies,
-OpenPrism runs unchanged and the log says so. What it adds:
+### Changing Numenor and publishing it
+
+- Edit `Numenor/` in this repo — it is the one source of truth. Try changes in a browser with
+  `scripts/numenor-dev.sh` (port 8790, same projects as Maziar, debug spell helper — `swift build` first),
+  then `./build_app.sh release` to get them into Maziar.
+- Commit in maziar as usual, then run **`scripts/push-numenor.sh`**: it pushes maziar and mirrors
+  `Numenor/` into github.com/farhadsh1992/numenor with a commit message built from the maziar commits that
+  touched Numenor. Never edit the numenor repo directly; the next sync would overwrite it.
+
+### What Numenor adds over OpenPrism (Phase 10 onward)
 
 - **Uploads** — files go into the folder they're dropped on (or the selected folder for the Upload
   button), nested folders included; the tree opens to show them and failures appear in the Files panel.
@@ -1973,7 +1985,7 @@ OpenPrism runs unchanged and the log says so. What it adds:
   Cmd/Ctrl + wheel zoom anchored on the pointer; Fit width / Fit page / 100%; Space- or middle-drag to pan.
 - **Opens where you left off** — opening a project compiles it automatically, reopens the last file at
   its cursor/scroll position, keeps your chosen main file, and shows the PDF at the page and offset you
-  last viewed (remembered per project in the page's localStorage, keys `maziar.openprism.<id>.*`).
+  last viewed (remembered per project in the page's localStorage, keys `maziar.numenor.<id>.*`).
 - **`%%%` notes** — a comment starting with `%%%` is shown bold green to the end of the line
   (`strongComments()` in `apps/frontend/src/latex/lang.ts`); `%` and `%%` comments look as before.
 - **Jump buttons and editor zoom** — **→** / **←** at the top of the editor/PDF divider: → shows the
@@ -1989,21 +2001,15 @@ OpenPrism runs unchanged and the log says so. What it adds:
   opens and flashes the line, affected lines glow in the editor (errors #DE2900, warnings #F5C814,
   with a short "switch-on" flicker when they appear; the glow sits on a `::before` layer so Maziar's
   inverted dark mode can counter-invert it back to the same colours), and "Full log" stays available.
-- **Spelling & grammar** — American English by default; Settings → Appearance → OpenPrism → "Spelling &
+- **Spelling & grammar** — American English by default; Settings → Appearance → Numenor → "Spelling &
   grammar" switches between English (US) and (UK) (`maziar.openPrism.spellLanguage`, passed to the page as
-  `window.__maziarSpellLanguage`). through macOS's own checker via the small `MaziarSpell` helper executable
+  `window.__maziarSpellLanguage`), checked through macOS's own checker via the small `MaziarSpell` helper executable
   (second SPM target, copied next to Maziar's binary by `build_app.sh`, path passed as
   `MAZIAR_SPELL_HELPER`). The LaTeX source is masked first (commands, math, citation keys, labels,
   paths, code and verbatim blanked) so only prose is checked (`apps/frontend/src/latex/spell.ts`).
   Hover an underline for suggestions, Ignore, or Add to dictionary; toggle and language are in the
   editor toolbar. Nothing leaves the Mac.
 
-To try OpenPrism changes in a normal browser, `scripts/openprism-dev.sh` runs the checkout on port 8790
-with the same projects folder and the debug spell helper (`swift build` first). Make OpenPrism changes in a separate
-clone with the patch applied, not in Maziar's own checkout — Maziar resets that checkout and re-applies the
-bundled patch whenever the patch changes, discarding uncommitted edits. Regenerate the patch
-from the clone with `git add -N` on new files and `git diff`, excluding the two runtime edits
-`patchBackend()` makes (`host: '127.0.0.1'` and the `MAZIAR_LLM_LOCKED` lines).
 
 ## Google Drive account sync
 
@@ -2012,7 +2018,7 @@ Console) keeps Maziar the same on every Mac you sign in on (`GoogleDriveAccount.
 snapshot of every `maziar.` setting except machine-specific ones (`maziar.library.folderPath`,
 `maziar.texDistribution`, and the `maziar.googleDrive.`, `maziar.readerWindow.`, `maziar.ai.`,
 `maziar.updater.` prefixes), plus project pictures (`DriveImageFiles.swift`) and, optionally,
-OpenPrism projects (`DriveOpenPrismSync.swift`, toggle "Include OpenPrism projects"). Everything
+Numenor projects (`DriveNumenorSync.swift`, toggle "Include Numenor projects"). Everything
 is stored in the Drive app-data folder. API keys are never synced.
 
 **Google sign-in expired** (Google's `invalid_grant`): while the OAuth app stays in **Testing**
