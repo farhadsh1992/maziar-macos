@@ -17,7 +17,9 @@ import {
   uploadTemplate,
   listFolders,
   addFolder,
-  removeFolder
+  removeFolder,
+  moveProject,
+  projectDownloadUrl
 } from '../api/client';
 import type { ProjectMeta, TemplateMeta, TemplateCategory, ProjectFolder } from '../api/client';
 import TransferPanel from './TransferPanel';
@@ -90,6 +92,11 @@ export default function ProjectPage() {
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [folderFilter, setFolderFilter] = useState('');
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<ProjectMeta | null>(null);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moreMenuId, setMoreMenuId] = useState('');
+  const [undoTrash, setUndoTrash] = useState<{ id: string; name: string } | null>(null);
+  const pendingMoveRef = useRef<ProjectMeta | null>(null);
   const [targetFolder, setTargetFolder] = useState(() => {
     try { return localStorage.getItem(TARGET_FOLDER_KEY) || ''; } catch { return ''; }
   });
@@ -177,6 +184,12 @@ export default function ProjectPage() {
     await loadProjects();
     setFolderPickerOpen(false);
     setStatus(t('Added {{path}}', { path }));
+    // Came from the Move dialog's "Add a Google Drive folder…": go back to it.
+    if (pendingMoveRef.current) {
+      const project = pendingMoveRef.current;
+      pendingMoveRef.current = null;
+      setMoveTarget(project);
+    }
   };
 
   const handleRemoveFolder = async (folder: ProjectFolder) => {
@@ -285,13 +298,53 @@ export default function ProjectPage() {
     }
   };
 
+  // Delete moves the project to Trash (with Undo); "Delete forever" in Trash removes it from disk.
   const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(t('删除项目 {{name}}？此操作不可撤销。', { name }))) return;
     try {
       await deleteProject(id);
       await loadProjects();
+      setUndoTrash({ id, name });
+      setStatus(t('Moved “{{name}}” to Trash.', { name }));
     } catch (err) {
       setStatus(t('删除失败: {{error}}', { error: String(err) }));
+    }
+  };
+
+  const undoDelete = async () => {
+    if (!undoTrash) return;
+    try {
+      await trashProject(undoTrash.id, false);
+      await loadProjects();
+      setStatus(t('Restored “{{name}}”.', { name: undoTrash.name }));
+    } catch (err) {
+      setStatus(String(err));
+    } finally {
+      setUndoTrash(null);
+    }
+  };
+
+  const downloadZip = (project: ProjectMeta) => {
+    const link = document.createElement('a');
+    link.href = projectDownloadUrl(project.id);
+    link.download = `${project.name || 'project'}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus(t('Downloading “{{name}}” as a .zip…', { name: project.name }));
+  };
+
+  const handleMove = async (folder: string) => {
+    if (!moveTarget) return;
+    setMoveBusy(true);
+    try {
+      const res = await moveProject(moveTarget.id, folder);
+      await Promise.all([loadProjects(), loadFolders()]);
+      setStatus(res.unchanged ? t('“{{name}}” is already there.', { name: moveTarget.name }) : t('Moved “{{name}}” to {{folder}}', { name: moveTarget.name, folder }));
+      setMoveTarget(null);
+    } catch (err) {
+      setStatus(t('Couldn’t move: {{error}}', { error: (err as Error).message }));
+    } finally {
+      setMoveBusy(false);
     }
   };
 
@@ -314,7 +367,7 @@ export default function ProjectPage() {
   };
 
   const handlePermanentDelete = async (id: string, name: string) => {
-    if (!window.confirm(t('确定永久删除项目 {{name}}？此操作不可撤销。', { name }))) return;
+    if (!window.confirm(t('Delete “{{name}}” forever? Its folder and all its files are removed from disk. This can’t be undone.', { name }))) return;
     try {
       await permanentDeleteProject(id);
       await loadProjects();
@@ -609,11 +662,74 @@ export default function ProjectPage() {
           <FolderPicker
             existing={folders.map((f) => f.path)}
             onChoose={handleAddFolder}
-            onClose={() => setFolderPickerOpen(false)}
+            onClose={() => {
+              setFolderPickerOpen(false);
+              if (pendingMoveRef.current) {
+                setMoveTarget(pendingMoveRef.current);
+                pendingMoveRef.current = null;
+              }
+            }}
           />
         )}
 
-        {status && <div className="status-bar"><div>{status}</div></div>}
+        {moveTarget && (
+          <div className="modal-backdrop" onClick={() => !moveBusy && setMoveTarget(null)}>
+            <div className="modal move-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>{t('Move “{{name}}”', { name: moveTarget.name })}</div>
+                <button className="icon-btn" onClick={() => setMoveTarget(null)} disabled={moveBusy}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div className="muted move-hint">{t('Choose where this project should live. Moving into a Google Drive folder uploads it to Google Drive (through Google Drive for desktop); moving it back out removes it from Google Drive.')}</div>
+                <div className="move-list">
+                  {folders.map((folder) => {
+                    const here = moveTarget.folder === folder.path;
+                    return (
+                      <button
+                        key={folder.path}
+                        className={`move-option ${here ? 'here' : ''} ${folder.cloud === 'google' ? 'google' : ''}`}
+                        onClick={() => !here && handleMove(folder.path)}
+                        disabled={moveBusy || here || !folder.exists}
+                        title={folder.path}
+                      >
+                        <span className="move-icon">{folder.cloud === 'google' ? '☁︎' : folder.primary ? '🏠' : '📁'}</span>
+                        <span className="move-text">
+                          <span className="move-name">{folder.primary ? t('Main folder (this Mac)') : folder.cloud === 'google' ? t('Google Drive') : shortFolder(folder.path)}</span>
+                          <span className="move-path">{folder.path}</span>
+                        </span>
+                        <span className="move-state">{here ? t('Here now') : moveBusy ? '…' : folder.cloud === 'google' ? t('Upload') : t('Move here')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!folders.some((f) => f.cloud === 'google') && (
+                  <div className="move-drive-cta">
+                    <div>{t('No Google Drive folder added yet.')}</div>
+                    <button
+                      className="btn small"
+                      onClick={() => {
+                        pendingMoveRef.current = moveTarget;
+                        setMoveTarget(null);
+                        setFolderPickerOpen(true);
+                      }}
+                    >
+                      {t('Add a Google Drive folder…')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {status && (
+          <div className="status-bar">
+            <div>{status}</div>
+            {undoTrash && (
+              <button className="btn ghost small" onClick={() => undoDelete()}>{t('Undo')}</button>
+            )}
+          </div>
+        )}
 
         <div className="project-toolbar">
           <input
@@ -750,17 +866,28 @@ export default function ProjectPage() {
                     <div className="col-actions-inner">
                       {viewFilter === 'trash' ? (<>
                         <button className="btn ghost" onClick={() => handleTrash(project.id, false)}>{t('恢复')}</button>
-                        <button className="btn ghost" onClick={() => handlePermanentDelete(project.id, project.name)}>{t('永久删除')}</button>
+                        <button className="btn ghost danger" onClick={() => handlePermanentDelete(project.id, project.name)}>{t('Delete forever')}</button>
                       </>) : (<>
                         <button className="btn ghost" onClick={() => navigate(`/editor/${project.id}`)}>{t('打开')}</button>
-                        <button className="btn ghost" onClick={() => setRenameState({ id: project.id, value: project.name })}>{t('重命名')}</button>
-                        <button className="btn ghost" onClick={() => handleCopy(project.id, project.name)}>{t('复制')}</button>
-                        <button className="btn ghost" onClick={() => { setTransferSource({ id: project.id, name: project.name }); setTransferOpen(true); }}>{t('转换')}</button>
-                        {project.archived
-                          ? <button className="btn ghost" onClick={() => handleArchive(project.id, false)}>{t('取消归档')}</button>
-                          : <button className="btn ghost" onClick={() => handleArchive(project.id, true)}>{t('归档')}</button>
-                        }
-                        <button className="btn ghost" onClick={() => handleDelete(project.id, project.name)}>{t('删除')}</button>
+                        <button className="btn ghost" onClick={() => downloadZip(project)} title={t('Download the project as a .zip')}>{t('Download')}</button>
+                        <button className="btn ghost" onClick={() => setMoveTarget(project)} title={t('Move to another projects folder, e.g. Google Drive')}>{t('Move…')}</button>
+                        <div className="row-more">
+                          <button className="btn ghost" onClick={() => setMoreMenuId(moreMenuId === project.id ? '' : project.id)}>{t('More')} ▾</button>
+                          {moreMenuId === project.id && (
+                            <>
+                              <div className="row-more-backdrop" onClick={() => setMoreMenuId('')} />
+                              <div className="ios-dropdown dropdown-down row-more-menu" onClick={() => setMoreMenuId('')}>
+                                <div className="ios-dropdown-item" onClick={() => setRenameState({ id: project.id, value: project.name })}>{t('重命名')}</div>
+                                <div className="ios-dropdown-item" onClick={() => handleCopy(project.id, project.name)}>{t('复制')}</div>
+                                <div className="ios-dropdown-item" onClick={() => { setTransferSource({ id: project.id, name: project.name }); setTransferOpen(true); }}>{t('转换')}</div>
+                                {project.archived
+                                  ? <div className="ios-dropdown-item" onClick={() => handleArchive(project.id, false)}>{t('取消归档')}</div>
+                                  : <div className="ios-dropdown-item" onClick={() => handleArchive(project.id, true)}>{t('归档')}</div>}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <button className="btn ghost danger" onClick={() => handleDelete(project.id, project.name)} title={t('Move to Trash (you can restore it from Trash)')}>{t('删除')}</button>
                       </>)}
                     </div>
                   </td>

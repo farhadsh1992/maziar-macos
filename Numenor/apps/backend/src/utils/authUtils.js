@@ -62,7 +62,7 @@ export function remoteRequestAllowed(req, payload) {
     const [, id, rest = ''] = projectMatch;
     if (decodeURIComponent(id) !== payload.projectId) return false;
     if (rest === '' && method !== 'GET') return false; // no trashing/deleting the project itself
-    if (/^\/(permanent|copy|archive|unarchive|restore|tags|rename-project|collab\/invite)$/.test(rest)) return false;
+    if (/^\/(permanent|copy|move|trash|archive|unarchive|restore|tags|rename-project|collab\/invite)$/.test(rest)) return false;
     return true;
   }
   if (url === '/api/projects' && method === 'GET') return true; // filtered to the invited project

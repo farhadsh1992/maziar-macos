@@ -4631,3 +4631,55 @@ html.maziar-dark .cm-maziar-diag-warning::before {
 
 .share-note { background: rgba(245, 200, 20, 0.16); color: #6b5300; }
 .share-error { background: rgba(222, 41, 0, 0.08); color: #a12222; }
+
+/* ---------- Project row actions, move dialog ---------- */
+.btn.ghost.danger { color: #c62f2f; }
+.btn.ghost.danger:hover { background: rgba(222, 41, 0, 0.08); border-color: rgba(222, 41, 0, 0.35); }
+
+.row-more { position: relative; display: inline-block; }
+.row-more-backdrop { position: fixed; inset: 0; z-index: 40; }
+.row-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 41; min-width: 150px; }
+
+.status-bar .btn.small { margin-left: 10px; }
+
+.modal.move-modal { width: min(560px, calc(100vw - 32px)); }
+.move-hint { font-size: 12px; margin-bottom: 10px; line-height: 1.45; }
+.move-list { display: flex; flex-direction: column; gap: 6px; }
+
+.move-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--maziar-line, #8ec3f0);
+  background: #fff;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.move-option:hover:not(:disabled) { background: #f2f8ff; border-color: var(--maziar-line-strong, #4f9fe3); }
+.move-option.google { background: #f6f9ff; }
+.move-option.here { opacity: 0.6; cursor: default; }
+.move-option:disabled { cursor: default; }
+.move-icon { font-size: 16px; width: 20px; text-align: center; }
+.move-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.move-name { font-weight: 600; font-size: 13px; }
+.move-path { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.move-state { font-size: 11.5px; font-weight: 600; color: #1f5f9e; }
+
+.move-drive-cta {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(66, 133, 244, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.col-actions-inner .btn { white-space: nowrap; }

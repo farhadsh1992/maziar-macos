@@ -19,6 +19,10 @@ but it runs perfectly well on its own.
 - **Project folders** — the Projects page shows where projects are stored; add more folders (e.g. one
   inside Google Drive, iCloud or Dropbox — detected automatically) or remove them, filter by folder, and
   choose where new projects go. Removing a folder only stops listing it; nothing is deleted.
+- **Move, download, delete** — **Move…** puts a project in another projects folder (moving it into a
+  Google Drive folder uploads it to Google Drive; moving it out removes it from there); **Download**
+  saves it as a .zip you can import again; **Delete** moves it to Trash (with Undo), and **Delete
+  forever** in Trash removes it from disk.
 - **Compile and preview** — pdfLaTeX, XeLaTeX, LuaLaTeX, latexmk or Tectonic, with bibliography passes.
   Opening a project compiles it and shows the PDF where you last left it.
 - **PDF viewer** — keeps your page, position and zoom across recompiles; pinch or Cmd/Ctrl + scroll zooms

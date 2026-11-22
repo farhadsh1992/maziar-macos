@@ -683,3 +683,16 @@ export function blobUrl(projectId: string, filePath: string) {
   const token = getCollabToken();
   return `/api/projects/${projectId}/blob?path=${encodeURIComponent(filePath)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
 }
+
+/** Link that downloads a project as a .zip. */
+export function projectDownloadUrl(projectId: string) {
+  const token = getCollabToken();
+  return `/api/projects/${projectId}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+}
+
+export function moveProject(projectId: string, folder: string) {
+  return maziarRequest<{ ok: true; folder: string; unchanged?: boolean }>(`/api/projects/${projectId}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ folder })
+  });
+}

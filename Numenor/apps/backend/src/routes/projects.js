@@ -9,7 +9,9 @@ import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { isTextFile, extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject } from '../services/templateService.js';
-import { getProjectRoot, getProjectFolders, resolveTargetFolder } from '../services/projectService.js';
+import { getProjectRoot, getProjectFolders, resolveTargetFolder, expandHome } from '../services/projectService.js';
+import { buildZip } from '../utils/zipWriter.js';
+import { isLocalRequest } from '../utils/authUtils.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { getLang, t } from '../i18n/index.js';
 
@@ -222,6 +224,58 @@ export function registerProjectRoutes(fastify) {
     const next = { ...meta, trashed: true, trashedAt: new Date().toISOString() };
     await writeJson(metaPath, next);
     return { ok: true };
+  });
+
+  // Download a project as a .zip (its files, without build output) — importable again with "Import project".
+  fastify.get('/api/projects/:id/download', async (req, reply) => {
+    const { id } = req.params;
+    const projectRoot = await getProjectRoot(id);
+    let name = 'project';
+    try {
+      name = (await readJson(path.join(projectRoot, 'project.json'))).name || name;
+    } catch { /* keep default */ }
+    const items = await listFilesRecursive(projectRoot); // skips project.json and .compile/
+    const entries = [];
+    for (const item of items) {
+      if (item.type !== 'file' || path.basename(item.path) === '.DS_Store') continue;
+      const abs = path.join(projectRoot, item.path);
+      const [data, stat] = await Promise.all([fs.readFile(abs), fs.stat(abs)]);
+      entries.push({ name: item.path.split(path.sep).join('/'), data, mtime: stat.mtime });
+    }
+    const zip = buildZip(entries);
+    const safe = name.replace(/[^\p{L}\p{N}._ -]+/gu, '').trim().replace(/\s+/g, '-') || 'project';
+    reply
+      .header('Content-Type', 'application/zip')
+      .header('Content-Disposition', `attachment; filename="${safe.replace(/[^\x20-\x7e]/g, '_')}.zip"; filename*=UTF-8''${encodeURIComponent(safe)}.zip`)
+      .header('Content-Length', zip.length);
+    return reply.send(zip);
+  });
+
+  // Move a project to another project folder (e.g. into or out of a Google Drive folder). Only on this computer.
+  fastify.post('/api/projects/:id/move', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false, error: 'Projects can only be moved on the computer running Numenor.' });
+    const { id } = req.params;
+    const srcRoot = await getProjectRoot(id);
+    const wanted = path.resolve(expandHome(String(req.body?.folder || '')));
+    const folders = await getProjectFolders();
+    const target = folders.find((f) => path.resolve(f) === wanted);
+    if (!target) return reply.code(400).send({ ok: false, error: 'Choose one of the project folders.' });
+    if (path.resolve(path.dirname(srcRoot)) === path.resolve(target)) return { ok: true, folder: target, unchanged: true };
+    const destRoot = path.join(target, id);
+    try {
+      await fs.access(destRoot);
+      return reply.code(409).send({ ok: false, error: 'A project with the same id already exists there.' });
+    } catch { /* free */ }
+    try {
+      await fs.rename(srcRoot, destRoot);
+    } catch (err) {
+      if (err.code !== 'EXDEV' && err.code !== 'EPERM') throw err;
+      // Different volumes (e.g. into Google Drive): copy, check, then remove the original.
+      await copyDir(srcRoot, destRoot);
+      await fs.access(path.join(destRoot, 'project.json'));
+      await fs.rm(srcRoot, { recursive: true, force: true });
+    }
+    return { ok: true, folder: target };
   });
 
   fastify.delete('/api/projects/:id/permanent', async (req) => {
