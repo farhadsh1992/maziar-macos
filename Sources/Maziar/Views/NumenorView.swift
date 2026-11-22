@@ -296,6 +296,27 @@ private struct NumenorBrowser: View {
         )
     }
 
+    /// Pick a new home for all Numenor projects — e.g. a folder in Google Drive, so Google Drive for desktop
+    /// keeps them synced — and move them there.
+    private func chooseProjectsFolder(move: Bool) {
+        let panel = NSOpenPanel()
+        panel.title = move ? "Move Numenor projects" : "Use a Numenor projects folder"
+        panel.message = move
+            ? "Choose an empty folder for your Numenor projects. A folder inside Google Drive keeps them synced by Google Drive."
+            : "Choose the folder that already holds your Numenor projects (e.g. the Google Drive folder your other Mac uses). Nothing is moved."
+        panel.prompt = move ? "Move Here" : "Use This Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        let cloud = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/CloudStorage")
+        if let drive = (try? FileManager.default.contentsOfDirectory(atPath: cloud.path))?.first(where: { $0.hasPrefix("GoogleDrive-") }) {
+            panel.directoryURL = cloud.appendingPathComponent(drive).appendingPathComponent("My Drive")
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if move { server.moveProjectsFolder(to: url) } else { server.useProjectsFolder(url) }
+    }
+
     private func applyPageSettings() {
         guard let view = webViewHolder.view else { return }
         let script = NumenorTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote, spellLanguage: spellLanguage)
@@ -356,6 +377,14 @@ private struct NumenorBrowser: View {
                         Text("Keys and models: Settings \u{2192} AI")
                     }
                     Toggle("Open projects in a separate window", isOn: $popOutProjects)
+                    Divider()
+                    Text("Projects folder: \(server.dataDirectory.path)")
+                    Button("Move projects folder\u{2026}") { chooseProjectsFolder(move: true) }
+                    Button("Use an existing projects folder\u{2026}") { chooseProjectsFolder(move: false) }
+                    if server.dataDirectory.standardizedFileURL.path != DriveNumenorSync.defaultDataDirectory.standardizedFileURL.path {
+                        Button("Move projects back to this Mac") { server.moveProjectsFolder(to: DriveNumenorSync.defaultDataDirectory) }
+                    }
+                    Button("Show projects folder in Finder") { NSWorkspace.shared.activateFileViewerSelecting([server.dataDirectory]) }
                     Divider()
                     if server.share.active {
                         Button("Stop sharing") { server.stopSharing() }

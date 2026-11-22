@@ -65,7 +65,7 @@ final class NumenorServer: ObservableObject {
 
     private var baseDirectory: URL { DriveNumenorSync.baseDirectory }
     private var appDirectory: URL { baseDirectory.appendingPathComponent("app", isDirectory: true) }
-    private var dataDirectory: URL { baseDirectory.appendingPathComponent("data", isDirectory: true) }
+    var dataDirectory: URL { DriveNumenorSync.dataDirectory }
     private var pidFile: URL { baseDirectory.appendingPathComponent("server.pid") }
     private var sourceMarker: URL { appDirectory.appendingPathComponent(".maziar-source") }
     private var lockMarker: URL { appDirectory.appendingPathComponent(".maziar-lock") }
@@ -259,6 +259,121 @@ final class NumenorServer: ObservableObject {
         return false
     }
 
+    // MARK: - Projects folder
+
+    /// The secret invite links are signed with, kept in `…/Maziar/Numenor/collab-secret` (owner-only). Picks up
+    /// the one Numenor created in the projects folder before, so existing invites stay valid.
+    private func collabSecret() -> String? {
+        let fm = FileManager.default
+        let file = baseDirectory.appendingPathComponent("collab-secret")
+        if let existing = try? String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), existing.count >= 32 {
+            return existing
+        }
+        let legacy = dataDirectory.appendingPathComponent(".numenor-collab-secret")
+        var secret = (try? String(contentsOf: legacy, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if secret.count < 32 {
+            var bytes = [UInt8](repeating: 0, count: 32)
+            guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
+            secret = bytes.map { String(format: "%02x", $0) }.joined()
+        }
+        try? fm.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        guard fm.createFile(atPath: file.path, contents: Data(secret.utf8), attributes: [.posixPermissions: 0o600]) else { return nil }
+        try? fm.removeItem(at: legacy)
+        return secret
+    }
+
+    /// Moves every project (and Numenor's per-folder files: added-folder list, invite secret) into `target`,
+    /// then restarts Numenor there. Nothing is overwritten: if `target` already holds an item with the same
+    /// name, the move stops before touching anything. Moving across disks (e.g. into Google Drive) copies
+    /// first and removes the original only after the copy succeeded.
+    func moveProjectsFolder(to target: URL) {
+        guard !isWorking else { return }
+        let source = dataDirectory.standardizedFileURL
+        let destination = target.standardizedFileURL
+        guard destination.path != source.path else { return }
+        if destination.path.hasPrefix(source.path + "/") {
+            state = .failed("The new projects folder can\u{2019}t be inside the current one.")
+            return
+        }
+        terminateProcess()
+        state = .working("Moving projects to \(destination.path)\u{2026}")
+        Task {
+            var moved: [(from: URL, to: URL)] = []
+            do {
+                let fm = FileManager.default
+                try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+                // The invite secret stays behind on this Mac (see collabSecret()).
+                _ = collabSecret()
+                let items = (try? fm.contentsOfDirectory(atPath: source.path))?.filter { $0 != ".DS_Store" && $0 != ".numenor-collab-secret" } ?? []
+                let clashes = items.filter { fm.fileExists(atPath: destination.appendingPathComponent($0).path) }
+                guard clashes.isEmpty else {
+                    throw SetupError("\(destination.lastPathComponent) already contains \(clashes.prefix(3).joined(separator: ", ")) \u{2014} choose an empty folder.")
+                }
+                for item in items {
+                    append("Moving \(item)\n")
+                    let from = source.appendingPathComponent(item)
+                    let to = destination.appendingPathComponent(item)
+                    try await Task.detached { try FileManager.default.moveItem(at: from, to: to) }.value
+                    moved.append((from, to))
+                }
+                if destination.path == DriveNumenorSync.defaultDataDirectory.standardizedFileURL.path {
+                    UserDefaults.standard.removeObject(forKey: DriveNumenorSync.dataDirectoryKey)
+                } else {
+                    UserDefaults.standard.set(destination.path, forKey: DriveNumenorSync.dataDirectoryKey)
+                }
+                objectWillChange.send()
+                append("Projects folder is now \(destination.path)\n")
+                state = .stopped
+                start()
+            } catch {
+                // Put back whatever already moved, so the projects folder stays complete where it was.
+                for pair in moved.reversed() {
+                    _ = try? await Task.detached { try FileManager.default.moveItem(at: pair.to, to: pair.from) }.value
+                }
+                state = .failed("Couldn\u{2019}t move the projects: \(error.localizedDescription) Everything was left in \(source.path).")
+                start()
+            }
+        }
+    }
+
+    /// Switches to a projects folder that already exists (e.g. the Google Drive folder another Mac moved its
+    /// projects into) without moving anything. The previous folder stays listed as an extra project folder,
+    /// so the projects in it don't disappear from Numenor.
+    func useProjectsFolder(_ target: URL) {
+        guard !isWorking else { return }
+        let previous = dataDirectory.standardizedFileURL
+        let destination = target.standardizedFileURL
+        guard destination.path != previous.path else { return }
+        terminateProcess()
+        do {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            let listFile = destination.appendingPathComponent(".numenor-folders.json")
+            var folders: [String] = []
+            if let data = try? Data(contentsOf: listFile),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let existing = json["folders"] as? [String] {
+                folders = existing
+            }
+            let previousHasProjects = ((try? FileManager.default.contentsOfDirectory(atPath: previous.path)) ?? [])
+                .contains { FileManager.default.fileExists(atPath: previous.appendingPathComponent($0).appendingPathComponent("project.json").path) }
+            if previousHasProjects, !folders.contains(previous.path) {
+                folders.append(previous.path)
+                let data = try JSONSerialization.data(withJSONObject: ["folders": folders], options: [.prettyPrinted])
+                try data.write(to: listFile)
+            }
+            if destination.path == DriveNumenorSync.defaultDataDirectory.standardizedFileURL.path {
+                UserDefaults.standard.removeObject(forKey: DriveNumenorSync.dataDirectoryKey)
+            } else {
+                UserDefaults.standard.set(destination.path, forKey: DriveNumenorSync.dataDirectoryKey)
+            }
+            objectWillChange.send()
+            append("Projects folder is now \(destination.path)\n")
+        } catch {
+            state = .failed("Couldn\u{2019}t switch the projects folder: \(error.localizedDescription)")
+        }
+        start()
+    }
+
     // MARK: - Setup
 
     /// A digest of every file in the bundled source, so a changed Numenor (new Maziar build) is noticed.
@@ -341,6 +456,8 @@ final class NumenorServer: ObservableObject {
             var env = Self.environment()
             env["PORT"] = String(port)
             env["NUMENOR_DATA_DIR"] = dataDirectory.path
+            // The invite-signing secret stays on this Mac (not in the projects folder, which may be in Google Drive).
+            if let secret = collabSecret() { env["NUMENOR_COLLAB_TOKEN_SECRET"] = secret }
             // Only this Mac can reach the editor — nobody else on the network.
             env["NUMENOR_HOST"] = "127.0.0.1"
             // Numenor then ignores any AI settings its own page sends and uses only the values below (or

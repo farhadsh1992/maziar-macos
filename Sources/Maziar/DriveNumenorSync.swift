@@ -28,10 +28,12 @@ enum DriveNumenorSync {
         var removedFromDrive = 0
         var movedToBackups = 0
         var failures: [String] = []
+        var skippedBecauseInGoogleDrive = false
 
         var didChangeLocalFiles: Bool { downloaded > 0 || movedToBackups > 0 }
         var isEmpty: Bool { uploaded + downloaded + removedFromDrive + movedToBackups == 0 }
         var text: String {
+            if skippedBecauseInGoogleDrive { return "kept in sync by Google Drive (the projects folder is in Google Drive)" }
             var parts: [String] = []
             if uploaded > 0 { parts.append("\(uploaded) uploaded") }
             if downloaded > 0 { parts.append("\(downloaded) downloaded") }
@@ -55,7 +57,24 @@ enum DriveNumenorSync {
         NumenorServer.migrateLegacyFolder(into: url)
         return url
     }()
-    static var dataDirectory: URL { baseDirectory.appendingPathComponent("data", isDirectory: true) }
+    /// Where Numenor keeps its projects: `…/Maziar/Numenor/data`, unless moved elsewhere (e.g. into Google
+    /// Drive) with "Move projects folder…". Stored per Mac — the path differs from computer to computer.
+    static let dataDirectoryKey = "maziar.googleDrive.numenorDataDirectory"
+    static var defaultDataDirectory: URL { baseDirectory.appendingPathComponent("data", isDirectory: true) }
+    static var dataDirectory: URL {
+        if let custom = UserDefaults.standard.string(forKey: dataDirectoryKey), !custom.isEmpty {
+            return URL(fileURLWithPath: custom, isDirectory: true)
+        }
+        return defaultDataDirectory
+    }
+
+    /// True when the projects folder lives inside a Google Drive for desktop folder — Google Drive then keeps
+    /// it in sync itself, and this zip-based sync must stay out of the way (two syncs on the same files
+    /// would fight over them).
+    static var dataDirectoryIsInGoogleDrive: Bool {
+        let path = dataDirectory.standardizedFileURL.path
+        return path.contains("/Library/CloudStorage/GoogleDrive-") || path.contains("/Google Drive/")
+    }
     static var backupDirectory: URL { baseDirectory.appendingPathComponent("sync-backups", isDirectory: true) }
 
     private static func projectDirectory(_ id: String) -> URL { dataDirectory.appendingPathComponent(id, isDirectory: true) }
@@ -71,6 +90,7 @@ enum DriveNumenorSync {
     // MARK: - One pass
 
     static func sync(token: String) async throws -> Summary {
+        guard !dataDirectoryIsInGoogleDrive else { return Summary(skippedBecauseInGoogleDrive: true) }
         let remote = try await list(token: token)
         var states = loadStates()
         var summary = Summary()

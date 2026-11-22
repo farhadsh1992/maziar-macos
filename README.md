@@ -1952,7 +1952,13 @@ How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
   `~/Library/Application Support/Maziar/Numenor/app`, runs `npm install` (only when `package-lock.json`
   changed) and `npm run build`, then starts `node apps/backend/src/index.js` on a free localhost port
   (from 8787). So a Maziar update brings its Numenor along; no download, no patching.
-- Projects live in `…/Maziar/Numenor/data/<id>/`, outside the code folder. More project folders can be
+- Projects live in `…/Maziar/Numenor/data/<id>/` by default. The ⋯ menu in Maziar's Numenor toolbar can
+  **move the main projects folder** anywhere — typically into Google Drive (`My Drive/Numenor Projects`) — or
+  point at an existing one (do that on a second Mac). The choice is per Mac
+  (`maziar.googleDrive.numenorDataDirectory`); while the folder is in Google Drive, Maziar's own zip sync of
+  Numenor projects steps aside and Google Drive for desktop keeps it in sync. The invite-signing secret stays
+  on the Mac (`…/Maziar/Numenor/collab-secret`, passed as `NUMENOR_COLLAB_TOKEN_SECRET`), never in the
+  projects folder. More project folders can be
   added on Numenor's Projects page (e.g. one inside Google Drive); that list is per Mac
   (`data/.numenor-folders.json`), and Maziar's own Drive sync (below) covers only the main folder — a
   folder inside Google Drive is kept in sync by Google Drive for desktop itself. Installs from the OpenPrism

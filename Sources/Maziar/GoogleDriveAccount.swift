@@ -392,7 +392,7 @@ final class GoogleDriveAccount: ObservableObject {
             let summary = try await DriveNumenorSync.sync(token: token)
             numenorStatus = "Numenor projects: \(summary.text)"
             if let failure = summary.failures.first {
-                errorMessage = "Couldn\u{2019}t sync an Numenor project (\(failure))"
+                errorMessage = "Couldn\u{2019}t sync a Numenor project (\(failure))"
             }
             if summary.didChangeLocalFiles {
                 NotificationCenter.default.post(name: .numenorProjectsChanged, object: nil)
