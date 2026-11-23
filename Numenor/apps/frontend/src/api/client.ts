@@ -781,7 +781,17 @@ export function inviteLink(base: string, token: string) {
   return `${base.replace(/\/$/, '')}/collab?token=${encodeURIComponent(token)}`;
 }
 
-export type Me = { ok: true; kind: 'owner' | 'guest'; name: string; role: 'owner' | 'edit' | 'view'; projectId?: string };
+export type Me = { ok: true; kind: 'owner' | 'guest'; name: string; role: 'owner' | 'edit' | 'view'; projectId?: string; key?: string };
+
+/** Someone who has the project open (seen in the last ~25 s). key: 'owner' or 'invite:<id>'. */
+export type PresencePerson = { key: string; name: string; kind: 'owner' | 'guest'; role: 'owner' | 'edit' | 'view'; file: string; lastSeen: string };
+
+/** Says "I'm here, looking at `file`" and returns everyone who has the project open. */
+export function presence(projectId: string, file: string, leave = false) {
+  const qs = new URLSearchParams({ file });
+  if (leave) qs.set('leave', '1');
+  return maziarRequest<{ ok: true; you: string; people: PresencePerson[] }>(`/api/projects/${encodeURIComponent(projectId)}/presence?${qs}`);
+}
 
 export function whoAmI() {
   return maziarRequest<Me>('/api/me');

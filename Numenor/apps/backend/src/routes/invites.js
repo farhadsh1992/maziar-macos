@@ -62,7 +62,7 @@ export function registerInviteRoutes(fastify) {
 
   // Who's asking: the owner here, or an invited person (name + role).
   fastify.get('/api/me', async (req) => {
-    if (req.collabAuth) return { ok: true, kind: 'guest', name: req.collabAuth.name, role: req.collabAuth.role, projectId: req.collabAuth.projectId };
-    return { ok: true, kind: 'owner', name: OWNER_NAME, role: 'owner' };
+    if (req.collabAuth) return { ok: true, kind: 'guest', name: req.collabAuth.name, role: req.collabAuth.role, projectId: req.collabAuth.projectId, key: `invite:${req.collabAuth.inviteId}` };
+    return { ok: true, kind: 'owner', name: OWNER_NAME, role: 'owner', key: 'owner' };
   });
 }

@@ -12,9 +12,14 @@ const SETTINGS_FILE = path.join(STATE_DIR, 'share-settings.json');
 export function getShareSettings() {
   try {
     const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'));
-    return { ngrokDomain: typeof data.ngrokDomain === 'string' ? data.ngrokDomain : '' };
+    return {
+      ngrokDomain: typeof data.ngrokDomain === 'string' ? data.ngrokDomain : '',
+      // Sharing was on when Numenor stopped → start it again next time (see index.js).
+      resume: data.resume === true,
+      resumeMode: typeof data.resumeMode === 'string' ? data.resumeMode : 'auto'
+    };
   } catch {
-    return { ngrokDomain: '' };
+    return { ngrokDomain: '', resume: false, resumeMode: 'auto' };
   }
 }
 
@@ -54,13 +59,18 @@ export async function startSharing(mode = 'auto') {
     current = result;
     state = { active: true, starting: false, url: result.url.replace(/\/$/, ''), provider: result.provider, note: result.note || '', error: '', startedAt: new Date().toISOString(), fixed: Boolean(result.fixed) };
     console.log(`  Sharing on (${result.provider}): ${state.url}`);
+    try { saveShareSettings({ resume: true, resumeMode: mode }); } catch { /* keep going */ }
   } else {
     state = { active: false, starting: false, url: '', provider: '', note: '', error: result?.error || 'Couldn’t start sharing.', startedAt: null, fixed: false };
   }
   return shareStatus();
 }
 
-export async function stopSharing() {
+/** Turned off by the owner (not by Numenor stopping): don't start it again next time. */
+export async function stopSharing({ remember = true } = {}) {
+  if (remember) {
+    try { saveShareSettings({ resume: false }); } catch { /* keep going */ }
+  }
   try {
     await current?.close?.();
   } catch {
@@ -85,7 +95,7 @@ export async function setFixedDomain(domain, mode = 'auto') {
   saveShareSettings({ ngrokDomain: domain });
   if (alreadyLive) return shareStatus();
   if (state.active) {
-    await stopSharing();
+    await stopSharing({ remember: false });
     return startSharing(mode);
   }
   return shareStatus();

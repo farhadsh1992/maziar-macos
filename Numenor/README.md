@@ -54,7 +54,12 @@ but it runs perfectly well on its own.
   project — not your other projects, your folders or your AI key. Temporary tunnel addresses change each
   time sharing starts; under **Same link every time** in the Share dialog, paste the fixed address your free
   ngrok account includes (dashboard.ngrok.com/domains) and links keep working after a restart (saved in
-  `share-settings.json` in the state folder).
+  `share-settings.json` in the state folder). If sharing was on when Numenor stopped (a restart, an update,
+  quitting Maziar), it starts again by itself; only **Stop sharing** turns it off for good.
+- **See who's here** — everyone who has the project open shows in the editor's top bar (initials and name
+  in a coloured ring; hover for their access and the file they're in). Their cursor in the text has the
+  same colour and their name on it, and the owner joins live editing automatically as soon as someone else
+  is in.
 - **Shared with me** — on the Projects page, click **Add shared link** (left sidebar) and paste an invite
   someone sent you with its access code (asked only this once); the project stays listed under Shared with me, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
 - **Copies in Google Drive, SharePoint and other folders** — **Copies** in the editor's top bar keeps the

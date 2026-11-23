@@ -29,7 +29,7 @@ import {
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, type ShareState, type Me } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, type ShareState, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -187,6 +187,21 @@ function persistCollabName(name: string) {
   } catch {
     // ignore
   }
+}
+
+// Each person's colour — the same in the top bar (who's here) and on their cursor in the text. Keyed by who
+// they are ('owner' or 'invite:<id>'), so it stays the same in every file and on every computer.
+const PRESENCE_COLORS = ['#1c7ed6', '#e8590c', '#2f9e44', '#c2255c', '#7048e8', '#0c8599', '#d9480f', '#5c940d', '#ae3ec9', '#1864ab'];
+const OWNER_COLOR = '#d4a017';
+function colorForKey(key: string) {
+  if (key === 'owner') return OWNER_COLOR;
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return PRESENCE_COLORS[hash % PRESENCE_COLORS.length];
+}
+
+function presenceInitials(name: string) {
+  return name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
 }
 
 function pickCollabColor(seed?: string) {
@@ -1296,14 +1311,20 @@ export default function EditorPage() {
 
   useEffect(() => {
     persistCollabName(collabName);
-    collabColorRef.current = pickCollabColor(collabName);
+    collabColorRef.current = me?.key ? colorForKey(me.key) : pickCollabColor(collabName);
     if (collabDocRef.current) {
       collabDocRef.current.awareness.setLocalStateField('user', {
         name: collabName,
-        color: collabColorRef.current
+        color: collabColorRef.current,
+        colorLight: `${collabColorRef.current}33`
       });
     }
-  }, [collabName]);
+  }, [collabName, me]);
+
+  // The name others see on this cursor is the one the owner gave the invite (or the owner's own name).
+  useEffect(() => {
+    if (me?.name) setCollabName(me.name);
+  }, [me?.name]);
 
   useEffect(() => {
     if (!collabEnabled) {
@@ -1401,7 +1422,8 @@ export default function EditorPage() {
     const awareness = new Awareness(ydoc);
     awareness.setLocalStateField('user', {
       name: collabName,
-      color: collabColorRef.current
+      color: collabColorRef.current,
+      colorLight: `${collabColorRef.current}33`
     });
     const provider = new CollabProvider({
       serverUrl: normalizeServerUrl(collabServer) || (typeof window === 'undefined' ? '' : window.location.origin),
@@ -3582,6 +3604,40 @@ export default function EditorPage() {
     };
   }, [postToPdfWindow, projectName]);
 
+  // ---------- who else has this project open (top bar), every few seconds ----------
+  const [people, setPeople] = useState<PresencePerson[]>([]);
+  const [presenceYou, setPresenceYou] = useState('');
+  useEffect(() => {
+    if (!projectId) return;
+    let stop = false;
+    const tick = () => presence(projectId, activePathRef.current || '')
+      .then((res) => {
+        if (stop) return;
+        setPresenceYou(res.you);
+        setPeople((prev) => (JSON.stringify(prev.map((p) => [p.key, p.file, p.role])) === JSON.stringify(res.people.map((p) => [p.key, p.file, p.role])) ? prev : res.people));
+      })
+      .catch(() => {});
+    tick();
+    const timer = window.setInterval(tick, 5000);
+    const leave = () => { presence(projectId, '', true).catch(() => {}); };
+    window.addEventListener('pagehide', leave);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
+  }, [projectId]);
+  // Report a file change right away rather than at the next tick.
+  useEffect(() => {
+    if (projectId && activePath) presence(projectId, activePath).catch(() => {});
+  }, [projectId, activePath]);
+  const others = useMemo(() => people.filter((p) => p.key !== presenceYou), [people, presenceYou]);
+  // Someone else is in: join live editing so both see each other's cursor and changes as they type.
+  useEffect(() => {
+    if (others.length > 0 && !collabEnabled && activePath && isTextPath(activePath)) setCollabEnabled(true);
+  }, [others.length, collabEnabled, activePath]);
+
   // ---------- who am I (owner, or invited with edit/view rights) ----------
   const [accessRemoved, setAccessRemoved] = useState(false);
   useEffect(() => {
@@ -4118,6 +4174,22 @@ export default function EditorPage() {
             <span className={`nm-access-chip ${me.role}`} title={t('You were invited to this project')}>
               {me.role === 'view' ? t('View only') : t('Can edit')}
             </span>
+          )}
+          {others.length > 0 && (
+            <div className="nm-presence" aria-label={t('Also here now')}>
+              {others.slice(0, 5).map((p) => {
+                const color = colorForKey(p.key);
+                const where = p.file ? t('in {{file}}', { file: p.file }) : '';
+                const what = p.role === 'owner' ? t('Owner') : p.role === 'view' ? t('View only') : t('Can edit');
+                return (
+                  <span key={p.key} className="nm-presence-chip" style={{ borderColor: color }} title={`${p.name} — ${what}${where ? ` · ${where}` : ''}`}>
+                    <span className="nm-presence-avatar" style={{ background: color }}>{presenceInitials(p.name)}</span>
+                    <span className="nm-presence-name nm-hide-narrow">{p.name}</span>
+                  </span>
+                );
+              })}
+              {others.length > 5 && <span className="nm-presence-more" title={others.slice(5).map((p) => p.name).join(', ')}>+{others.length - 5}</span>}
+            </div>
           )}
           <Link to={`/history/${projectId}`} className="nm-icon-btn nm-topbar-btn" title={t('Who changed what, and when')}>
             <IconHistory size={16} /> <span className="nm-hide-narrow">{t('History')}</span>

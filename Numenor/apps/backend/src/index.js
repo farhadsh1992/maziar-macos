@@ -25,8 +25,9 @@ import { registerInviteRoutes } from './routes/invites.js';
 import { registerHistoryRoutes } from './routes/history.js';
 import { registerSharedWithMeRoutes } from './routes/sharedWithMe.js';
 import { registerSyncRoutes } from './routes/sync.js';
+import { registerPresenceRoutes } from './routes/presence.js';
 import { registerUpdateRoutes } from './routes/update.js';
-import { setSharePort, startSharing } from './services/shareService.js';
+import { getShareSettings, setSharePort, startSharing } from './services/shareService.js';
 import { requireAuthIfRemote, remoteRequestAllowed } from './utils/authUtils.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -78,6 +79,7 @@ registerInviteRoutes(fastify);
 registerHistoryRoutes(fastify);
 registerSharedWithMeRoutes(fastify);
 registerSyncRoutes(fastify);
+registerPresenceRoutes(fastify);
 registerUpdateRoutes(fastify);
 
 // Serve frontend static files in tunnel/production mode
@@ -134,6 +136,13 @@ if (tunnelMode !== 'false' && tunnelMode !== '0' && tunnelMode !== 'no') {
     console.log(`  ${status.error}`);
   }
   console.log('');
+} else if (getShareSettings().resume) {
+  // Sharing was on when Numenor last stopped (e.g. it restarted after an update): turn it back on, so
+  // invite links keep working without anyone pressing "Start sharing" again.
+  console.log('  Sharing was on before — starting it again…');
+  startSharing(getShareSettings().resumeMode || 'auto')
+    .then((status) => console.log(status.active ? `  Sharing on (${status.provider}): ${status.url}` : `  Couldn’t restart sharing: ${status.error}`))
+    .catch(() => {});
 } else {
   console.log('  Share a project from its Collab tab ("Share this project"), or start with');
   console.log('  NUMENOR_TUNNEL=auto npm start (Cloudflare, ngrok or localtunnel).');

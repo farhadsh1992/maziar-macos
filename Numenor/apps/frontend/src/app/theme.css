@@ -2449,3 +2449,13 @@ button.nm-share-mail { white-space: nowrap; }
 .nm-update-step { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 .nm-update-help { font-size: 12px; }
 .nm-update-foot { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Who else has this project open (editor top bar) — each in the colour of their cursor */
+.nm-presence { display: flex; align-items: center; gap: 6px; }
+.nm-presence-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 3px; border: 2px solid; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--nm-text); background: var(--nm-surface); max-width: 170px; }
+.nm-presence-avatar { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.02em; }
+.nm-presence-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm-presence-more { font-size: 12px; color: var(--nm-muted); }
+/* Their cursor in the text: always show the name tag, not only on hover */
+.cm-editor .cm-ySelectionInfo { opacity: 1 !important; top: -1.25em !important; font-size: 10.5px !important; font-weight: 700 !important; padding: 1px 5px !important; border-radius: 4px 4px 4px 0 !important; color: #fff !important; transition-delay: 0s !important; }
+.cm-editor .cm-ySelectionCaret { border-left-width: 2px !important; }
