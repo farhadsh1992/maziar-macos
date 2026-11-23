@@ -29,7 +29,7 @@ import {
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, type ShareState, type Me, type PresencePerson } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -1294,6 +1294,9 @@ export default function EditorPage() {
   const [pdfFind, setPdfFind] = useState<{ open: boolean; query: string; index: number; total: number; busy: boolean }>({ open: false, query: '', index: 0, total: 0, busy: false });
   const pdfFindInputRef = useRef<HTMLInputElement | null>(null);
   const pdfFindTimerRef = useRef<number | undefined>(undefined);
+  // Files the last compile couldn't find (moved or deleted by mistake), shown above the PDF.
+  const [missingFiles, setMissingFiles] = useState<MissingFile[]>([]);
+  const [missingBusy, setMissingBusy] = useState('');
   const forwardSyncRef = useRef<() => void>(() => {});
 
   const {
@@ -3383,6 +3386,13 @@ export default function EditorPage() {
       const res = await compileProject({ projectId, mainFile, engine: compileEngine });
       // A newer compile of this project took over (e.g. Compile clicked again): that one reports back.
       if (res.replaced) return;
+      setMissingFiles(res.missing || []);
+      if (!res.ok && res.missing?.length) {
+        setCompileLog(`${res.error}\n\n${res.log || ''}`.trim());
+        setCompileState('failed');
+        setStatus(res.error || t('后端编译失败'));
+        return;
+      }
       if (res.timedOut) {
         // LaTeX got stuck in a loop and was stopped: keep its log so the Problems panel shows the first errors.
         setCompileLog(`${res.error}\n\n${res.log || ''}`.trim());
@@ -5961,6 +5971,63 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                       )}
                     </div>
                   </div>
+                  {missingFiles.length > 0 && (
+                    <div className="nm-missing" role="alert">
+                      <div className="nm-missing-title">
+                        {missingFiles.length === 1 ? t('LaTeX can’t find a file') : t('LaTeX can’t find {{count}} files', { count: missingFiles.length })}
+                        <button className="nm-icon-btn borderless" onClick={() => setMissingFiles([])} title={t('Hide')}><IconClose size={13} /></button>
+                      </div>
+                      {missingFiles.map((m) => {
+                        const when = m.at ? new Date(m.at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '';
+                        const back = m.folderMove ? { from: m.folderMove.to, to: m.folderMove.from } : m.movedTo ? { from: m.movedTo, to: m.file } : m.foundAt && !m.deleted ? { from: m.foundAt, to: m.file } : null;
+                        return (
+                          <div key={m.file} className="nm-missing-row">
+                            <code>{m.file}</code>
+                            <span className="nm-missing-why">
+                              {m.folderMove
+                                ? t('its folder {{from}} was moved to {{to}}', { from: m.folderMove.from, to: m.folderMove.to })
+                                : m.movedTo
+                                  ? t('was moved to {{to}}', { to: m.movedTo })
+                                  : m.deleted
+                                    ? t('was deleted')
+                                    : m.foundAt
+                                      ? t('isn’t there, but {{found}} has the same name', { found: m.foundAt })
+                                      : t('isn’t in the project — check the name in \\input / \\includegraphics / \\bibliography, or add the file')}
+                              {m.by && (m.movedTo || m.deleted || m.folderMove) ? ` ${t('by {{name}}', { name: m.by })}` : ''}
+                              {when && (m.movedTo || m.deleted || m.folderMove) ? ` · ${when}` : ''}
+                              {m.deleted && m.foundAt ? ` — ${t('a file with the same name is in {{found}}', { found: m.foundAt })}` : ''}
+                            </span>
+                            {back && !viewOnly && (
+                              <button
+                                className="btn small nm-primary"
+                                disabled={Boolean(missingBusy)}
+                                onClick={async () => {
+                                  if (!projectId) return;
+                                  setMissingBusy(m.file);
+                                  try {
+                                    await renamePath(projectId, back.from, back.to);
+                                    await refreshTree();
+                                    setStatus(t('Moved {{from}} back to {{to}}', { from: back.from, to: back.to }));
+                                    setMissingFiles((list) => list.filter((x) => x.file !== m.file));
+                                    compileRef.current().catch(() => {});
+                                  } catch (err) {
+                                    setStatus(t('Couldn’t move it back: {{error}}', { error: (err as Error).message }));
+                                  } finally {
+                                    setMissingBusy('');
+                                  }
+                                }}
+                              >
+                                {missingBusy === m.file ? t('Moving…') : m.foundAt && !m.movedTo && !m.folderMove ? t('Move it here') : t('Move it back')}
+                              </button>
+                            )}
+                            {m.deleted && (
+                              <Link className="btn small ghost" to={`/history/${projectId}`}>{t('Open History')}</Link>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {pdfUrl && pdfFind.open && (
                     <div className="nm-pdf-find" role="search">
                       <input

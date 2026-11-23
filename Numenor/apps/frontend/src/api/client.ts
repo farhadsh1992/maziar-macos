@@ -219,12 +219,25 @@ export function createFolder(id: string, folderPath: string) {
   });
 }
 
-export function renamePath(id: string, from: string, to: string) {
-  return request<{ ok: boolean }>(`/api/projects/${id}/rename`, {
+export async function renamePath(id: string, from: string, to: string) {
+  const res = await request<{ ok: boolean; error?: string }>(`/api/projects/${id}/rename`, {
     method: 'POST',
     body: JSON.stringify({ from, to })
   });
+  if (!res.ok) throw new Error(res.error || 'Couldn’t move the file.');
+  return res;
 }
+
+/** A file the last compile couldn't find, and what the project's history says happened to it. */
+export type MissingFile = {
+  file: string;
+  movedTo?: string;
+  deleted?: boolean;
+  foundAt?: string;
+  by?: string;
+  at?: string;
+  folderMove?: { from: string; to: string };
+};
 
 export async function deleteFile(id: string, filePath: string) {
   const qs = new URLSearchParams({ path: filePath }).toString();
@@ -411,7 +424,7 @@ export function compileProject(payload: {
   mainFile: string;
   engine: 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic';
 }) {
-  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; timedOut?: boolean; replaced?: boolean }>(
+  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; timedOut?: boolean; replaced?: boolean; missing?: MissingFile[] }>(
     `/api/compile`,
     {
       method: 'POST',

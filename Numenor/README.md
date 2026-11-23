@@ -39,6 +39,10 @@ but it runs perfectly well on its own.
 - **Search (Cmd/Ctrl + F)** — searches where you last clicked: in the source (`.tex`, `.txt`, `.bib` … with
   next / previous / replace) or in the compiled PDF (every match highlighted, the current one in orange,
   Enter / Shift + Enter to move, Esc to close; text selected in the PDF is searched right away).
+- **Missing files** — if a compile can't find a file the document uses (an `\input`, an image, a `.bib` —
+  say one was dragged into the wrong folder or deleted by mistake), a red box above the PDF names it and
+  says what happened according to the project's history (moved where, or deleted, by whom and when), with
+  **Move it back** for moved files and folders. Moving a file onto one that already exists is refused.
 - **Problems panel** — errors and warnings with file and line; click one to jump there. Problem lines
   glow in the editor.
 - **Editor** — LaTeX highlighting, folding, autocompletion, Cmd/Ctrl + / to comment lines, `%%%` notes

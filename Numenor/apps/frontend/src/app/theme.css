@@ -2488,3 +2488,10 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 .cm-editor .cm-search button[name=close] { color: var(--nm-muted) !important; font-size: 16px !important; top: 6px !important; right: 8px !important; }
 .cm-editor .cm-searchMatch { background: rgba(255, 200, 0, 0.32) !important; outline: none !important; }
 .cm-editor .cm-searchMatch-selected { background: rgba(255, 122, 0, 0.55) !important; }
+
+/* Compile couldn't find a file (moved / deleted by mistake): shown above the PDF */
+.nm-missing { margin: 8px 10px 0; padding: 10px 12px; border-radius: var(--nm-radius); border: 1px solid rgba(222, 41, 0, 0.45); background: rgba(222, 41, 0, 0.08); color: var(--nm-text); font-size: 12.5px; display: flex; flex-direction: column; gap: 8px; }
+.nm-missing-title { display: flex; align-items: center; justify-content: space-between; font-weight: 700; color: var(--nm-error); font-size: 13px; }
+.nm-missing-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.nm-missing-row code { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: var(--nm-surface-2); word-break: break-all; }
+.nm-missing-why { color: var(--nm-text-2); flex: 1 1 180px; }

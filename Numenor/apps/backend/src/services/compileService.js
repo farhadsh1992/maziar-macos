@@ -6,6 +6,7 @@ import { ensureDir } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { getProjectRoot } from './projectService.js';
 import { projectChanged } from './projectEvents.js';
+import { findMissingFiles } from './missingFiles.js';
 
 const SUPPORTED_ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 
@@ -78,7 +79,13 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
 
   const projectRoot = await getProjectRoot(projectId);
   const absMain = safeJoin(projectRoot, mainFile);
-  await fs.access(absMain);
+  try {
+    await fs.access(absMain);
+  } catch {
+    // The main file itself was moved or deleted: say so (and where it went) instead of failing silently.
+    const missing = await findMissingFiles(projectRoot, `LaTeX Error: File \`${mainFile}' not found`).catch(() => []);
+    return { ok: false, error: `The main file ${mainFile} isn't in the project any more — it may have been moved or deleted.`, missing: missing.length ? missing : [{ file: mainFile }] };
+  }
 
   const buildRoot = path.join(projectRoot, '.compile');
   await ensureDir(buildRoot);
@@ -200,10 +207,15 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
     await keepLastBuild({ buildRoot, outDir, base, mainFile }).then(() => projectChanged(projectRoot, 'compile')).catch(() => {});
   }
   await fs.rm(outDir, { recursive: true, force: true });
+  // Files LaTeX/BibTeX couldn't open (e.g. a section dragged into another folder by mistake).
+  const missing = await findMissingFiles(projectRoot, log).catch(() => []);
   if (!pdfBase64) {
-    return { ok: false, error: 'No PDF generated.', log, status: code ?? -1 };
+    const error = missing.length
+      ? `No PDF: ${missing.length === 1 ? `the file ${missing[0].file} is missing` : `${missing.length} files are missing (${missing.map((m) => m.file).join(', ')})`}.`
+      : 'No PDF generated.';
+    return { ok: false, error, log, status: code ?? -1, missing };
   }
-  return { ok: true, pdf: pdfBase64, log, status: code ?? 0 };
+  return { ok: true, pdf: pdfBase64, log, status: code ?? 0, missing };
 }
 
 export function lastBuildDir(projectRoot) {

@@ -577,6 +577,11 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const absFrom = safeJoin(projectRoot, from);
     const absTo = safeJoin(projectRoot, to);
+    // Never overwrite a file that's already there (a move would silently replace it). Renaming only the
+    // letter case (Main.tex → main.tex) is fine: on macOS that is the same file.
+    if (path.resolve(absFrom).toLowerCase() !== path.resolve(absTo).toLowerCase() && await fs.access(absTo).then(() => true, () => false)) {
+      return { ok: false, error: `${to} already exists.` };
+    }
     await ensureDir(path.dirname(absTo));
     await fs.rename(absFrom, absTo);
     recordEvent(projectRoot, 'rename', from, authorOf(req, OWNER_NAME), { to });
