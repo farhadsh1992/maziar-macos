@@ -46,7 +46,10 @@ but it runs perfectly well on its own.
   **remove their access** at any time — their link stops working at once, even in an open editor. Sharing
   goes through a public link (Cloudflare Tunnel if `cloudflared` is installed, else ngrok if you have an
   ngrok account token, else localtunnel) while Numenor runs. Invited people only ever reach that one
-  project — not your other projects, your folders or your AI key.
+  project — not your other projects, your folders or your AI key. Temporary tunnel addresses change each
+  time sharing starts; under **Same link every time** in the Share dialog, paste the fixed address your free
+  ngrok account includes (dashboard.ngrok.com/domains) and links keep working after a restart (saved in
+  `share-settings.json` in the state folder).
 - **Shared with me** — on the Projects page, paste an invite someone sent you and the project stays listed
   there, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
 - **History** — every save, by you or by the people you share with, is recorded per project

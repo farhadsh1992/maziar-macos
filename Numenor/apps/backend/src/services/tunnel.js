@@ -7,21 +7,44 @@ import path from 'node:path';
 
 const PROVIDERS = ['cloudflared', 'ngrok', 'localtunnel'];
 
-/** `mode` is a provider name, or 'auto' to try them in order (Cloudflare, ngrok, localtunnel). */
-export async function startTunnel(port, mode = 'auto') {
+/**
+ * `mode` is a provider name, or 'auto' to try them in order (Cloudflare, ngrok, localtunnel).
+ * With `ngrokDomain` (the fixed address a free ngrok account includes), ngrok goes first so the link
+ * stays the same every time; if that address can't be used, the others are tried and `note` says why.
+ */
+export async function startTunnel(port, mode = 'auto', { ngrokDomain = '' } = {}) {
   const wanted = String(mode || 'auto').toLowerCase().trim();
-  const order = wanted === 'auto' || wanted === 'true' || wanted === '1' ? PROVIDERS : [wanted];
+  let order = wanted === 'auto' || wanted === 'true' || wanted === '1' ? PROVIDERS : [wanted];
+  if (ngrokDomain && order.includes('ngrok')) order = ['ngrok', ...order.filter((p) => p !== 'ngrok')];
   const tried = [];
+  let fixedProblem = '';
   for (const provider of order) {
     let result = null;
     if (provider === 'cloudflared') result = await tryCloudflared(port);
-    else if (provider === 'ngrok') result = await tryNgrok(port);
+    else if (provider === 'ngrok' && ngrokDomain) {
+      result = await tryNgrok(port, ngrokDomain);
+      if (result?.error) {
+        fixedProblem = result.error;
+        result = null;
+      }
+      if (!result) {
+        const random = await tryNgrok(port);
+        if (random) result = random;
+      }
+    } else if (provider === 'ngrok') result = await tryNgrok(port);
     else if (provider === 'localtunnel') result = await tryLocaltunnel(port);
     else continue;
-    if (result) return result;
+    if (result) {
+      if (fixedProblem) {
+        result.note = [`Your fixed address ${ngrokDomain} couldn’t be used (${fixedProblem}), so this link is temporary.`, result.note].filter(Boolean).join(' ');
+        result.fixedFailed = true;
+      }
+      return result;
+    }
     tried.push(provider);
   }
-  return { error: `No tunnel could be started (tried ${tried.join(', ') || mode}).` };
+  const why = fixedProblem ? ` Fixed address ${ngrokDomain}: ${fixedProblem}` : '';
+  return { error: `No tunnel could be started (tried ${tried.join(', ') || mode}).${why}` };
 }
 
 /** Kept for startup via NUMENOR_TUNNEL. */
@@ -88,16 +111,37 @@ function ngrokAuthtoken() {
   return '';
 }
 
-async function tryNgrok(port) {
+/** Briefly opens `domain` on ngrok to see if this account can use it. Resolves to '' (fine) or a reason. */
+export async function checkNgrokDomain(port, domain) {
+  const result = await tryNgrok(port, domain);
+  if (result?.error) return result.error;
+  try { await result?.close?.(); } catch { /* closed */ }
+  return '';
+}
+
+/** With `domain`, failures come back as { error } so the caller can say why the fixed address didn't work. */
+async function tryNgrok(port, domain = '') {
   const authtoken = ngrokAuthtoken();
-  if (!authtoken) return null;
+  if (!authtoken) return domain ? { error: 'no ngrok account is set up on this computer' } : null;
   try {
     const ngrok = await import('@ngrok/ngrok');
-    const listener = await ngrok.default.forward({ addr: `127.0.0.1:${port}`, authtoken });
-    return { url: listener.url(), provider: 'ngrok', close: () => listener.close().catch(() => {}) };
-  } catch {
-    return null;
+    const options = { addr: `127.0.0.1:${port}`, authtoken };
+    if (domain) options.domain = domain;
+    const listener = await ngrok.default.forward(options);
+    return { url: listener.url(), provider: 'ngrok', fixed: Boolean(domain), close: () => listener.close().catch(() => {}) };
+  } catch (err) {
+    if (!domain) return null;
+    return { error: ngrokReason(err) };
   }
+}
+
+function ngrokReason(err) {
+  const text = String(err?.message || err || '');
+  if (/ERR_NGROK_31[39]|ERR_NGROK_320|custom subdomain|not (?:reserved|found)|doesn.t exist|is not bound/i.test(text)) return 'this isn’t the fixed address on your ngrok account — copy it exactly from dashboard.ngrok.com/domains';
+  if (/ERR_NGROK_334|already online|already bound/i.test(text)) return 'it is already in use by another ngrok session';
+  if (/ERR_NGROK_10[0-9]|authtoken|authentication/i.test(text)) return 'ngrok didn’t accept this computer’s account token';
+  const code = text.match(/ERR_NGROK_\d+/);
+  return code ? `ngrok said ${code[0]}` : text.split('\n')[0].slice(0, 160) || 'ngrok refused it';
 }
 
 async function tryLocaltunnel(port) {

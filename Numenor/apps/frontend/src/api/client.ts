@@ -664,7 +664,7 @@ export function makeFolder(parent: string, name: string) {
 
 // Sharing (a public link for invited collaborators; only the computer running Numenor can turn it on).
 
-export type ShareState = { active: boolean; starting: boolean; url: string; provider: string; note: string; error: string; startedAt: string | null };
+export type ShareState = { active: boolean; starting: boolean; url: string; provider: string; note: string; error: string; startedAt: string | null; fixed?: boolean; fixedDomain?: string };
 
 export function shareStatus() {
   return maziarRequest<{ ok: true } & ShareState>('/api/share/status');
@@ -672,6 +672,11 @@ export function shareStatus() {
 
 export function startShare() {
   return maziarRequest<{ ok: true } & ShareState>('/api/share/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
+/** The fixed ngrok address share links use ('' = a new temporary address each time). */
+export function setShareDomain(ngrokDomain: string) {
+  return maziarRequest<{ ok: true } & ShareState>('/api/share/settings', { method: 'PUT', body: JSON.stringify({ ngrokDomain }) });
 }
 
 export function stopShare() {

@@ -2169,6 +2169,13 @@ select.input {
 .nm-share-foot .share-dot { margin-top: 5px; }
 .nm-share-foot-text { flex: 1; }
 .nm-share-foot-text .muted { font-size: 12px; margin-top: 2px; }
+.nm-share-fixed { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; border-radius: var(--nm-radius); border: 1px solid var(--nm-line); font-size: 13px; }
+.nm-share-fixed-row { display: flex; align-items: center; gap: 10px; }
+.nm-share-fixed-text { flex: 1; min-width: 0; }
+.nm-share-fixed .muted { font-size: 12px; margin-top: 2px; }
+.nm-share-fixed-edit { display: flex; flex-direction: column; gap: 6px; }
+.nm-share-fixed-inputs { display: flex; gap: 6px; flex-wrap: wrap; }
+.nm-share-fixed-inputs .input { flex: 1; min-width: 200px; }
 @media (max-width: 620px) {
   .nm-share-form { grid-template-columns: 1fr 1fr; }
 }

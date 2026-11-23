@@ -7,6 +7,7 @@ import {
   inviteLink,
   listInvites,
   revokeInvite,
+  setShareDomain,
   shareStatus,
   startShare,
   stopShare,
@@ -53,6 +54,10 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
   const [error, setError] = useState('');
   const [justAdded, setJustAdded] = useState<string>('');
   const [copied, setCopied] = useState('');
+  const [domainOpen, setDomainOpen] = useState(false);
+  const [domain, setDomain] = useState('');
+  const [domainBusy, setDomainBusy] = useState(false);
+  const [domainError, setDomainError] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -194,6 +199,26 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
     }
   };
 
+  const saveDomain = async (value: string) => {
+    setDomainBusy(true);
+    setDomainError('');
+    try {
+      const next = await setShareDomain(value);
+      setShare(next);
+      setDomainOpen(false);
+      if (!value) onStatus?.(t('Fixed address turned off — share links get a new address each time sharing starts.'));
+      else if (next.active && next.fixed) onStatus?.(t('Share links now always use {{domain}}.', { domain: next.fixedDomain }));
+      else if (next.active) setDomainError(next.note || t('That address couldn’t be used.'));
+      else onStatus?.(t('Saved — the next time sharing starts it uses {{domain}}.', { domain: next.fixedDomain }));
+    } catch (err) {
+      setDomainError((err as Error).message);
+    } finally {
+      setDomainBusy(false);
+    }
+  };
+
+  const fixedDomain = share?.fixedDomain || '';
+
   const sorted = useMemo(() => [...invites].sort((a, b) => a.createdAt.localeCompare(b.createdAt)), [invites]);
 
   return (
@@ -268,6 +293,43 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
               {share?.note && <div className="share-note">{share.note}</div>}
             </div>
             {share?.active && <button className="btn ghost" onClick={stopAll} disabled={busy}>{t('Pause sharing')}</button>}
+          </div>
+
+          <div className="nm-share-fixed">
+            <div className="nm-share-fixed-row">
+              <div className="nm-share-fixed-text">
+                <b>{t('Same link every time')}</b>
+                <div className="muted">
+                  {fixedDomain
+                    ? share?.active && !share.fixed
+                      ? t('Set to {{domain}}, but it isn’t being used right now — links are temporary until it works.', { domain: fixedDomain })
+                      : t('Links always use {{domain}}, so they keep working after a restart.', { domain: fixedDomain })
+                    : t('Off — links get a new address each time sharing starts, so you’d have to resend them.')}
+                </div>
+              </div>
+              {!domainOpen && (
+                <button className="btn ghost" onClick={() => { setDomain(fixedDomain); setDomainError(''); setDomainOpen(true); }}>
+                  {fixedDomain ? t('Change') : t('Set up')}
+                </button>
+              )}
+            </div>
+            {domainOpen && (
+              <div className="nm-share-fixed-edit">
+                <div className="muted">
+                  {t('A free ngrok account includes one fixed address. Copy it from')}{' '}
+                  <a href="https://dashboard.ngrok.com/domains" target="_blank" rel="noreferrer">dashboard.ngrok.com/domains</a>{' '}
+                  {t('(it looks like something.ngrok-free.app) and paste it here.')}
+                </div>
+                <div className="nm-share-fixed-inputs">
+                  <input className="input" autoFocus placeholder="your-name.ngrok-free.app" value={domain} onChange={(e) => setDomain(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveDomain(domain)} />
+                  <button className="btn nm-primary" onClick={() => saveDomain(domain)} disabled={domainBusy || !domain.trim()}>{domainBusy ? t('Checking…') : t('Use this address')}</button>
+                  {fixedDomain && <button className="btn ghost" onClick={() => saveDomain('')} disabled={domainBusy}>{t('Turn off')}</button>}
+                  <button className="btn ghost" onClick={() => setDomainOpen(false)} disabled={domainBusy}>{t('Cancel')}</button>
+                </div>
+                <div className="muted">{t('If sharing is on, it restarts with the new address — people with your old temporary links need the new ones once.')}</div>
+              </div>
+            )}
+            {domainError && <div className="share-error">{domainError}</div>}
           </div>
         </div>
       </div>
