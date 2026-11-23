@@ -33,6 +33,9 @@ but it runs perfectly well on its own.
   around the pointer; fit width / fit page; Space + drag to pan.
 - **Source ↔ PDF (SyncTeX)** — the **→** button (or Cmd/Ctrl + Shift + J) shows the selected LaTeX in the
   PDF; **←** (or double-click the PDF) jumps from the PDF back to the right `.tex` file and line.
+- **Search (Cmd/Ctrl + F)** — searches where you last clicked: in the source (`.tex`, `.txt`, `.bib` … with
+  next / previous / replace) or in the compiled PDF (every match highlighted, the current one in orange,
+  Enter / Shift + Enter to move, Esc to close; text selected in the PDF is searched right away).
 - **Problems panel** — errors and warnings with file and line; click one to jump there. Problem lines
   glow in the editor.
 - **Editor** — LaTeX highlighting, folding, autocompletion, Cmd/Ctrl + / to comment lines, `%%%` notes

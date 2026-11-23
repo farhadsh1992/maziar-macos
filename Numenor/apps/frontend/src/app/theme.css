@@ -2466,3 +2466,25 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 /* Clicked someone's name: their caret pulses so it's easy to spot */
 .cm-editor .cm-ySelectionCaret.nm-caret-flash { animation: nm-caret-flash 0.65s ease-in-out 4; }
 @keyframes nm-caret-flash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 5px currentColor, 0 0 14px 6px currentColor; } }
+
+/* Search in the PDF (Cmd/Ctrl + F with the PDF last clicked) */
+.nm-pdf-find { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--nm-line); background: var(--nm-surface); }
+.nm-pdf-find-input { flex: 1; min-width: 0; height: 28px; padding: 0 10px; font-size: 13px; }
+.nm-pdf-find-count { font-size: 12px; min-width: 64px; text-align: center; white-space: nowrap; }
+.pdf-page .pdf-find-hit { position: absolute; z-index: 3; pointer-events: none; background: rgba(255, 200, 0, 0.38); border-radius: 2px; mix-blend-mode: multiply; }
+.pdf-page .pdf-find-hit.current { background: rgba(255, 120, 0, 0.55); outline: 2px solid #ff7a00; }
+
+/* The editor's own search panel (Cmd/Ctrl + F in the source): match Numenor's theme */
+.cm-editor .cm-panels { background: var(--nm-surface) !important; color: var(--nm-text) !important; border-color: var(--nm-line) !important; }
+.cm-editor .cm-panels-top { border-bottom: 1px solid var(--nm-line) !important; }
+.cm-editor .cm-panels-bottom { border-top: 1px solid var(--nm-line) !important; }
+.cm-editor .cm-search { padding: 8px 10px 10px !important; font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cm-editor .cm-search br { flex-basis: 100%; content: ''; }
+.cm-editor .cm-search .cm-textfield { background: var(--nm-elevated) !important; color: var(--nm-text) !important; border: 1px solid var(--nm-line-strong) !important; border-radius: 6px !important; height: 26px; padding: 0 8px !important; font-size: 12.5px !important; margin: 0 !important; min-width: 170px; }
+.cm-editor .cm-search .cm-textfield:focus { outline: 2px solid var(--nm-focus) !important; outline-offset: 0; }
+.cm-editor .cm-search .cm-button { background: var(--nm-surface-2) !important; background-image: none !important; color: var(--nm-text) !important; border: 1px solid var(--nm-line) !important; border-radius: 6px !important; height: 26px; padding: 0 10px !important; margin: 0 !important; font-size: 12px !important; text-transform: none; cursor: pointer; }
+.cm-editor .cm-search .cm-button:hover { background: var(--nm-hover) !important; }
+.cm-editor .cm-search label { color: var(--nm-muted) !important; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; margin: 0 4px 0 0 !important; }
+.cm-editor .cm-search button[name=close] { color: var(--nm-muted) !important; font-size: 16px !important; top: 6px !important; right: 8px !important; }
+.cm-editor .cm-searchMatch { background: rgba(255, 200, 0, 0.32) !important; outline: none !important; }
+.cm-editor .cm-searchMatch-selected { background: rgba(255, 122, 0, 0.55) !important; }

@@ -26,7 +26,17 @@ export type PdfViewerHandle = {
   /** The PDF spot to look up in the source: the selected text, else the last place clicked, else the
    *  middle of the view. Page number plus PDF points from the page's top-left. */
   sourcePoint: () => { page: number; x: number; y: number } | null;
+  /** Search the PDF's text (Cmd/Ctrl + F with the PDF last clicked). Highlights every match and scrolls to
+   *  the current one; `step` 1 / -1 moves to the next / previous, 0 starts again at the first match on or
+   *  after the page in view. Resolves to the current match (1-based) and the number of matches. */
+  find: (query: string, step: 0 | 1 | -1) => Promise<{ index: number; total: number }>;
+  clearFind: () => void;
+  /** Text selected in the PDF, if any (to start a search with). */
+  selectedText: () => string;
 };
+
+type FindRect = { left: number; top: number; width: number; height: number }; // fractions of the page
+type PageText = { text: string; items: { start: number; end: number; x: number; y: number; w: number; h: number }[] };
 
 type Annotation = { id: string; page: number; x: number; y: number; text: string };
 
@@ -709,7 +719,136 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
   // ---------- imperative API for the toolbar and SyncTeX ----------
 
+  // ---------- find in PDF ----------
+  const textCacheRef = useRef<{ doc: PDFDocumentProxy | null; pages: Map<number, PageText> }>({ doc: null, pages: new Map() });
+  const findRef = useRef<{ query: string; matches: { page: number; rects: FindRect[] }[]; current: number }>({ query: '', matches: [], current: -1 });
+
+  const pageText = async (doc: PDFDocumentProxy, n: number): Promise<PageText> => {
+    if (textCacheRef.current.doc !== doc) textCacheRef.current = { doc, pages: new Map() };
+    const cached = textCacheRef.current.pages.get(n);
+    if (cached) return cached;
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    let text = '';
+    const items: PageText['items'] = [];
+    for (const raw of content.items as { str?: string; transform?: number[]; width?: number; height?: number; hasEOL?: boolean }[]) {
+      if (typeof raw.str !== 'string' || !raw.transform) continue;
+      const [a, b, , , e, f] = raw.transform;
+      const h = raw.height || Math.hypot(a, b) || 10;
+      items.push({ start: text.length, end: text.length + raw.str.length, x: e, y: f, w: raw.width || 0, h });
+      text += raw.str;
+      if (raw.hasEOL) text += ' ';
+    }
+    const result = { text: text.toLowerCase(), items };
+    textCacheRef.current.pages.set(n, result);
+    return result;
+  };
+
+  /** Rectangles (fractions of the page) covering characters [start, end) of a page's text. */
+  const rectsFor = async (doc: PDFDocumentProxy, n: number, pt: PageText, start: number, end: number) => {
+    const vp = (await doc.getPage(n)).getViewport({ scale: 1 });
+    const rects: FindRect[] = [];
+    for (const it of pt.items) {
+      if (it.end <= start || it.start >= end || it.end === it.start) continue;
+      const len = it.end - it.start;
+      const a = Math.max(start, it.start) - it.start;
+      const b = Math.min(end, it.end) - it.start;
+      const x0 = it.x + (it.w * a) / len;
+      const x1 = it.x + (it.w * b) / len;
+      const [px0, py0] = vp.convertToViewportPoint(x0, it.y + it.h * 0.88);
+      const [px1, py1] = vp.convertToViewportPoint(x1, it.y - it.h * 0.24);
+      rects.push({
+        left: Math.min(px0, px1) / vp.width,
+        top: Math.min(py0, py1) / vp.height,
+        width: Math.max(Math.abs(px1 - px0), 2) / vp.width,
+        height: Math.max(Math.abs(py1 - py0), 4) / vp.height
+      });
+    }
+    return rects;
+  };
+
+  const clearFindMarks = () => {
+    containerRef.current?.querySelectorAll('.pdf-find-hit').forEach((el) => el.remove());
+  };
+
+  const drawFind = (scrollToCurrent: boolean) => {
+    clearFindMarks();
+    const { matches, current } = findRef.current;
+    matches.forEach((m, i) => {
+      const slot = slotsRef.current[m.page - 1];
+      if (!slot) return;
+      for (const r of m.rects) {
+        const el = document.createElement('div');
+        el.className = `pdf-find-hit${i === current ? ' current' : ''}`;
+        el.style.left = `${r.left * 100}%`;
+        el.style.top = `${r.top * 100}%`;
+        el.style.width = `${r.width * 100}%`;
+        el.style.height = `${r.height * 100}%`;
+        slot.wrapper.appendChild(el);
+      }
+    });
+    const m = matches[current];
+    const container = containerRef.current;
+    if (!scrollToCurrent || !m || !container) return;
+    const slot = slotsRef.current[m.page - 1];
+    if (!slot || !m.rects[0]) return;
+    const box = slot.wrapper.getBoundingClientRect();
+    const offset = slotOffset(slot);
+    container.scrollTo({
+      top: Math.max(0, offset.top + m.rects[0].top * box.height - container.clientHeight / 3),
+      left: Math.max(0, offset.left + m.rects[0].left * box.width - container.clientWidth / 3),
+      behavior: 'smooth'
+    });
+  };
+
+  const runFind = async (query: string, step: 0 | 1 | -1) => {
+    // Right after a compile the new PDF may still be loading.
+    for (let i = 0; i < 40 && (!docRef.current || !slotsRef.current.length); i += 1) await new Promise((r) => setTimeout(r, 100));
+    const doc = docRef.current;
+    const q = query.trim().toLowerCase();
+    if (!doc || !q) {
+      findRef.current = { query: '', matches: [], current: -1 };
+      clearFindMarks();
+      return { index: 0, total: 0 };
+    }
+    const state = findRef.current;
+    if (state.query !== q || textCacheRef.current.doc !== doc || step === 0) {
+      const matches: { page: number; rects: FindRect[] }[] = [];
+      for (let n = 1; n <= doc.numPages; n += 1) {
+        const pt = await pageText(doc, n);
+        let from = 0;
+        for (;;) {
+          const at = pt.text.indexOf(q, from);
+          if (at < 0) break;
+          matches.push({ page: n, rects: await rectsFor(doc, n, pt, at, at + q.length) });
+          from = at + Math.max(1, q.length);
+        }
+      }
+      if (docRef.current !== doc) return { index: 0, total: 0 };
+      // Start at the first match on or after the page in view.
+      const inView = lastPageRef.current.page || 1;
+      const first = matches.findIndex((m) => m.page >= inView);
+      findRef.current = { query: q, matches, current: matches.length ? (first >= 0 ? first : 0) : -1 };
+    } else if (state.matches.length) {
+      state.current = (state.current + step + state.matches.length) % state.matches.length;
+    }
+    drawFind(true);
+    const { matches, current } = findRef.current;
+    return { index: current + 1, total: matches.length };
+  };
+
   useImperativeHandle(ref, () => ({
+    find: (query, step) => runFind(query, step),
+    clearFind: () => {
+      findRef.current = { query: '', matches: [], current: -1 };
+      clearFindMarks();
+    },
+    selectedText: () => {
+      const selection = window.getSelection();
+      const container = containerRef.current;
+      if (!selection || selection.isCollapsed || !container || !container.contains(selection.anchorNode)) return '';
+      return selection.toString().replace(/\s+/g, ' ').trim().slice(0, 200);
+    },
     zoomIn: () => zoomTo(zoomRef.current.scale * ZOOM_STEP, 'custom'),
     zoomOut: () => zoomTo(zoomRef.current.scale / ZOOM_STEP, 'custom'),
     fitWidth: () => zoomTo(zoomRef.current.scale, 'fitWidth'),

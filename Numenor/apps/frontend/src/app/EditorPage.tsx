@@ -8,7 +8,7 @@ import { basicSetup } from 'codemirror';
 import { latex, strongComments } from '../latex/lang';
 import { Compartment, EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, DecorationSet, WidgetType, keymap, gutter, GutterMarker } from '@codemirror/view';
-import { search, searchKeymap } from '@codemirror/search';
+import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
 import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
 import { toggleComment, undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
 import { foldKeymap, foldService, indentOnInput, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
@@ -1286,6 +1286,11 @@ export default function EditorPage() {
   const pdfWinRef = useRef<Window | null>(null);
   const spellCompartment = useMemo(() => new Compartment(), []);
   const pdfViewerRef = useRef<PdfViewerHandle | null>(null);
+  // Cmd/Ctrl + F searches where you last clicked: the source (.tex, .txt, .bib…) or the compiled PDF.
+  const lastPaneRef = useRef<'editor' | 'pdf'>('editor');
+  const [pdfFind, setPdfFind] = useState<{ open: boolean; query: string; index: number; total: number; busy: boolean }>({ open: false, query: '', index: 0, total: 0, busy: false });
+  const pdfFindInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfFindTimerRef = useRef<number | undefined>(undefined);
   const forwardSyncRef = useRef<() => void>(() => {});
 
   const {
@@ -3618,6 +3623,59 @@ export default function EditorPage() {
     };
   }, [postToPdfWindow, projectName]);
 
+  // ---------- Cmd/Ctrl + F: search the source or the PDF, whichever was clicked last ----------
+  const runPdfFind = useCallback(async (query: string, step: 0 | 1 | -1) => {
+    setPdfFind((f) => ({ ...f, query, busy: true }));
+    const res = await pdfViewerRef.current?.find(query, step).catch(() => null);
+    setPdfFind((f) => (f.query === query ? { ...f, index: res?.index || 0, total: res?.total || 0, busy: false } : f));
+  }, []);
+  const closePdfFind = useCallback(() => {
+    pdfViewerRef.current?.clearFind();
+    setPdfFind((f) => ({ ...f, open: false, index: 0, total: 0 }));
+  }, []);
+  useEffect(() => {
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('.pdf-preview, .nm-pdf-find')) lastPaneRef.current = 'pdf';
+      else if (editorAreaRef.current?.contains(target)) lastPaneRef.current = 'editor';
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
+      if (lastPaneRef.current === 'pdf' && pdfUrl && rightView === 'pdf') {
+        e.preventDefault();
+        e.stopPropagation();
+        const picked = pdfViewerRef.current?.selectedText() || '';
+        setPdfFind((f) => ({ ...f, open: true, query: picked || f.query }));
+        window.setTimeout(() => {
+          pdfFindInputRef.current?.focus();
+          pdfFindInputRef.current?.select();
+        }, 0);
+        if (picked) runPdfFind(picked, 0).catch(() => {});
+        return;
+      }
+      const view = cmViewRef.current;
+      if (!view) return;
+      e.preventDefault();
+      e.stopPropagation();
+      view.focus();
+      openSearchPanel(view);
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [pdfUrl, rightView, runPdfFind]);
+  // A new PDF (after compiling): search it again so the highlights match the new pages.
+  useEffect(() => {
+    if (!pdfFind.open || !pdfFind.query.trim() || !pdfUrl) return;
+    const timer = window.setTimeout(() => runPdfFind(pdfFind.query, 0).catch(() => {}), 400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfUrl]);
+
   // ---------- who else has this project open (top bar), every few seconds ----------
   const [people, setPeople] = useState<PresencePerson[]>([]);
   const [presenceYou, setPresenceYou] = useState('');
@@ -5884,6 +5942,33 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                       )}
                     </div>
                   </div>
+                  {pdfUrl && pdfFind.open && (
+                    <div className="nm-pdf-find" role="search">
+                      <input
+                        ref={pdfFindInputRef}
+                        className="input nm-pdf-find-input"
+                        placeholder={t('Search in the PDF')}
+                        value={pdfFind.query}
+                        onChange={(e) => {
+                          const q = e.target.value;
+                          setPdfFind((f) => ({ ...f, query: q }));
+                          window.clearTimeout(pdfFindTimerRef.current);
+                          pdfFindTimerRef.current = window.setTimeout(() => runPdfFind(q, 0).catch(() => {}), 250);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); runPdfFind(pdfFind.query, e.shiftKey ? -1 : 1).catch(() => {}); }
+                          if (e.key === 'Escape') { e.preventDefault(); closePdfFind(); }
+                        }}
+                        spellCheck={false}
+                      />
+                      <span className="muted nm-pdf-find-count">
+                        {pdfFind.busy ? '…' : pdfFind.query.trim() ? (pdfFind.total ? `${pdfFind.index} / ${pdfFind.total}` : t('No matches')) : ''}
+                      </span>
+                      <button className="nm-icon-btn borderless" onClick={() => runPdfFind(pdfFind.query, -1)} disabled={!pdfFind.total} title={t('Previous (Shift + Enter)')}>↑</button>
+                      <button className="nm-icon-btn borderless" onClick={() => runPdfFind(pdfFind.query, 1)} disabled={!pdfFind.total} title={t('Next (Enter)')}>↓</button>
+                      <button className="nm-icon-btn borderless" onClick={closePdfFind} title={t('Close (Esc)')}><IconClose size={14} /></button>
+                    </div>
+                  )}
                   {pdfUrl ? (
                     <PdfViewer
                       ref={pdfViewerRef}
