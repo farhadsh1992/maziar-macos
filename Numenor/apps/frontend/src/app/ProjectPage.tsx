@@ -192,6 +192,20 @@ export default function ProjectPage() {
     loadFolders();
   }, [loadFolders]);
 
+  // Projects can arrive from another computer through a synced folder (Google Drive…): look again when the
+  // page comes back into view, and every half minute while it's open.
+  useEffect(() => {
+    const again = () => { if (document.visibilityState === 'visible') loadProjects().catch(() => {}); };
+    document.addEventListener('visibilitychange', again);
+    window.addEventListener('focus', again);
+    const timer = window.setInterval(again, 30000);
+    return () => {
+      document.removeEventListener('visibilitychange', again);
+      window.removeEventListener('focus', again);
+      window.clearInterval(timer);
+    };
+  }, [loadProjects]);
+
   const primaryFolder = folders.find((f) => f.primary)?.path || '';
   // Where new projects go: the chosen folder if it's still in the list, else the main one.
   const newProjectFolder = folders.some((f) => f.path === targetFolder) ? targetFolder : primaryFolder;

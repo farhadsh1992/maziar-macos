@@ -29,7 +29,7 @@ import {
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, type ProjectLocation, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, projectStat, type ProjectLocation, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -1090,6 +1090,8 @@ export default function EditorPage() {
   const projectId = routeProjectId || '';
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // A file changed on disk by something else (Google Drive from another computer…) while it had unsaved edits here.
+  const [externalChange, setExternalChange] = useState<{ path: string; content: string } | null>(null);
   // Settings → "Where this project is saved" (owner's computer only).
   const [projectLocation, setProjectLocation] = useState<ProjectLocation | null>(null);
   const [locationNote, setLocationNote] = useState('');
@@ -1098,6 +1100,8 @@ export default function EditorPage() {
   const [fileOrder, setFileOrder] = useState<Record<string, string[]>>({});
   const [activePath, setActivePath] = useState<string>('');
   const [files, setFiles] = useState<Record<string, string>>({});
+  const filesRef = useRef(files);
+  filesRef.current = files;
   const [editorValue, setEditorValue] = useState<string>('');
   const [selectionRange, setSelectionRange] = useState<[number, number]>([0, 0]);
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -1777,6 +1781,7 @@ export default function EditorPage() {
   }, []);
 
   const openFile = async (filePath: string) => {
+    setExternalChange((c) => (c && c.path !== filePath ? null : c));
     setActivePath(filePath);
     activePathRef.current = filePath;
     setSelectedPath(filePath);
@@ -1819,6 +1824,8 @@ export default function EditorPage() {
 
   const openFileRef = useRef(openFile);
   openFileRef.current = openFile;
+  const refreshTreeRef = useRef(refreshTree);
+  refreshTreeRef.current = refreshTree;
 
   // Maziar: per-project memory (this browser) — last open file, cursor/scroll per file, main file.
   const rememberRead = (key: string) => {
@@ -2117,6 +2124,8 @@ export default function EditorPage() {
   useEffect(() => {
     if (collabActiveRef.current) return;
     if (!isDirty || !activePath) return;
+    // Another computer changed this file and you haven't chosen which version to keep: don't overwrite it.
+    if (externalChange && externalChange.path === activePath) return;
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
     }
@@ -2129,7 +2138,7 @@ export default function EditorPage() {
         saveTimerRef.current = null;
       }
     };
-  }, [activePath, editorValue, isDirty, saveActiveFile, collabEnabled]);
+  }, [activePath, editorValue, isDirty, saveActiveFile, collabEnabled, externalChange]);
 
   const createBibFile = async () => {
     if (!projectId) return;
@@ -3664,6 +3673,88 @@ export default function EditorPage() {
       onUnload();
     };
   }, [postToPdfWindow, projectName]);
+
+  // ---------- files changed outside Numenor (Google Drive from another computer, another editor…) ----------
+  const statRef = useRef<Map<string, string> | null>(null);
+  const isDirtyRef = useRef(false);
+  isDirtyRef.current = isDirty;
+  /** Puts new text in the editor, changing only the part that differs so the cursor stays where it was. */
+  const replaceEditorText = useCallback((next: string) => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const cur = view.state.doc.toString();
+    if (cur === next) return;
+    let start = 0;
+    while (start < cur.length && start < next.length && cur[start] === next[start]) start += 1;
+    let endCur = cur.length;
+    let endNext = next.length;
+    while (endCur > start && endNext > start && cur[endCur - 1] === next[endNext - 1]) { endCur -= 1; endNext -= 1; }
+    suppressDirtyRef.current = true;
+    view.dispatch({ changes: { from: start, to: endCur, insert: next.slice(start, endNext) } });
+  }, []);
+  const loadExternalVersion = useCallback((path: string, content: string) => {
+    setFiles((prev) => ({ ...prev, [path]: content }));
+    if (path === activePathRef.current) {
+      replaceEditorText(content);
+      setEditorValue(content);
+      setIsDirty(false);
+    }
+  }, [replaceEditorText]);
+  useEffect(() => {
+    if (!projectId) return;
+    statRef.current = null;
+    let stop = false;
+    let busy = false;
+    const tick = async () => {
+      if (busy || stop || document.visibilityState !== 'visible') return;
+      busy = true;
+      try {
+        const res = await projectStat(projectId);
+        const next = new Map(res.files.map(([p, m, size]) => [p, `${m}:${size}`]));
+        const prev = statRef.current;
+        statRef.current = next;
+        if (!prev || stop) return;
+        const added = [...next.keys()].some((p) => !prev.has(p));
+        const removed = [...prev.keys()].some((p) => !next.has(p));
+        if (added || removed) refreshTreeRef.current().catch(() => {});
+        for (const [p, sig] of next) {
+          const before = prev.get(p);
+          if (!before || before === sig || !isTextPath(p)) continue;
+          const isActive = p === activePathRef.current;
+          if (!isActive && !Object.prototype.hasOwnProperty.call(filesRef.current, p)) continue;
+          const { content } = await getFile(projectId, p);
+          if (stop) return;
+          if (isActive) {
+            if (collabActiveRef.current) continue; // live editing keeps everyone's text in step itself
+            const shown = cmViewRef.current?.state.doc.toString() ?? '';
+            if (content === shown) { setFiles((f) => ({ ...f, [p]: content })); continue; } // our own save
+            if (isDirtyRef.current) {
+              setExternalChange({ path: p, content });
+            } else {
+              loadExternalVersion(p, content);
+              setStatus(t('{{file}} was updated outside Numenor (e.g. from another computer) — showing the new version.', { file: p }));
+            }
+          } else if (filesRef.current[p] !== content) {
+            setFiles((f) => ({ ...f, [p]: content }));
+          }
+        }
+      } catch {
+        /* offline / restarting: try again next time */
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setInterval(() => { tick().catch(() => {}); }, 4000);
+    const onVisible = () => { if (document.visibilityState === 'visible') tick().catch(() => {}); };
+    document.addEventListener('visibilitychange', onVisible);
+    tick().catch(() => {});
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   // ---------- Cmd/Ctrl + F: search the source or the PDF, whichever was clicked last ----------
   const runPdfFind = useCallback(async (query: string, step: 0 | 1 | -1) => {
@@ -5824,6 +5915,19 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
             ref={editorSplitRef}
           >
             <div className="editor-area" ref={editorAreaRef}>
+              {externalChange && externalChange.path === activePath && (
+                <div className="nm-external" role="alert">
+                  <span>
+                    <b>{externalChange.path}</b> {t('was changed outside Numenor (e.g. on another computer through Google Drive) while you had unsaved changes here.')}
+                  </span>
+                  <button className="btn small nm-primary" onClick={() => { loadExternalVersion(externalChange.path, externalChange.content); setExternalChange(null); setStatus(t('Loaded the new version of {{file}}.', { file: externalChange.path })); }}>
+                    {t('Load the new version')}
+                  </button>
+                  <button className="btn small ghost" onClick={() => { setExternalChange(null); saveActiveFile().catch(() => {}); }}>
+                    {t('Keep mine (overwrite it)')}
+                  </button>
+                </div>
+              )}
               <div ref={editorHostRef} className="editor-host" style={{ '--editor-font-size': `${editorFontSize}px` } as React.CSSProperties} />
               <div className="editor-hint muted">{t('快捷键: Option/Alt + / 或 Cmd/Ctrl + Space 补全；Cmd/Ctrl + / 注释；Cmd/Ctrl + F 搜索；Cmd/Ctrl + S 保存')} · {t('Cmd/Ctrl + Shift + J: show in PDF')}</div>
               {(inlineSuggestionText || isSuggesting) && suggestionPos && (

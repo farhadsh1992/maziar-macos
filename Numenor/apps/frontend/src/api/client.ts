@@ -953,3 +953,8 @@ export function getProjectLocation(id: string) {
 export function revealProject(id: string) {
   return maziarRequest<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/reveal`, { method: 'POST', body: '{}' });
 }
+
+/** Every file's [path, modified time (ms), size] — to notice changes made outside Numenor. */
+export function projectStat(id: string) {
+  return request<{ ok: boolean; files: [string, number, number][] }>(`/api/projects/${encodeURIComponent(id)}/stat`);
+}

@@ -2505,3 +2505,7 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 /* The settings window fits the screen and scrolls inside (it was cut off at the top on short windows). */
 .modal.nm-settings-modal { max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
 .modal.nm-settings-modal .modal-body { overflow-y: auto; min-height: 0; }
+
+/* A file changed outside Numenor while it had unsaved edits here */
+.nm-external { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 8px; padding: 8px 10px; border-radius: var(--nm-radius); border: 1px solid var(--nm-gold-line); background: var(--nm-gold-soft); font-size: 12.5px; color: var(--nm-text); }
+.nm-external > span { flex: 1 1 240px; }

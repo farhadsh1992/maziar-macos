@@ -23,6 +23,11 @@ but it runs perfectly well on its own.
 - **Project folders** — the Projects page shows where projects are stored; add more folders (e.g. one
   inside Google Drive, iCloud or Dropbox — detected automatically) or remove them, filter by folder, and
   choose where new projects go. Removing a folder only stops listing it; nothing is deleted.
+- **Changes from other computers** — when a project lives in a synced folder (Google Drive, iCloud…) and
+  is edited on another computer, the open editor picks up the new version within a few seconds (the
+  cursor stays put), new and removed files appear in the file tree, and the Projects page refreshes when
+  you return to it. If you had unsaved edits to that same file, nothing is overwritten: a bar asks whether
+  to load the new version or keep yours.
 - **Move, download, delete** — **Move…** puts a project in another projects folder (moving it into a
   Google Drive folder uploads it to Google Drive; moving it out removes it from there); **Download**
   saves it as a .zip you can import again; **Delete** moves it to Trash (with Undo), and **Delete

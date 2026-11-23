@@ -370,6 +370,24 @@ export function registerProjectRoutes(fastify) {
     return { items, fileOrder, mainFile, mainFiles: await mainFileCandidates(projectRoot, items) };
   });
 
+  // A cheap fingerprint of every file (modified time + size), polled by the open editor so changes made
+  // outside Numenor show up: Google Drive / iCloud bringing in edits from another computer, a text editor…
+  fastify.get('/api/projects/:id/stat', async (req) => {
+    const projectRoot = await getProjectRoot(req.params.id);
+    const items = await listFilesRecursive(projectRoot);
+    const files = [];
+    for (const item of items) {
+      if (item.type !== 'file') continue;
+      try {
+        const st = await fs.stat(path.join(projectRoot, item.path));
+        files.push([item.path.split(path.sep).join('/'), Math.round(st.mtimeMs), st.size]);
+      } catch {
+        /* vanished meanwhile */
+      }
+    }
+    return { ok: true, files };
+  });
+
   // Where a project is kept on this computer (shown in the editor's settings). Only for the computer running
   // Numenor — invited people never see the owner's folders.
   fastify.get('/api/projects/:id/location', async (req, reply) => {
