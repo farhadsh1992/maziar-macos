@@ -1,3 +1,4 @@
+import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -1438,6 +1439,7 @@ export default function ProjectPage() {
               <button className="icon-btn" onClick={() => setSettingsOpen(false)}>✕</button>
             </div>
             <div className="modal-body">
+              <CompilerSetup />
               <div className="field">
                 <label>{t('LLM Endpoint')}</label>
                 <input

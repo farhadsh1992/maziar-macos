@@ -1,3 +1,4 @@
+import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, MouseEvent, SetStateAction, RefObject, DragEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -6688,6 +6689,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                   </div>
                 </div>
               )}
+              <CompilerSetup />
               <div className="field">
                 <label>{t('Language')}</label>
                 <select className="input" value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'} onChange={(e) => i18n.changeLanguage(e.target.value)}>

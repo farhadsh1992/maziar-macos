@@ -597,6 +597,16 @@ final class NumenorServer: ObservableObject {
         var errorDescription: String? { message }
     }
 
+    static var hasTeXLiveCompilers: Bool {
+        let directories = (environment()["PATH"] ?? "").split(separator: ":")
+        let engines = ["pdflatex", "xelatex", "lualatex", "latexmk"]
+        return engines.allSatisfy { engine in
+            directories.contains { directory in
+                FileManager.default.isExecutableFile(atPath: "\(directory)/\(engine)")
+            }
+        }
+    }
+
     /// A GUI app inherits a bare PATH, so Homebrew's and TeX's folders are added explicitly — `node`,
     /// `npm`, and the `latexmk`/`synctex`/`tectonic` Numenor compiles with all live there.
     private static func environment() -> [String: String] {

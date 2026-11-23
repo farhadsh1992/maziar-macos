@@ -10,6 +10,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerArxivRoutes } from './routes/arxiv.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerCompileRoutes } from './routes/compile.js';
+import { addMacCompilerPaths, registerCompilerSetupRoutes } from './routes/compilerSetup.js';
 import { registerLLMRoutes } from './routes/llm.js';
 import { registerVisionRoutes } from './routes/vision.js';
 import { registerPlotRoutes } from './routes/plot.js';
@@ -32,6 +33,8 @@ import { requireAuthIfRemote, remoteRequestAllowed } from './utils/authUtils.js'
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
+
+addMacCompilerPaths();
 
 const fastify = Fastify({ logger: true });
 
@@ -64,6 +67,7 @@ registerHealthRoutes(fastify);
 registerArxivRoutes(fastify);
 registerProjectRoutes(fastify);
 registerCompileRoutes(fastify);
+registerCompilerSetupRoutes(fastify);
 registerLLMRoutes(fastify);
 registerVisionRoutes(fastify);
 registerPlotRoutes(fastify);

@@ -313,6 +313,26 @@ async function maziarRequest<T>(url: string, options?: RequestInit): Promise<T> 
   return body as T;
 }
 
+export type CompilerDistribution = 'mactex' | 'tectonic';
+
+export type CompilerSetupStatus = {
+  platform: string;
+  managedByMaziar: boolean;
+  homebrew: boolean;
+  engines: Record<'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic', boolean>;
+  job: { distribution: CompilerDistribution | null; running: boolean; error: string | null };
+};
+
+export function getCompilerSetup() {
+  return maziarRequest<CompilerSetupStatus>('/api/compiler-setup');
+}
+
+export function installCompiler(distribution: CompilerDistribution) {
+  return maziarRequest<CompilerSetupStatus>('/api/compiler-setup', {
+    method: 'POST', body: JSON.stringify({ distribution })
+  });
+}
+
 export type SynctexBox = { page: number; h: number; v: number; width: number; height: number };
 
 export function synctexForward(projectId: string, file: string, line: number, column = 0) {

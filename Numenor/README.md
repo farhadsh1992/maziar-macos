@@ -122,7 +122,13 @@ npm run build
 npm start
 ```
 
-Then open <http://localhost:8787>. For development with hot reload use `npm run dev`
+Then open <http://localhost:8787>. On macOS, open **Settings → LaTeX compilers** to check
+which engines Numenor can use. With Homebrew available, **Install MacTeX** installs the full
+TeX Live distribution without the GUI apps and macOS requests administrator authorization.
+**Install Tectonic** installs Tectonic separately. Use **Refresh compiler status** after a
+manual installation.
+
+For development with hot reload use `npm run dev`
 (frontend on <http://localhost:5173>, backend on 8787).
 
 ## Configuration

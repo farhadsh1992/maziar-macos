@@ -8,6 +8,8 @@ import WebKit
 struct NumenorView: View {
     @ObservedObject private var server = NumenorServer.shared
     @EnvironmentObject private var aiSettings: AISettings
+    @EnvironmentObject private var texManager: TeXInstallationManager
+    @State private var attemptedMacTeXSetup = false
 
     /// Hands Maziar's chosen AI (provider, model, key) to the server; restarts it only if that changed.
     private func syncAI() { server.setAI(aiSettings.numenorConfig()) }
@@ -16,13 +18,17 @@ struct NumenorView: View {
         Group {
             switch server.state {
             case .running(let url):
-                NumenorBrowser(url: url, server: server)
-                    .id(url)
+                VStack(spacing: 0) {
+                    macTeXSetupStatus
+                    NumenorBrowser(url: url, server: server)
+                        .id(url)
+                }
+                .onAppear(perform: installMacTeXIfNeeded)
             case .notInstalled:
                 setupCard(
                     icon: "square.and.arrow.down",
                     title: "Numenor",
-                    message: "Numenor is a LaTeX editor with an AI writing assistant, live PDF preview, SyncTeX and journal templates. It runs on this Mac and opens right here as a second editor next to Maziar's own.\n\nIt comes with Maziar \u{2014} setting it up installs its packages and builds it (a few minutes, once). It needs Node.js 18+.",
+                    message: "Numenor is a LaTeX editor with an AI writing assistant, live PDF preview, SyncTeX and journal templates. It runs on this Mac and opens right here as a second editor next to Maziar's own.\n\nIt comes with Maziar \u{2014} setting it up installs its packages and builds it (a few minutes, once). It needs Node.js 18+. If the TeX Live compilers are missing, Maziar automatically downloads MacTeX and macOS asks you to authorize its installation.",
                     buttonTitle: "Set Up Numenor",
                     action: { server.install() }
                 )
@@ -51,6 +57,29 @@ struct NumenorView: View {
         // a Maziar window (e.g. Settings, once closed) becomes key again.
         .onReceive(aiSettings.objectWillChange.receive(on: RunLoop.main)) { _ in syncAI() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in syncAI() }
+    }
+
+    private func installMacTeXIfNeeded() {
+        guard !attemptedMacTeXSetup, !texManager.isInstalling, !NumenorServer.hasTeXLiveCompilers else { return }
+        attemptedMacTeXSetup = true
+        texManager.install(.mactex)
+    }
+
+    @ViewBuilder private var macTeXSetupStatus: some View {
+        if attemptedMacTeXSetup && !NumenorServer.hasTeXLiveCompilers {
+            HStack(spacing: 10) {
+                if texManager.isInstalling {
+                    ProgressView().controlSize(.small)
+                    Text("Setting up MacTeX. The download can take a while. macOS will ask for administrator authorization.")
+                } else {
+                    Text(texManager.installError ?? "MacTeX installation finished, but Numenor still can't find its compilers.")
+                    Button("Retry MacTeX installation") { texManager.install(.mactex) }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(10)
+            .background(.quaternary)
+        }
     }
 
     private func setupCard(icon: String, title: String, message: String, buttonTitle: String, action: @escaping () -> Void) -> some View {
