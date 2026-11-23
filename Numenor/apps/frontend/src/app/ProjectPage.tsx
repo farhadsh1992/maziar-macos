@@ -19,14 +19,15 @@ import {
   addFolder,
   removeFolder,
   moveProject,
-  projectDownloadUrl
+  projectDownloadUrl,
+  addSharedWithMe
 } from '../api/client';
 import type { ProjectMeta, TemplateMeta, TemplateCategory, ProjectFolder } from '../api/client';
 import TransferPanel from './TransferPanel';
 import FolderPicker from './FolderPicker';
 import {
   NumenorMark, IconFolder, IconFile, IconArchive, IconTrash, IconTag, IconGear, IconSearch, IconChevronDown,
-  IconPlus, IconDots, IconStar, IconCopy, IconCheck, IconShare
+  IconPlus, IconDots, IconStar, IconCopy, IconCheck, IconShare, IconLink
 } from './icons';
 import SharedWithMe from './SharedWithMe';
 
@@ -126,6 +127,11 @@ export default function ProjectPage() {
   const [tagsExpanded, setTagsExpanded] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [sharedLinkOpen, setSharedLinkOpen] = useState(false);
+  const [sharedLink, setSharedLink] = useState('');
+  const [sharedLinkBusy, setSharedLinkBusy] = useState(false);
+  const [sharedLinkError, setSharedLinkError] = useState('');
+  const [sharedReload, setSharedReload] = useState(0);
   const [createName, setCreateName] = useState('');
   const [createTemplate, setCreateTemplate] = useState('');
   const [renameState, setRenameState] = useState<{ id: string; value: string } | null>(null);
@@ -563,6 +569,25 @@ export default function ProjectPage() {
     { key: 'trash', label: t('回收站') },
   ];
 
+  const submitSharedLink = async () => {
+    const link = sharedLink.trim();
+    if (!link || sharedLinkBusy) return;
+    setSharedLinkBusy(true);
+    setSharedLinkError('');
+    try {
+      await addSharedWithMe(link);
+      setSharedLinkOpen(false);
+      setSharedLink('');
+      setSharedView(true);
+      setActiveTag(null);
+      setSharedReload((n) => n + 1);
+    } catch (err) {
+      setSharedLinkError((err as Error).message);
+    } finally {
+      setSharedLinkBusy(false);
+    }
+  };
+
   return (
     <div className="project-shell">
       {/* ── Sidebar ── */}
@@ -582,6 +607,9 @@ export default function ProjectPage() {
           <button className="btn ghost" style={{ flex: 1 }} onClick={() => setImportOpen(true)}>{t('导入项目')}</button>
           <button className="btn ghost" style={{ flex: 1 }} onClick={() => setTemplateGalleryOpen(true)}>{t('模板库')}</button>
         </div>
+        <button className="btn ghost nm-add-shared-btn" onClick={() => { setSharedLink(''); setSharedLinkError(''); setSharedLinkOpen(true); }} title={t('Add a project someone shared with you, using the link they sent')}>
+          <IconLink size={15} /> {t('Add shared link')}
+        </button>
 
         <nav className="sidebar-nav">
           {navItems.map((item) => (
@@ -679,7 +707,7 @@ export default function ProjectPage() {
           </div>
         </header>
 
-        {sharedView ? <SharedWithMe onCount={setSharedCount} /> : (<>
+        {sharedView ? <SharedWithMe key={sharedReload} onCount={setSharedCount} /> : (<>
         {folders.length > 0 && (
           <div className="nm-folders" aria-label={t('Project folders')}>
             <div className="nm-folders-label">{t('Project folders')}</div>
@@ -1039,6 +1067,36 @@ export default function ProjectPage() {
           }
         }}
       />
+
+      {sharedLinkOpen && (
+        <div className="modal-backdrop" onClick={() => !sharedLinkBusy && setSharedLinkOpen(false)}>
+          <div className="modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>{t('Add shared link')}</div>
+              <button className="icon-btn" onClick={() => setSharedLinkOpen(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="field">
+                <label>{t('Invite link')}</label>
+                <input
+                  className="input"
+                  autoFocus
+                  value={sharedLink}
+                  onChange={(event) => setSharedLink(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && submitSharedLink()}
+                  placeholder="https://…/collab?token=…"
+                />
+              </div>
+              <div className="muted">{t('Paste the link someone sent you for their Numenor project (it contains “/collab?token=”). It is saved under “Shared with me”, so you can open it from here any time while its owner is sharing.')}</div>
+              {sharedLinkError && <div className="share-error">{sharedLinkError}</div>}
+            </div>
+            <div className="modal-actions">
+              <button className="btn ghost" onClick={() => setSharedLinkOpen(false)}>{t('取消')}</button>
+              <button className="btn nm-primary" onClick={submitSharedLink} disabled={sharedLinkBusy || !sharedLink.trim()}>{sharedLinkBusy ? t('Checking…') : t('Add shared project')}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {createOpen && (
         <div className="modal-backdrop" onClick={() => setCreateOpen(false)}>

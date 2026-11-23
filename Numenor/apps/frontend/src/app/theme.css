@@ -2358,3 +2358,9 @@ button.nm-brand-btn:hover { background: var(--nm-hover); }
 .nm-pdf-window-body > * { flex: 1; min-height: 0; }
 .nm-pdf-window-status { font-size: 12.5px; }
 .nm-pdf-window-orphan { display: flex; align-items: center; gap: 8px; margin: 0; border-radius: 0; }
+
+/* Projects sidebar: "Add shared link" button under Import / Templates */
+.nm-add-shared-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 8px;
+}

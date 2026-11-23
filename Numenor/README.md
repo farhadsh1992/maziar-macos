@@ -50,8 +50,8 @@ but it runs perfectly well on its own.
   time sharing starts; under **Same link every time** in the Share dialog, paste the fixed address your free
   ngrok account includes (dashboard.ngrok.com/domains) and links keep working after a restart (saved in
   `share-settings.json` in the state folder).
-- **Shared with me** — on the Projects page, paste an invite someone sent you and the project stays listed
-  there, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
+- **Shared with me** — on the Projects page, click **Add shared link** (left sidebar) and paste an invite
+  someone sent you; the project stays listed under Shared with me, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
 - **History** — every save, by you or by the people you share with, is recorded per project
   (`.numenor-history/` inside the project): who changed which file, when, and the exact lines added and
   removed, with **Restore** for any version.

@@ -1,0 +1,165 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{fontspec}
+\setmainfont{Palatino}
+\setmonofont{Menlo}[Scale=0.85]
+\usepackage{xcolor,graphicx,enumitem,titlesec,fancyvrb}
+\usepackage[most]{tcolorbox}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\newcommand{\sharedlink}{https://8396-193-136-205-165.ngrok-free.app/collab?token=op2.eyJ2IjoyLCJwaWQiOiI5YTRmOTAzYi0xMjk3LTQ3NTYtODgzZi1lY2M5MGYzZTIyNWIiLCJpaWQiOiJYQ2FVMUdxcmw1OGEifQ.vHHb16x_t6_XlUIMaXzCbnULP5xLROo2e8GzB0ZjMzc}
+\definecolor{navy}{HTML}{14213D}
+\definecolor{gold}{HTML}{B8892B}
+\definecolor{paper}{HTML}{F7F4EC}
+\hypersetup{colorlinks,urlcolor=gold!80!black,linkcolor=navy}
+\titleformat{\section}{\Large\bfseries\color{navy}}{\color{gold}\thesection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.5em}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.5em}
+\newtcolorbox{term}{colback=navy,colframe=navy,coltext=white,arc=2pt,
+  left=8pt,right=8pt,top=5pt,bottom=5pt,fontupper=\ttfamily\small}
+\newtcolorbox{note}[1][Note]{colback=paper,colframe=gold,arc=2pt,boxrule=0.6pt,
+  title={#1},coltitle=navy,colbacktitle=paper,fonttitle=\bfseries,
+  left=8pt,right=8pt}
+\pagestyle{empty}
+\begin{document}
+
+\begin{center}
+\includegraphics[width=2.3cm]{numenor-logo.png}\\[0.4em]
+{\Huge\bfseries\color{navy} Numenor}\\[0.2em]
+{\large\color{gold!80!black} Quick install on a Mac}
+\end{center}
+
+\vspace{0.3em}
+Numenor is a local \LaTeX{} workspace: project files, a code editor and a live PDF preview side by side,
+with optional AI help. It runs on your own Mac and opens in your web browser; your projects stay on your computer.
+This guide installs \emph{only} Numenor (you do not need Maziar). It takes about 10 minutes plus the TeX download.
+
+
+\begin{tcolorbox}[colback=gold!12,colframe=gold,arc=3pt,boxrule=1pt,left=10pt,right=10pt,top=6pt,bottom=6pt]
+{\large\bfseries\color{navy} No install needed to open the shared project}\par\smallskip
+You can open the shared \LaTeX{} project \textbf{EDGE-AI-Overleaf} right now in any web browser --- on a Mac, a PC or a tablet ---
+\emph{without installing Numenor}. Click the button, or copy the link into your browser:\par\medskip
+\begin{center}
+\href{\sharedlink}{\colorbox{navy}{\color{white}\bfseries\ \ Open the EDGE-AI-Overleaf project\ \ }}
+\end{center}
+{\footnotesize\ttfamily\color{navy!80}\expandafter\url\expandafter{\sharedlink}}\par\smallskip
+{\small The project lives on its owner's computer, so the link works while that computer is on and sharing.
+If it does not open, ask the owner to send the link again.
+Install Numenor (below) only if you want your own projects on your own Mac.}
+\end{tcolorbox}
+
+\begin{note}[What you need]
+macOS 12 or newer, an internet connection, and the \textbf{Terminal} app
+(press \texttt{Cmd + Space}, type \textit{Terminal}, press Return). Copy each dark box into Terminal and press Return.
+\end{note}
+
+\section{Install Homebrew (skip if you have it)}
+Homebrew installs the other tools with one command each. Check first: if \texttt{brew --version} prints a version, skip this step.
+\begin{term}
+{\footnotesize /bin/bash -c "\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"}
+\end{term}
+At the end it prints two or three ``Next steps'' lines starting with \texttt{echo} and \texttt{eval} --- run them, then close and reopen Terminal.
+
+\section{Install Node.js, Git and TeX}
+\begin{term}
+brew install node git\\
+brew install --cask mactex-no-gui
+\end{term}
+\texttt{mactex-no-gui} is the full TeX Live (about 5\,GB) and compiles every template in Numenor. It asks for your Mac password.
+When it finishes, \textbf{close and reopen Terminal} so the new \texttt{latexmk} and \texttt{xelatex} commands are found.
+
+\begin{note}[Short on disk space?]
+Use the small BasicTeX (about 100\,MB) instead, then add the few tools Numenor needs:
+\par\smallskip
+\begin{tcolorbox}[colback=navy,colframe=navy,coltext=white,arc=2pt,fontupper=\ttfamily\small,left=6pt,top=3pt,bottom=3pt]
+brew install --cask basictex\\
+sudo tlmgr update --self\\
+sudo tlmgr install latexmk collection-fontsrecommended
+\end{tcolorbox}
+If a template later reports a missing \texttt{.sty} file, install that package with \texttt{sudo tlmgr install <name>}.
+\end{note}
+
+Check that everything is in place (each should print a version):
+\begin{term}
+node -v \&\& git --version \&\& latexmk -v | head -1
+\end{term}
+Node must be version 18 or newer.
+
+\section{Download and build Numenor}
+\begin{term}
+cd \textasciitilde\\
+git clone https://github.com/farhadsh1992/numenor.git\\
+cd numenor\\
+npm install\\
+npm run build
+\end{term}
+This puts Numenor in a \texttt{numenor} folder in your home folder. \texttt{npm install} takes a minute or two the first time.
+
+\section{Start it}
+\begin{term}
+cd \textasciitilde/numenor \&\& NUMENOR\_HOST=127.0.0.1 npm start
+\end{term}
+When Terminal shows \textit{Numenor started at http://localhost:8787}, open
+\href{http://localhost:8787}{\texttt{http://localhost:8787}} in Safari, Chrome or any browser.
+Keep the Terminal window open while you work; press \texttt{Ctrl + C} in it to stop Numenor.
+
+\texttt{NUMENOR\_HOST=127.0.0.1} keeps the editor reachable from your Mac only. Leave it out if you want other
+computers on your network to open it. Sharing with people over the internet does not need it removed ---
+use the \textbf{Share} button instead (see below).
+
+\begin{note}[Start it with one word]
+Add a shortcut once:
+\par\smallskip
+\begin{tcolorbox}[colback=navy,colframe=navy,coltext=white,arc=2pt,fontupper=\ttfamily\small,left=6pt,top=3pt,bottom=3pt]
+{\scriptsize echo "alias numenor='cd \textasciitilde/numenor \&\& NUMENOR\_HOST=127.0.0.1 npm start'" >> \textasciitilde/.zshrc}
+\end{tcolorbox}
+Open a new Terminal window and type \texttt{numenor} from then on.
+\end{note}
+
+\section{First steps in the app}
+\begin{itemize}[leftmargin=1.2em,itemsep=0.2em]
+\item \textbf{New project} on the Projects page: pick a template (ACL, CVPR, NeurIPS, ICML \dots), or import a \texttt{.zip} or an arXiv source.
+\item Opening a project compiles it and shows the PDF. \textbf{Cmd/Ctrl + Shift + J} jumps from the source to the PDF; double-click the PDF to jump back.
+\item \textbf{AI help} (optional): click the \textbf{Numenor} name at the top left of the editor to open Settings and enter
+an OpenAI-compatible endpoint, API key and model.
+\item Projects are saved in \texttt{\textasciitilde/numenor/data}. The Projects page can add other folders, for example one inside Google Drive or iCloud.
+\end{itemize}
+
+\section{Add a shared project to your Numenor}
+If you installed Numenor, keep projects other people share with you on your own Projects page:
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.2em]
+\item On the Projects page, click \textbf{Add shared link} (in the left sidebar, under \emph{Import project}).
+\item Paste the invite link you were sent --- for example the EDGE-AI-Overleaf link above --- and click \textbf{Add shared project}.
+\item The project now stays under \textbf{Shared with me}, which shows whether its owner's computer is reachable.
+Click \textbf{Open} to work on it. If the owner sends a new link later, add it the same way; it replaces the old one.
+\end{enumerate}
+
+\section{Optional extras}
+\begin{itemize}[leftmargin=1.2em,itemsep=0.2em]
+\item \textbf{Share a project with people}: install Cloudflare's tunnel tool once, then use \textbf{Share} in the editor.
+\begin{term}
+brew install cloudflared
+\end{term}
+\item \textbf{Spelling and grammar} uses macOS's own checker and is only available when Numenor runs inside Maziar.
+\end{itemize}
+
+\section{Update to the newest version}
+\begin{term}
+cd \textasciitilde/numenor \&\& git pull \&\& npm install \&\& npm run build
+\end{term}
+Then start it again. Your projects in \texttt{data} are not touched.
+
+\section{If something goes wrong}
+\begin{description}[leftmargin=1.2em,style=nextline,itemsep=0.3em]
+\item[\texttt{command not found: brew / node / latexmk}] Close and reopen Terminal. For Homebrew, run the
+\texttt{eval} line it printed at the end of its install.
+\item[\textit{Address already in use} / port 8787 busy] Numenor is already running somewhere, or another app uses the port.
+Start on another port: \texttt{PORT=8790 npm start}, then open \texttt{http://localhost:8790}.
+\item[Compile fails with a missing \texttt{.sty} file] With BasicTeX: \texttt{sudo tlmgr install <package>}. With full MacTeX this should not happen.
+\item[The page is blank after an update] Run \texttt{npm run build} again, then reload the browser page.
+\end{description}
+
+\vfill
+{\small\color{gray} Numenor is based on OpenPrism by OpenDCAI (MIT License). Source and README:
+\url{https://github.com/farhadsh1992/numenor}}
+\end{document}
