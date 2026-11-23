@@ -1,6 +1,6 @@
 {
   "name": "numenor",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "releaseLabel": "Beta",
   "private": true,
   "workspaces": [
