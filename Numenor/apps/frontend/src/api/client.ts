@@ -841,3 +841,78 @@ export function setSharedWithMeCode(id: string, code: string) {
 export function removeSharedWithMe(id: string) {
   return maziarRequest<{ ok: true }>(`/api/shared-with-me/${id}`, { method: 'DELETE' });
 }
+
+// "Keep a copy in…": folders (Google Drive, SharePoint via OneDrive, Dropbox…) a project is mirrored to on every save.
+export type SyncTarget = {
+  id: string;
+  dest: string;
+  includePdf: boolean;
+  enabled: boolean;
+  createdAt: string;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  fileCount: number;
+  running: boolean;
+  exists: boolean;
+};
+
+export function listSyncTargets(projectId: string) {
+  return maziarRequest<{ ok: true; targets: SyncTarget[] }>(`/api/sync/${encodeURIComponent(projectId)}`);
+}
+
+export function addSyncTarget(projectId: string, parent: string, includePdf = true) {
+  return maziarRequest<{ ok: true; target: SyncTarget; targets: SyncTarget[] }>(`/api/sync/${encodeURIComponent(projectId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ parent, includePdf })
+  });
+}
+
+export function updateSyncTarget(projectId: string, targetId: string, changes: { enabled?: boolean; includePdf?: boolean }) {
+  return maziarRequest<{ ok: true; targets: SyncTarget[] }>(`/api/sync/${encodeURIComponent(projectId)}/${targetId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes)
+  });
+}
+
+export function removeSyncTarget(projectId: string, targetId: string) {
+  return maziarRequest<{ ok: true; targets: SyncTarget[] }>(`/api/sync/${encodeURIComponent(projectId)}/${targetId}`, { method: 'DELETE' });
+}
+
+export function syncNow(projectId: string) {
+  return maziarRequest<{ ok: true; targets: SyncTarget[] }>(`/api/sync/${encodeURIComponent(projectId)}/now`, { method: 'POST', body: '{}' });
+}
+
+// Version and updates from GitHub.
+export type VersionInfo = { version: string; label: string; display: string };
+export type UpdateCheck = {
+  ok: true;
+  current: VersionInfo;
+  latest: VersionInfo;
+  available: boolean;
+  notes: string;
+  method: 'git' | 'archive';
+  checkedAt: string;
+};
+export type UpdateProgress = {
+  state: 'idle' | 'downloading' | 'installing' | 'building' | 'restarting' | 'error';
+  step: string;
+  error: string;
+  log: string;
+  current: VersionInfo;
+};
+
+export function getVersion() {
+  return maziarRequest<{ ok: true; supervised: boolean } & VersionInfo>('/api/version');
+}
+
+export function checkForUpdate(force = false) {
+  return maziarRequest<UpdateCheck>(`/api/update/check${force ? '?force=1' : ''}`);
+}
+
+export function startUpdate() {
+  return maziarRequest<{ ok: true } & UpdateProgress>('/api/update/apply', { method: 'POST', body: '{}' });
+}
+
+export function updateStatus() {
+  return maziarRequest<{ ok: true } & UpdateProgress>('/api/update/status');
+}

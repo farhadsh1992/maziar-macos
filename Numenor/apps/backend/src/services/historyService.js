@@ -8,6 +8,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { diffLines } from 'diff';
+import { projectChanged } from './projectEvents.js';
 
 export const HISTORY_DIR = '.numenor-history';
 const MERGE_WINDOW_MS = 5 * 60 * 1000;
@@ -63,6 +64,7 @@ const newId = () => `${Date.now().toString(36)}-${crypto.randomBytes(4).toString
 /** author: { name, kind: 'owner' | 'guest', id? } */
 export function recordEdit(projectRoot, filePath, before, after, author) {
   if (before === after || typeof after !== 'string') return Promise.resolve();
+  projectChanged(projectRoot);
   if ((before?.length || 0) > MAX_TEXT || after.length > MAX_TEXT) return Promise.resolve();
   return serial(projectRoot, async () => {
     let entries = await readIndex(projectRoot);
@@ -95,6 +97,7 @@ export function recordEdit(projectRoot, filePath, before, after, author) {
 
 /** Non-text events: 'upload' | 'delete' | 'rename' | 'folder'. */
 export function recordEvent(projectRoot, action, filePath, author, extra = {}) {
+  projectChanged(projectRoot);
   return serial(projectRoot, async () => {
     let entries = await readIndex(projectRoot);
     entries.push({ id: newId(), time: new Date().toISOString(), author: author.name, kind: author.kind, action, path: filePath, added: 0, removed: 0, ...extra });

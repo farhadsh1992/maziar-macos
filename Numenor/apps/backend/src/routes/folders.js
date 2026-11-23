@@ -50,6 +50,10 @@ async function suggestions() {
         add(`Google Drive (${account})`, myDrive || base, 'google');
       } else if (name.startsWith('Dropbox')) {
         add('Dropbox', base, 'dropbox');
+      } else if (name.startsWith('OneDrive-SharedLibraries')) {
+        // SharePoint / Teams libraries the OneDrive app syncs ("Sync" or "Add shortcut" in SharePoint).
+        const org = name.slice('OneDrive-SharedLibraries'.length).replace(/^-/, '');
+        add(`SharePoint${org ? ` (${org})` : ''}`, base, 'sharepoint');
       } else if (name.startsWith('OneDrive')) {
         add(name.replace(/^OneDrive-?/, 'OneDrive ').trim(), base, 'onedrive');
       }

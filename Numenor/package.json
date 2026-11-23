@@ -1,5 +1,7 @@
 {
   "name": "numenor",
+  "version": "1.0.5",
+  "releaseLabel": "Beta",
   "private": true,
   "workspaces": [
     "apps/*",

@@ -3,16 +3,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { browseFolder, folderSuggestions, makeFolder, type FolderListing, type FolderSuggestion } from '../api/client';
 
-const KIND_ICON: Record<string, string> = { google: '☁︎', icloud: '☁︎', dropbox: '☁︎', onedrive: '☁︎', folder: '📁' };
+const KIND_ICON: Record<string, string> = { google: '☁︎', icloud: '☁︎', dropbox: '☁︎', onedrive: '☁︎', sharepoint: '☁︎', folder: '📁' };
 
 export default function FolderPicker({
   onChoose,
   onClose,
-  existing
+  existing,
+  title,
+  subtitle,
+  chooseLabel
 }: {
   onChoose: (path: string) => Promise<void>;
   onClose: () => void;
   existing: string[];
+  title?: string;
+  subtitle?: string;
+  chooseLabel?: string;
 }) {
   const { t } = useTranslation();
   const [listing, setListing] = useState<FolderListing | null>(null);
@@ -78,9 +84,9 @@ export default function FolderPicker({
       <div className="modal folder-picker" onClick={(e) => e.stopPropagation()}>
         <div className="folder-picker-head">
           <div>
-            <div className="folder-picker-title">{t('Add a projects folder')}</div>
+            <div className="folder-picker-title">{title || t('Add a projects folder')}</div>
             <div className="muted folder-picker-sub">
-              {t('Numenor lists the projects in this folder and can create new ones there. A folder inside Google Drive keeps them synced by Google Drive for desktop.')}
+              {subtitle || t('Numenor lists the projects in this folder and can create new ones there. A folder inside Google Drive keeps them synced by Google Drive for desktop.')}
             </div>
           </div>
           <button className="icon-btn" onClick={onClose}>✕</button>
@@ -172,7 +178,7 @@ export default function FolderPicker({
           </div>
           <button className="btn ghost" onClick={onClose}>{t('Cancel')}</button>
           <button className="btn" onClick={choose} disabled={!listing || busy || alreadyAdded}>
-            {alreadyAdded ? t('Already added') : t('Use this folder')}
+            {alreadyAdded ? t('Already added') : chooseLabel || t('Use this folder')}
           </button>
         </div>
       </div>

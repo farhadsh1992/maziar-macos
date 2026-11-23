@@ -24,6 +24,8 @@ import { registerMailRoutes } from './routes/mail.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerHistoryRoutes } from './routes/history.js';
 import { registerSharedWithMeRoutes } from './routes/sharedWithMe.js';
+import { registerSyncRoutes } from './routes/sync.js';
+import { registerUpdateRoutes } from './routes/update.js';
 import { setSharePort, startSharing } from './services/shareService.js';
 import { requireAuthIfRemote, remoteRequestAllowed } from './utils/authUtils.js';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +77,8 @@ registerMailRoutes(fastify);
 registerInviteRoutes(fastify);
 registerHistoryRoutes(fastify);
 registerSharedWithMeRoutes(fastify);
+registerSyncRoutes(fastify);
+registerUpdateRoutes(fastify);
 
 // Serve frontend static files in tunnel/production mode
 const __filename = fileURLToPath(import.meta.url);
@@ -103,7 +107,16 @@ await ensureDir(DATA_DIR);
 
 // NUMENOR_HOST=127.0.0.1 keeps the editor reachable from this computer only (Maziar does that);
 // the default listens on every interface so collaborators on the network can join.
-await fastify.listen({ port: PORT, host: process.env.NUMENOR_HOST || '0.0.0.0' });
+// After an in-app update the new copy may start before the old one has let go of the port: retry a bit.
+for (let attempt = 0; ; attempt += 1) {
+  try {
+    await fastify.listen({ port: PORT, host: process.env.NUMENOR_HOST || '0.0.0.0' });
+    break;
+  } catch (err) {
+    if (err?.code !== 'EADDRINUSE' || process.env.NUMENOR_RESTARTED !== '1' || attempt >= 40) throw err;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
 
 console.log('');
 console.log(`  Numenor started at http://localhost:${PORT}`);

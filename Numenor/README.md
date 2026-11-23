@@ -57,6 +57,18 @@ but it runs perfectly well on its own.
   `share-settings.json` in the state folder).
 - **Shared with me** — on the Projects page, click **Add shared link** (left sidebar) and paste an invite
   someone sent you with its access code (asked only this once); the project stays listed under Shared with me, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
+- **Copies in Google Drive, SharePoint and other folders** — **Copies** in the editor's top bar keeps the
+  project copied into any number of folders: a Google Drive folder, a SharePoint / Teams library or
+  OneDrive (synced to the Mac by the OneDrive app — in SharePoint click **Sync** or **Add shortcut to My
+  files**), Dropbox, iCloud or any other folder. Every save (yours or an invited person's) and every new PDF
+  updates all copies a few seconds later, and the cloud apps upload them with the account they're signed
+  in with — Numenor stores no cloud passwords. A copy only removes files it put there itself, so other
+  files in a shared folder are left alone. Kept per computer in `sync-targets.json` in the state folder.
+- **Version and updates** — the version (e.g. *Beta 1.0.5*) is shown at the bottom of the Projects page.
+  Numenor checks GitHub when it opens and every few hours; when a newer version is there it shows
+  **Update available**, and **Update now** downloads it (`git pull` in a git clone, otherwise the source
+  archive), installs, rebuilds and restarts — projects and settings are not touched. Every update published
+  to GitHub raises the version.
 - **History** — every save, by you or by the people you share with, is recorded per project
   (`.numenor-history/` inside the project): who changed which file, when, and the exact lines added and
   removed, with **Restore** for any version.
@@ -106,6 +118,8 @@ Set these as environment variables before `npm start` (all optional):
 | `NUMENOR_COLLAB_TOKEN_SECRET` | Secret for signing invite links (default: a random one created per install) |
 | `NUMENOR_STATE_DIR` | Where per-computer sharing state lives (`invites.json`, `shared-with-me.json`); default: the data folder |
 | `NUMENOR_OWNER_NAME` | Your name in project history (default: `Owner`) |
+| `NUMENOR_UPDATE_REPO` | GitHub repository updates come from (default `farhadsh1992/numenor`) |
+| `NUMENOR_SUPERVISED` | `1` = after an update, exit with code 75 and let the app running Numenor (Maziar) restart it |
 
 The AI endpoint, key and model can also be entered in the Settings panel in the browser. Older
 `OPENPRISM_*` variable names still work.

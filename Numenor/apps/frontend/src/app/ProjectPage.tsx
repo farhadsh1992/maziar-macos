@@ -29,6 +29,7 @@ import {
   NumenorMark, IconFolder, IconFile, IconArchive, IconTrash, IconTag, IconGear, IconSearch, IconChevronDown,
   IconPlus, IconDots, IconStar, IconCopy, IconCheck, IconShare, IconLink
 } from './icons';
+import { VersionBadge } from './UpdateNotice';
 import SharedWithMe from './SharedWithMe';
 
 const TARGET_FOLDER_KEY = 'numenor.projects.targetFolder';
@@ -673,6 +674,7 @@ export default function ProjectPage() {
             </div>
           )}
         </div>
+        <VersionBadge />
       </aside>
 
       {/* ── Main Content ── */}

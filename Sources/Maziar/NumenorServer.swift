@@ -465,6 +465,8 @@ final class NumenorServer: ObservableObject {
             if let secret = collabSecret() { env["NUMENOR_COLLAB_TOKEN_SECRET"] = secret }
             // Only this Mac can reach the editor — nobody else on the network.
             env["NUMENOR_HOST"] = "127.0.0.1"
+            // After updating itself from GitHub, Numenor exits with code 75 and Maziar starts it again.
+            env["NUMENOR_SUPERVISED"] = "1"
             // Numenor then ignores any AI settings its own page sends and uses only the values below (or
             // fails with "key not set" when Maziar has none).
             // Spelling/grammar for the editor through macOS's checker (see Sources/MaziarSpell).
@@ -515,6 +517,14 @@ final class NumenorServer: ObservableObject {
         guard process === proc else { return }
         process = nil
         if stopRequested { return }
+        if proc.terminationStatus == 75 {
+            // Numenor updated itself (Update in its own window): run the new version. The set-up copy now
+            // differs from the bundled one on purpose; it's replaced again only by a newer Maziar build.
+            append("\nNumenor was updated — restarting…\n")
+            state = .stopped
+            start()
+            return
+        }
         state = .failed("Numenor stopped unexpectedly (exit code \(proc.terminationStatus)). See the log below.")
     }
 

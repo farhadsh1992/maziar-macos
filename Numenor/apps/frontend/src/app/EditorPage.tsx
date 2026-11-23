@@ -24,9 +24,10 @@ import {
   NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconUpload,
   IconSearch, IconSection, IconList, IconSigma, IconInsert, IconUndo, IconRedo, IconPlus, IconMinus, IconSync,
   IconDownload, IconDots, IconCheckCircle, IconAlert, IconLayers, IconLog, IconSpinner, IconClose,
-  IconShare, IconHistory, IconPopOut, IconPopIn, IconCopy
+  IconShare, IconHistory, IconPopOut, IconPopIn, IconCopy, IconCloud
 } from './icons';
 import ShareDialog from './ShareDialog';
+import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
 import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, type ShareState, type Me } from '../api/client';
 import {
@@ -1259,6 +1260,7 @@ export default function EditorPage() {
   // Who's using this editor: the owner (on this computer) or an invited person (and their rights).
   const [me, setMe] = useState<Me | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const viewOnly = me?.kind === 'guest' && me.role === 'view';
   // PDF preview in its own window (see PdfWindowPage).
   const [pdfPopped, setPdfPopped] = useState(false);
@@ -4055,6 +4057,9 @@ export default function EditorPage() {
           </div>
         </div>
       )}
+      {syncOpen && projectId && (
+        <SyncDialog projectId={projectId} projectName={projectName || t('Project')} onClose={() => setSyncOpen(false)} />
+      )}
       {shareOpen && projectId && (
         <ShareDialog projectId={projectId} projectName={projectName || t('Project')} onClose={() => setShareOpen(false)} onStatus={setStatus} />
       )}
@@ -4117,6 +4122,11 @@ export default function EditorPage() {
           <Link to={`/history/${projectId}`} className="nm-icon-btn nm-topbar-btn" title={t('Who changed what, and when')}>
             <IconHistory size={16} /> <span className="nm-hide-narrow">{t('History')}</span>
           </Link>
+          {me?.kind !== 'guest' && !isGuest && (
+            <button className="nm-icon-btn nm-topbar-btn" onClick={() => setSyncOpen(true)} disabled={!projectId} title={t('Keep copies of this project in Google Drive, SharePoint and other folders, updated on every save')}>
+              <IconCloud size={16} /> <span className="nm-hide-narrow">{t('Copies')}</span>
+            </button>
+          )}
           {me?.kind !== 'guest' && (
             <button className="nm-icon-btn nm-topbar-btn nm-share-btn" onClick={() => setShareOpen(true)} disabled={!projectId} title={t('Share this project with other people')}>
               <IconShare size={16} /> <span className="nm-hide-narrow">{t('Share')}</span>

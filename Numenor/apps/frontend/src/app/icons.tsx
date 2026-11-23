@@ -55,3 +55,4 @@ export const IconHistory = (p: P) => <Svg {...p}><path d="M3.5 12a8.5 8.5 0 1 0 
 export const IconPopOut = (p: P) => <Svg {...p}><rect x="3" y="6" width="13" height="13" rx="2" /><path d="M13 3h8v8M21 3l-9 9" /></Svg>;
 export const IconPopIn = (p: P) => <Svg {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 9l-6 6M9 10v5h5" /></Svg>;
 export const IconLink = (p: P) => <Svg {...p}><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></Svg>;
+export const IconCloud = (p: P) => <Svg {...p}><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7.4 9.1 4.7 4.7 0 0 0 7 18.5z" /><path d="M12 11.5v5M9.8 13.6 12 11.4l2.2 2.2" /></Svg>;

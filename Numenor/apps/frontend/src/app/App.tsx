@@ -5,9 +5,11 @@ import ProjectPage from './ProjectPage';
 import CollabJoinPage from './CollabJoinPage';
 import HistoryPage from './HistoryPage';
 import PdfWindowPage from './PdfWindowPage';
+import { UpdateProvider } from './UpdateNotice';
 
 export default function App() {
   return (
+    <UpdateProvider>
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/projects" element={<ProjectPage />} />
@@ -17,5 +19,6 @@ export default function App() {
       <Route path="/pdf-window/:projectId" element={<PdfWindowPage />} />
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>
+    </UpdateProvider>
   );
 }

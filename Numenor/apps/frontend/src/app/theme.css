@@ -2401,3 +2401,51 @@ button.nm-share-mail { white-space: nowrap; }
 .nm-share-code { color: #f1dfaf; }
 :root[data-theme="light"] .nm-share-code { color: #5a4210; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .nm-share-code { color: #5a4210; } }
+
+/* Editor → "Copies": folders this project is kept copied to */
+.nm-sync-intro { font-size: 13px; line-height: 1.45; }
+.nm-sync-empty { padding: 12px; font-size: 13px; border: 1px dashed var(--nm-line-strong); border-radius: var(--nm-radius); text-align: center; }
+.nm-sync-list { display: flex; flex-direction: column; border-radius: var(--nm-radius); overflow: hidden; }
+.nm-sync-list:not(:empty) { border: 1px solid var(--nm-line); }
+.nm-sync-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--nm-line); }
+.nm-sync-row:first-child { border-top: none; }
+.nm-sync-row.paused .nm-sync-main { opacity: 0.6; }
+.nm-sync-badge { flex: 0 0 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-weight: 800; font-size: 13px; color: #fff; background: var(--nm-muted); }
+.nm-sync-badge.google { background: #1a73e8; }
+.nm-sync-badge.sharepoint { background: #038387; }
+.nm-sync-badge.onedrive { background: #0364b8; }
+.nm-sync-badge.dropbox { background: #0061fe; }
+.nm-sync-badge.icloud { background: #3e8ef7; }
+.nm-sync-badge.folder { background: var(--nm-chip); color: var(--nm-text); font-weight: 400; }
+.nm-sync-main { flex: 1; min-width: 0; }
+.nm-sync-path { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm-sync-status { font-size: 12px; color: var(--nm-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.nm-sync-status.error { color: var(--nm-error); }
+.nm-sync-pdf { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--nm-muted); cursor: pointer; }
+.nm-sync-actions { display: flex; gap: 8px; }
+.nm-sync-help { font-size: 12.5px; line-height: 1.45; border-radius: var(--nm-radius); background: var(--nm-surface-2); padding: 8px 12px; }
+.nm-sync-help summary { cursor: pointer; font-weight: 600; }
+.nm-sync-help p { margin: 8px 0 0; }
+.nm-spinner { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--nm-line-strong); border-top-color: var(--nm-gold-line); animation: nm-spin 0.8s linear infinite; vertical-align: -1px; }
+@keyframes nm-spin { to { transform: rotate(360deg); } }
+
+/* Version + update notice */
+.nm-version { margin-top: auto; padding: 12px 4px 2px; font-size: 11.5px; color: var(--nm-muted); display: flex; flex-direction: column; gap: 2px; }
+.nm-version-link { background: none; border: none; padding: 0; text-align: left; font: inherit; color: var(--nm-gold-text); cursor: pointer; }
+.nm-version-link:hover { text-decoration: underline; }
+.nm-version-link.available { font-weight: 700; }
+.nm-update-toast { position: fixed; right: 18px; bottom: 18px; z-index: 3000; display: flex; align-items: center; gap: 14px; max-width: min(460px, calc(100vw - 36px)); padding: 12px 14px; border-radius: 12px; background: var(--nm-elevated); color: var(--nm-text); border: 1px solid var(--nm-gold-line); box-shadow: var(--nm-shadow); }
+.nm-update-toast-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; flex: 1; min-width: 0; }
+.nm-update-toast-text .muted { font-size: 12px; }
+.nm-update-toast-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.modal.nm-update-modal { width: min(520px, calc(100vw - 32px)); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.nm-update-head { display: flex; align-items: center; justify-content: space-between; }
+.nm-update-title { font-family: var(--nm-serif); font-size: 18px; font-weight: 700; }
+.nm-update-versions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nm-update-versions > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--nm-radius); background: var(--nm-surface-2); font-size: 14px; }
+.nm-update-versions .muted { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+.nm-update-notes, .nm-update-log { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: 12px; padding: 8px 10px; border-radius: var(--nm-radius); background: var(--nm-surface-2); border: 1px solid var(--nm-line); }
+.nm-update-progress { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.nm-update-step { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.nm-update-help { font-size: 12px; }
+.nm-update-foot { display: flex; justify-content: flex-end; gap: 8px; }

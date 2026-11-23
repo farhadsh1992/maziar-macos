@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 import { ensureDir } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { getProjectRoot } from './projectService.js';
+import { projectChanged } from './projectEvents.js';
 
 const SUPPORTED_ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 
@@ -137,7 +138,7 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
   const log = logChunks.join('');
   if (pdfBase64) {
     // Maziar: keep the latest PDF and its SyncTeX data for source <-> PDF navigation (see routes/synctex.js).
-    await keepLastBuild({ buildRoot, outDir, base, mainFile }).catch(() => {});
+    await keepLastBuild({ buildRoot, outDir, base, mainFile }).then(() => projectChanged(projectRoot, 'compile')).catch(() => {});
   }
   await fs.rm(outDir, { recursive: true, force: true });
   if (!pdfBase64) {
