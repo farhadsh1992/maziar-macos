@@ -58,7 +58,10 @@ but it runs perfectly well on its own.
 - **PDF in its own window** — the pop-out button in the PDF toolbar moves the preview into a separate
   window and gives the editor the full width; sync, compile and "Back to editor" work from both windows.
 - **Spelling and grammar** — LaTeX-aware (commands, math, citations and paths are skipped). This uses
-  macOS's own checker and is available when Numenor runs inside Maziar.
+  macOS's own checker and is available when Numenor runs inside Maziar. **Spelling** in the bottom bar
+  turns red when there are mistakes; click it for the list (word, suggestions, line — click to jump),
+  your spelling vocabulary, and *Turn off spelling*. Right-click an underlined word → *Add to spelling
+  vocabulary* to treat it as correct from then on (kept on this computer in `spell-vocabulary.json`).
 
 ## Requirements
 

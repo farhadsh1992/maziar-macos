@@ -8,6 +8,7 @@ import AppKit
 //   ← {"id":1,"issues":[{"from":4,"to":8,"kind":"spelling","message":"…","suggestions":["…"]}]}
 //   → {"id":2,"op":"languages"}            ← {"id":2,"languages":["en","en_GB",…]}
 //   → {"id":3,"op":"learn","word":"SyncTeX"} ← {"id":3,"learned":true}
+//   → {"id":4,"op":"unlearn","word":"SyncTeX"} ← {"id":4,"unlearned":true}
 //
 // Offsets are UTF-16 code units, which is also what JavaScript strings index by. Everything runs on this
 // Mac; no text is sent anywhere.
@@ -79,6 +80,10 @@ while let line = readLine(strippingNewline: true) {
         let word = request["word"] as? String ?? ""
         if !word.isEmpty { checker.learnWord(word) }
         reply(["id": id, "learned": !word.isEmpty])
+    case "unlearn":
+        let word = request["word"] as? String ?? ""
+        if !word.isEmpty, checker.hasLearnedWord(word) { checker.unlearnWord(word) }
+        reply(["id": id, "unlearned": !word.isEmpty])
     default:
         reply(["id": id, "error": "unknown op"])
     }

@@ -2038,8 +2038,12 @@ talking to the editor via `window.opener`/`postMessage`; Maziar gives it a prope
   (second SPM target, copied next to Maziar's binary by `build_app.sh`, path passed as
   `MAZIAR_SPELL_HELPER`). The LaTeX source is masked first (commands, math, citation keys, labels,
   paths, code and verbatim blanked) so only prose is checked (`apps/frontend/src/latex/spell.ts`).
-  Hover an underline for suggestions, Ignore, or Add to dictionary; toggle and language are in the
-  editor toolbar. Nothing leaves the Mac.
+  Hover or right-click an underline for suggestions, Ignore, or Add to (spelling) vocabulary. Spelling
+  and its language sit in the editor's bottom status bar; the label turns red when there are mistakes,
+  and clicking it lists them by line, shows the vocabulary (removable), and has Turn off spelling.
+  The vocabulary is per-Mac in `…/Maziar/Numenor/spell-vocabulary.json` (`/api/spell/vocabulary`;
+  filtered out of every check server-side, and learned/unlearned in macOS via the helper's
+  `learn`/`unlearn` ops); invited people's additions stay in their own browser. Nothing leaves the Mac.
 
 
 ## Google Drive account sync

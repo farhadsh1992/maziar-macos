@@ -6,7 +6,7 @@
 // by macOS's spelling and grammar checker through the backend (`/api/spell/check`), on this Mac only.
 import { StateEffect, StateField, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, hoverTooltip, type DecorationSet, type ViewUpdate } from '@codemirror/view';
-import { spellCheck, spellLearn, type SpellIssue } from '../api/client';
+import { addSpellWord, getSpellVocabulary, removeSpellWord, spellCheck, type SpellIssue } from '../api/client';
 
 // Commands whose brace arguments are not prose (number = how many leading {…} arguments to blank).
 const NON_PROSE_ARGS: Record<string, number> = {
@@ -229,14 +229,80 @@ function saveSet(key: string, set: Set<string>) {
   }
 }
 
+// ---------- spelling vocabulary (kept on the computer running Numenor; invited people's in their browser) ----------
+
+let vocabulary = new Set<string>();
+let vocabularyWords: string[] = [];
+let vocabularyLoaded: Promise<void> | null = null;
+const vocabularyListeners = new Set<() => void>();
+
+function setVocabulary(words: string[]) {
+  vocabularyWords = words;
+  vocabulary = new Set(words.map((w) => w.toLowerCase()));
+  vocabularyListeners.forEach((fn) => fn());
+}
+
+function ensureVocabulary() {
+  if (!vocabularyLoaded) {
+    vocabularyLoaded = getSpellVocabulary()
+      .then((res) => setVocabulary(res.words))
+      .catch(() => {});
+  }
+  return vocabularyLoaded;
+}
+
+/** Every word in the spelling vocabulary (this computer's list plus any kept in this browser). */
+export function listVocabulary(): string[] {
+  const local = [...loadSet(DICT_KEY)];
+  const all = new Map<string, string>();
+  [...vocabularyWords, ...local].forEach((w) => all.set(w.toLowerCase(), w));
+  return [...all.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/** Calls `fn` whenever the vocabulary changes; returns an unsubscribe function. */
+export function onVocabularyChange(fn: () => void) {
+  vocabularyListeners.add(fn);
+  ensureVocabulary();
+  return () => {
+    vocabularyListeners.delete(fn);
+  };
+}
+
+/** Marks `word` as correct from now on, in every open file. */
+export async function addToVocabulary(word: string) {
+  try {
+    const res = await addSpellWord(word);
+    setVocabulary(res.words);
+  } catch {
+    // Invited people (or no server): keep it in this browser.
+    const set = loadSet(DICT_KEY);
+    set.add(word.toLowerCase());
+    saveSet(DICT_KEY, set);
+    vocabularyListeners.forEach((fn) => fn());
+  }
+}
+
+export async function removeFromVocabulary(word: string) {
+  const set = loadSet(DICT_KEY);
+  if (set.delete(word.toLowerCase())) saveSet(DICT_KEY, set);
+  try {
+    const res = await removeSpellWord(word);
+    setVocabulary(res.words);
+  } catch {
+    vocabularyListeners.forEach((fn) => fn());
+  }
+}
+
 const ignoreKey = (issue: SpellIssue) => `${issue.kind}:${issue.kind === 'spelling' ? issue.word.toLowerCase() : `${issue.message}|${issue.word}`}`;
 
 // ---------- CodeMirror extension ----------
 
+export type SpellStatus = { checking: boolean; count: number; error?: string; issues?: SpellIssue[] };
+
 type Options = {
   language: string;
   grammar: boolean;
-  onStatus?: (status: { checking: boolean; count: number; error?: string }) => void;
+  onStatus?: (status: SpellStatus) => void;
 };
 
 const setIssues = StateEffect.define<SpellIssue[]>();
@@ -270,7 +336,12 @@ const issueField = StateField.define<{ issues: SpellIssue[]; decorations: Decora
 function visibleIssues(issues: SpellIssue[]) {
   const ignored = loadSet(IGNORE_KEY);
   const dictionary = loadSet(DICT_KEY);
-  return issues.filter((issue) => !ignored.has(ignoreKey(issue)) && !(issue.kind === 'spelling' && dictionary.has(issue.word.toLowerCase())));
+  return issues.filter((issue) => {
+    if (ignored.has(ignoreKey(issue))) return false;
+    if (issue.kind !== 'spelling') return true;
+    const word = issue.word.toLowerCase();
+    return !dictionary.has(word) && !vocabulary.has(word);
+  });
 }
 
 export function spellExtension(options: Options): Extension {
@@ -279,8 +350,15 @@ export function spellExtension(options: Options): Extension {
       timer: number | null = null;
       seq = 0;
       destroyed = false;
+      unsubscribe: () => void;
       constructor(readonly view: EditorView) {
         this.schedule(300);
+        // A word added to (or removed from) the vocabulary: hide it at once, then check again.
+        this.unsubscribe = onVocabularyChange(() => {
+          if (this.destroyed) return;
+          refilter(this.view);
+          this.schedule(400);
+        });
       }
       update(update: ViewUpdate) {
         if (update.docChanged) this.schedule(900);
@@ -303,7 +381,7 @@ export function spellExtension(options: Options): Extension {
           if (this.destroyed || seq !== this.seq || this.view.state.doc.toString() !== doc) return;
           const shown = visibleIssues(issues);
           this.view.dispatch({ effects: setIssues.of(shown) });
-          options.onStatus?.({ checking: false, count: shown.length });
+          options.onStatus?.({ checking: false, count: shown.length, issues: shown });
         } catch (err) {
           if (this.destroyed || seq !== this.seq) return;
           options.onStatus?.({ checking: false, count: 0, error: (err as Error).message });
@@ -311,6 +389,7 @@ export function spellExtension(options: Options): Extension {
       }
       destroy() {
         this.destroyed = true;
+        this.unsubscribe();
         if (this.timer) window.clearTimeout(this.timer);
         // Clear the underlines when checking is switched off or the language changes.
         const view = this.view;
@@ -329,7 +408,7 @@ export function spellExtension(options: Options): Extension {
     const current = view.state.field(issueField).issues;
     const shown = visibleIssues(current);
     view.dispatch({ effects: setIssues.of(shown) });
-    options.onStatus?.({ checking: false, count: shown.length });
+    options.onStatus?.({ checking: false, count: shown.length, issues: shown });
   };
 
   const tooltip = hoverTooltip((view, pos) => {
@@ -385,15 +464,11 @@ export function spellExtension(options: Options): Extension {
         actions.appendChild(ignore);
         if (issue.kind === 'spelling') {
           const learn = document.createElement('button');
-          learn.textContent = 'Add to dictionary';
-          learn.title = 'Add this word to your dictionary';
+          learn.textContent = 'Add to vocabulary';
+          learn.title = 'Treat this word as correct from now on';
           learn.onmousedown = (event) => {
             event.preventDefault();
-            const set = loadSet(DICT_KEY);
-            set.add(issue.word.toLowerCase());
-            saveSet(DICT_KEY, set);
-            spellLearn(issue.word).catch(() => {});
-            refilter(view);
+            addToVocabulary(issue.word);
           };
           actions.appendChild(learn);
         }
@@ -403,7 +478,92 @@ export function spellExtension(options: Options): Extension {
     };
   }, { hoverTime: 250 });
 
-  return [issueField, checker, tooltip];
+  // Right-click on an underlined word: suggestions, "Add to spelling vocabulary", "Ignore".
+  const contextMenu = EditorView.domEventHandlers({
+    contextmenu(event, view) {
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (pos == null) return false;
+      const issue = view.state.field(issueField).issues.find((item) => pos >= item.from && pos <= item.to);
+      if (!issue) return false;
+      event.preventDefault();
+      showIssueMenu(view, issue, event.clientX, event.clientY, () => refilter(view));
+      return true;
+    }
+  });
+
+  return [issueField, checker, tooltip, contextMenu];
+}
+
+function closeIssueMenu() {
+  document.querySelectorAll('.cm-maziar-spell-menu').forEach((el) => el.remove());
+}
+
+function showIssueMenu(view: EditorView, issue: SpellIssue, x: number, y: number, refilterView: () => void) {
+  closeIssueMenu();
+  const menu = document.createElement('div');
+  menu.className = 'cm-maziar-spell-menu';
+  menu.setAttribute('role', 'menu');
+  const add = (label: string, onPick: () => void, cls = '') => {
+    const button = document.createElement('button');
+    button.className = `cm-maziar-spell-menu-item ${cls}`;
+    button.textContent = label;
+    button.onmousedown = (event) => {
+      event.preventDefault();
+      close();
+      onPick();
+    };
+    menu.appendChild(button);
+  };
+  const sep = () => {
+    const line = document.createElement('div');
+    line.className = 'cm-maziar-spell-menu-sep';
+    menu.appendChild(line);
+  };
+  const head = document.createElement('div');
+  head.className = 'cm-maziar-spell-menu-head';
+  head.textContent = issue.kind === 'spelling' ? `“${issue.word}”` : issue.message;
+  menu.appendChild(head);
+  issue.suggestions.slice(0, 6).forEach((suggestion) =>
+    add(suggestion, () => {
+      const live = view.state.field(issueField).issues.find((item) => item.from === issue.from && item.word === issue.word) || issue;
+      view.dispatch({ changes: { from: live.from, to: live.to, insert: suggestion } });
+      view.focus();
+    }, 'suggestion')
+  );
+  if (!issue.suggestions.length) {
+    const none = document.createElement('div');
+    none.className = 'cm-maziar-spell-menu-none';
+    none.textContent = 'No suggestions';
+    menu.appendChild(none);
+  }
+  sep();
+  if (issue.kind === 'spelling') add('Add to spelling vocabulary', () => addToVocabulary(issue.word));
+  add('Ignore', () => {
+    const set = loadSet(IGNORE_KEY);
+    set.add(ignoreKey(issue));
+    saveSet(IGNORE_KEY, set);
+    refilterView();
+  });
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - rect.width - 6))}px`;
+  menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - rect.height - 6))}px`;
+
+  const onDown = (event: MouseEvent) => {
+    if (!menu.contains(event.target as Node)) close();
+  };
+  const onKey = (event: KeyboardEvent) => event.key === 'Escape' && close();
+  function close() {
+    menu.remove();
+    window.removeEventListener('mousedown', onDown, true);
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('blur', close);
+  }
+  window.setTimeout(() => {
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', close);
+  }, 0);
 }
 
 /** Forget all ignored suggestions (the dictionary is kept). */

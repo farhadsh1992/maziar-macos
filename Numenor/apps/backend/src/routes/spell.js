@@ -4,8 +4,33 @@
 // The helper stays running and answers one JSON request per line, so checks are fast and the text never
 // leaves the Mac. Without Maziar (plain Numenor) the routes answer 503 and the editor hides the feature.
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import path from 'path';
 import readline from 'readline';
+import { STATE_DIR } from '../config/constants.js';
+import { isLocalRequest } from '../utils/authUtils.js';
+
+// Spelling vocabulary: words you've told Numenor are correct. Kept on this computer (not in the browser,
+// whose storage changes with the server's port), and taken out of every check's results.
+const VOCAB_FILE = path.join(STATE_DIR, 'spell-vocabulary.json');
+
+function readVocabulary() {
+  try {
+    const words = JSON.parse(readFileSync(VOCAB_FILE, 'utf8'));
+    return Array.isArray(words) ? words.filter((w) => typeof w === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeVocabulary(words) {
+  if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
+  const unique = [...new Set(words.map((w) => w.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  writeFileSync(VOCAB_FILE, JSON.stringify(unique, null, 2));
+  return unique;
+}
+
+const cleanWord = (value) => String(value || '').trim().slice(0, 80);
 
 let helper = null;
 let nextId = 1;
@@ -79,7 +104,33 @@ export function registerSpellRoutes(fastify) {
     if (typeof text !== 'string' || text.length > 2_000_000) {
       return reply.code(400).send({ ok: false, error: 'Text missing or too long.' });
     }
-    return answer(reply, { op: 'check', text, language, grammar: Boolean(grammar) });
+    const result = await answer(reply, { op: 'check', text, language, grammar: Boolean(grammar) });
+    if (result && result.ok && Array.isArray(result.issues)) {
+      const known = new Set(readVocabulary().map((w) => w.toLowerCase()));
+      if (known.size) result.issues = result.issues.filter((issue) => !(issue.kind === 'spelling' && known.has(String(issue.word || '').toLowerCase())));
+    }
+    return result;
+  });
+
+  fastify.get('/api/spell/vocabulary', async () => ({ ok: true, words: readVocabulary() }));
+
+  // Only the computer running Numenor changes the vocabulary (invited people keep theirs in their browser).
+  fastify.post('/api/spell/vocabulary', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false, error: 'Only on the computer running Numenor.' });
+    const word = cleanWord(req.body?.word);
+    if (!word) return reply.code(400).send({ ok: false, error: 'Missing word.' });
+    const words = writeVocabulary([...readVocabulary(), word]);
+    ask({ op: 'learn', word }).catch(() => {});
+    return { ok: true, words };
+  });
+
+  fastify.delete('/api/spell/vocabulary', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false, error: 'Only on the computer running Numenor.' });
+    const word = cleanWord(req.body?.word ?? req.query?.word).toLowerCase();
+    const removed = readVocabulary().filter((w) => w.toLowerCase() === word);
+    const words = writeVocabulary(readVocabulary().filter((w) => w.toLowerCase() !== word));
+    for (const w of removed) ask({ op: 'unlearn', word: w }).catch(() => {});
+    return { ok: true, words };
   });
 
   fastify.post('/api/spell/learn', async (req, reply) => {

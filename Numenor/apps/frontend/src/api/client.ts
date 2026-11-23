@@ -320,6 +320,19 @@ export function spellCheck(text: string, language: string, grammar = true) {
   });
 }
 
+/** Spelling vocabulary — words marked as correct, kept on the computer running Numenor. */
+export function getSpellVocabulary() {
+  return maziarRequest<{ ok: true; words: string[] }>('/api/spell/vocabulary');
+}
+
+export function addSpellWord(word: string) {
+  return maziarRequest<{ ok: true; words: string[] }>('/api/spell/vocabulary', { method: 'POST', body: JSON.stringify({ word }) });
+}
+
+export function removeSpellWord(word: string) {
+  return maziarRequest<{ ok: true; words: string[] }>(`/api/spell/vocabulary?word=${encodeURIComponent(word)}`, { method: 'DELETE' });
+}
+
 export function spellLearn(word: string) {
   return maziarRequest<{ ok: true }>('/api/spell/learn', { method: 'POST', body: JSON.stringify({ word }) });
 }

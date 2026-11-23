@@ -19,7 +19,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 // Maziar: PDF viewer, SyncTeX, compile diagnostics, spelling/grammar.
 import PdfViewer, { type PdfViewerHandle, type PdfZoomMode } from './PdfViewer';
 import { parseLatexLog, diagnosticsExtension, showDiagnostics, revealLine, type LatexDiagnostic } from '../latex/diagnostics';
-import { spellExtension } from '../latex/spell';
+import { spellExtension, listVocabulary, onVocabularyChange, removeFromVocabulary, type SpellStatus } from '../latex/spell';
 import {
   NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconUpload,
   IconSearch, IconSection, IconList, IconSigma, IconInsert, IconUndo, IconRedo, IconPlus, IconMinus, IconSync,
@@ -1130,7 +1130,14 @@ export default function EditorPage() {
   });
   const [spellLanguage, setSpellLanguage] = useState(() => resolveSpellLanguage((window as any).__maziarSpellLanguage));
   const [spellLanguageList, setSpellLanguageList] = useState<string[]>([]);
-  const [spellInfo, setSpellInfo] = useState<{ checking: boolean; count: number; error?: string }>({ checking: false, count: 0 });
+  const [spellInfo, setSpellInfo] = useState<SpellStatus>({ checking: false, count: 0 });
+  const [spellPanelOpen, setSpellPanelOpen] = useState(false);
+  const [vocabOpen, setVocabOpen] = useState(false);
+  const [vocabWords, setVocabWords] = useState<string[]>([]);
+  useEffect(() => {
+    setVocabWords(listVocabulary());
+    return onVocabularyChange(() => setVocabWords(listVocabulary()));
+  }, []);
   const [engineName, setEngineName] = useState<string>('');
   const [isCompiling, setIsCompiling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -5979,9 +5986,10 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
             <span className="nm-stat-sep" />
             <span className="nm-stat-spell">
               <button
-                className={`nm-stat-btn spell-toggle ${spellEnabled ? 'active' : ''}`}
-                onClick={() => setSpellEnabled((prev) => !prev)}
-                title={spellInfo.error || t('Spelling & grammar checking (macOS). Hover an underlined word for suggestions.')}
+                className={`nm-stat-btn spell-toggle ${spellEnabled ? 'active' : ''} ${spellEnabled && spellApplies && !spellInfo.checking && spellInfo.count > 0 ? 'bad' : ''}`}
+                onClick={() => (spellEnabled ? setSpellPanelOpen((open) => !open) : setSpellEnabled(true))}
+                title={spellInfo.error || (spellEnabled ? t('Show the spelling and grammar mistakes in this file') : t('Turn spelling & grammar checking on (macOS)'))}
+                aria-expanded={spellPanelOpen}
               >
                 {t('Spelling')}
                 {spellEnabled && spellApplies && (
@@ -6003,6 +6011,79 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                     </option>
                   ))}
               </select>
+              {spellPanelOpen && spellEnabled && (
+                <>
+                  <div className="nm-menu-backdrop" onClick={() => setSpellPanelOpen(false)} />
+                  <div className="nm-spell-panel" role="dialog" aria-label={t('Spelling')}>
+                    <div className="nm-spell-panel-head">
+                      <b>{t('Spelling & grammar')}</b>
+                      <span className="muted">{activePath ? activePath.split('/').pop() : ''}</span>
+                    </div>
+                    <div className="nm-spell-panel-list">
+                      {!spellApplies ? (
+                        <div className="muted nm-spell-panel-empty">{t('This file type isn’t checked.')}</div>
+                      ) : spellInfo.error ? (
+                        <div className="share-error">{spellInfo.error}</div>
+                      ) : spellInfo.checking && !(spellInfo.issues || []).length ? (
+                        <div className="muted nm-spell-panel-empty">{t('Checking…')}</div>
+                      ) : !(spellInfo.issues || []).length ? (
+                        <div className="muted nm-spell-panel-empty">{t('No mistakes found.')}</div>
+                      ) : (
+                        (spellInfo.issues || []).map((issue, i) => {
+                          const view = cmViewRef.current;
+                          const pos = Math.min(issue.from, view ? view.state.doc.length : issue.from);
+                          const line = view ? view.state.doc.lineAt(pos).number : 0;
+                          return (
+                            <button
+                              key={`${issue.from}-${i}`}
+                              className={`nm-spell-row ${issue.kind}`}
+                              title={issue.message}
+                              onClick={() => {
+                                const v = cmViewRef.current;
+                                if (!v) return;
+                                const from = Math.min(issue.from, v.state.doc.length);
+                                const to = Math.min(issue.to, v.state.doc.length);
+                                v.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+                                v.focus();
+                                setSpellPanelOpen(false);
+                              }}
+                            >
+                              <span className="nm-spell-word">{issue.word || issue.message}</span>
+                              <span className="nm-spell-hint">
+                                {issue.kind === 'spelling'
+                                  ? issue.suggestions.length ? `→ ${issue.suggestions.slice(0, 2).join(', ')}` : t('Spelling')
+                                  : issue.message}
+                              </span>
+                              <span className="nm-spell-line">{t('line {{n}}', { n: line })}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="nm-spell-panel-tip muted">{t('Right-click an underlined word to add it to your spelling vocabulary.')}</div>
+                    <button className="nm-spell-vocab-toggle" onClick={() => setVocabOpen((open) => !open)} aria-expanded={vocabOpen}>
+                      <IconChevronRight size={13} className={vocabOpen ? 'nm-rot90' : ''} /> {t('Spelling vocabulary ({{n}})', { n: vocabWords.length })}
+                    </button>
+                    {vocabOpen && (
+                      <div className="nm-spell-vocab">
+                        {vocabWords.length === 0 ? (
+                          <div className="muted nm-spell-panel-empty">{t('No words yet.')}</div>
+                        ) : (
+                          vocabWords.map((word) => (
+                            <span key={word} className="nm-spell-vocab-word">
+                              {word}
+                              <button onClick={() => removeFromVocabulary(word)} title={t('Remove from vocabulary')} aria-label={t('Remove {{word}}', { word })}>×</button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    <div className="nm-spell-panel-foot">
+                      <button className="btn ghost" onClick={() => { setSpellEnabled(false); setSpellPanelOpen(false); }}>{t('Turn off spelling')}</button>
+                    </div>
+                  </div>
+                </>
+              )}
             </span>
           </>
         )}
