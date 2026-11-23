@@ -656,6 +656,10 @@ final class NumenorServer: ObservableObject {
             let fd = socket(AF_INET, SOCK_STREAM, 0)
             guard fd >= 0 else { continue }
             defer { close(fd) }
+            // Like Node's own listen: a port just released (e.g. Numenor restarting after an update) still
+            // counts as free, so Numenor keeps its address instead of moving to the next port.
+            var on: Int32 = 1
+            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
             var addr = sockaddr_in()
             addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
             addr.sin_family = sa_family_t(AF_INET)
