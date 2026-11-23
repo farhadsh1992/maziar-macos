@@ -1269,6 +1269,8 @@ button.nm-brand-btn:hover { background: var(--nm-hover); }
 
 .sync-buttons {
   z-index: 6;
+  /* Below the editor's and the PDF's toolbars (two rows each), so no menu covers them. */
+  top: 150px !important;
 }
 
 .sync-btn {
