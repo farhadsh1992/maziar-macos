@@ -21,7 +21,7 @@ import PdfViewer, { type PdfViewerHandle, type PdfZoomMode } from './PdfViewer';
 import { parseLatexLog, diagnosticsExtension, showDiagnostics, revealLine, type LatexDiagnostic } from '../latex/diagnostics';
 import { spellExtension } from '../latex/spell';
 import {
-  NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconGear, IconUpload,
+  NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconUpload,
   IconSearch, IconSection, IconList, IconSigma, IconInsert, IconUndo, IconRedo, IconPlus, IconMinus, IconSync,
   IconDownload, IconDots, IconCheckCircle, IconAlert, IconLayers, IconLog, IconSpinner, IconClose,
   IconShare, IconHistory, IconPopOut, IconPopIn, IconCopy
@@ -4070,11 +4070,11 @@ export default function EditorPage() {
           >
             <IconSidebar size={17} />
           </button>
-          <Link to="/projects" className="nm-brand-link" title={t('Projects')}>
+          <button type="button" className="nm-brand-link nm-brand-btn" onClick={() => setSettingsOpen(true)} title={t('Numenor settings')}>
             <NumenorMark size={30} />
             <span className="nm-star" aria-hidden="true">✦</span>
             <span className="nm-wordmark">Numenor</span>
-          </Link>
+          </button>
           <span className="nm-topbar-sep" />
           <Link to="/projects" className="nm-crumb-link"><IconArrowLeft size={15} /> {t('Projects')}</Link>
           <IconChevronRight size={14} className="nm-crumb-sep" />
@@ -4118,19 +4118,6 @@ export default function EditorPage() {
           <button onClick={compile} className="btn nm-primary nm-compile" disabled={isCompiling}>
             {isCompiling ? t('编译中...') : t('编译 PDF')}
           </button>
-          <button className="nm-icon-btn borderless nm-settings" onClick={() => setSettingsOpen(true)} title={t('设置')}>
-            <IconGear size={16} /> <span className="nm-hide-narrow">{t('设置')}</span>
-          </button>
-          <div className="ios-select-wrapper nm-select nm-lang">
-            <button className="ios-select-trigger" onClick={(e) => {
-              const opening = !langDropdownOpen;
-              setLangDropdownOpen(opening); setMainFileDropdownOpen(false); setEngineDropdownOpen(false);
-              if (opening) { const r = e.currentTarget.getBoundingClientRect(); setTopBarDropdownRect({ top: r.bottom + 6, left: r.left, width: r.width }); }
-            }}>
-              <span className="nm-select-text">{i18n.language === 'zh-CN' ? t('中文') : t('English')}</span>
-              <IconChevronDown size={14} className={langDropdownOpen ? 'rotate' : ''} />
-            </button>
-          </div>
         </div>
       </header>
 
@@ -5546,35 +5533,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
               )}
             </div>
             <div className="toolbar-spacer" />
-            {spellAvailable && (
-              <div className="toolbar-group spell-group">
-                <button
-                  className={`toolbar-btn spell-toggle ${spellEnabled ? 'active' : ''}`}
-                  onClick={() => setSpellEnabled((prev) => !prev)}
-                  title={spellInfo.error || t('Spelling & grammar checking (macOS). Hover an underlined word for suggestions.')}
-                >
-                  {t('Spelling')}
-                  {spellEnabled && spellApplies && (
-                    <span className={`spell-badge ${spellInfo.error ? 'error' : ''}`}>{spellInfo.checking ? '…' : spellInfo.error ? '!' : spellInfo.count}</span>
-                  )}
-                </button>
-                <select
-                  className="spell-lang"
-                  value={spellLanguage}
-                  onChange={(event) => setSpellLanguage(event.target.value)}
-                  disabled={!spellEnabled}
-                  title={t('Document language')}
-                >
-                  {['en_US', 'en_GB', ...spellLanguageList.filter((code) => !['en', 'en_US', 'en_GB'].includes(code))]
-                    .concat(spellLanguageList.length || ['en_US', 'en_GB'].includes(spellLanguage) ? [] : [spellLanguage])
-                    .map((code) => (
-                      <option key={code} value={code}>
-                        {code === 'en_US' ? t('English (US)') : code === 'en_GB' ? t('English (UK)') : languageName(code)}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            )}
             <div className="nm-zoom" title={t('Editor zoom — Cmd/Ctrl + scroll or pinch over the text, Cmd/Ctrl + = / −')}>
               <button className="nm-icon-btn borderless" onClick={() => editorZoomRef.current(-1)} aria-label={t('Zoom out')}><IconMinus size={14} /></button>
               <button className="nm-zoom-label" onClick={() => editorZoomRef.current('reset')}>{Math.round((editorFontSize / 11) * 100)}%</button>
@@ -6016,6 +5974,38 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
         <button className="nm-stat-btn" onClick={() => { setRightView('pdf'); setDiagnosticsOpen(true); }} title={t('Overfull and underfull boxes')}>
           <IconLayers size={15} /> {t('{{count}} layout', { count: diagnosticCounts.badbox })}
         </button>
+        {spellAvailable && (
+          <>
+            <span className="nm-stat-sep" />
+            <span className="nm-stat-spell">
+              <button
+                className={`nm-stat-btn spell-toggle ${spellEnabled ? 'active' : ''}`}
+                onClick={() => setSpellEnabled((prev) => !prev)}
+                title={spellInfo.error || t('Spelling & grammar checking (macOS). Hover an underlined word for suggestions.')}
+              >
+                {t('Spelling')}
+                {spellEnabled && spellApplies && (
+                  <span className={`spell-badge ${spellInfo.error ? 'error' : ''}`}>{spellInfo.checking ? '…' : spellInfo.error ? '!' : spellInfo.count}</span>
+                )}
+              </button>
+              <select
+                className="spell-lang"
+                value={spellLanguage}
+                onChange={(event) => setSpellLanguage(event.target.value)}
+                disabled={!spellEnabled}
+                title={t('Document language')}
+              >
+                {['en_US', 'en_GB', ...spellLanguageList.filter((code) => !['en', 'en_US', 'en_GB'].includes(code))]
+                  .concat(spellLanguageList.length || ['en_US', 'en_GB'].includes(spellLanguage) ? [] : [spellLanguage])
+                  .map((code) => (
+                    <option key={code} value={code}>
+                      {code === 'en_US' ? t('English (US)') : code === 'en_GB' ? t('English (UK)') : languageName(code)}
+                    </option>
+                  ))}
+              </select>
+            </span>
+          </>
+        )}
         <span className="nm-stat-msg" title={status}>{status}</span>
         <button className="nm-icon-btn nm-viewlog" onClick={() => setRightView('log')}>
           <IconLog size={15} /> {t('View log')}
@@ -6046,16 +6036,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
           ))}
         </div>
       )}
-      {langDropdownOpen && topBarDropdownRect && (
-        <div className="ios-dropdown dropdown-fixed" style={{ top: topBarDropdownRect.top, left: topBarDropdownRect.left, minWidth: topBarDropdownRect.width }}>
-          {[['zh-CN', t('中文')], ['en-US', t('English')]].map(([val, lbl]) => (
-            <div key={val} className={`ios-dropdown-item ${i18n.language === val ? 'active' : ''}`} onClick={() => { i18n.changeLanguage(val); setLangDropdownOpen(false); }}>
-              {lbl}
-              {i18n.language === val && <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8L6.5 11.5L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </div>
-          ))}
-        </div>
-      )}
 
       {fileContextMenu && (
         <div className="ctx-menu-backdrop" onClick={() => setFileContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setFileContextMenu(null); }}>
@@ -6082,10 +6062,18 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
         <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
-              <div>{t('Workspace Settings')}</div>
+              <div>{t('Numenor Settings')}</div>
               <button className="icon-btn" onClick={() => setSettingsOpen(false)}>✕</button>
             </div>
             <div className="modal-body">
+              <div className="field">
+                <label>{t('Language')}</label>
+                <select className="input" value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'} onChange={(e) => i18n.changeLanguage(e.target.value)}>
+                  <option value="en-US">English</option>
+                  <option value="zh-CN">中文</option>
+                </select>
+                <div className="muted">{t('The language of Numenor’s menus and buttons.')}</div>
+              </div>
               <div className="field">
                 <label>{t('LLM Endpoint')}</label>
                 <input

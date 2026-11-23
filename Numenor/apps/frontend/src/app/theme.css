@@ -1112,6 +1112,17 @@ select.input {
   flex: none;
 }
 
+button.nm-brand-btn {
+  border: none;
+  background: transparent;
+  padding: 2px 6px 2px 2px;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--nm-radius);
+}
+button.nm-brand-btn:hover { background: var(--nm-hover); }
+
 .nm-star {
   color: var(--nm-gold);
   font-size: 18px;
@@ -1791,6 +1802,10 @@ select.input {
 .nm-stat-btn:hover { background: var(--nm-hover); }
 .nm-stat-btn.bad { color: var(--nm-error); }
 .nm-stat-btn.warn { color: var(--nm-warning); }
+.nm-stat-spell { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.nm-stat-btn.spell-toggle .spell-badge { margin-left: 0; }
+.nm-stat-btn.spell-toggle:not(.active) { opacity: 0.6; }
+.nm-stat-spell .spell-lang { height: 24px; font-size: 12px; }
 
 .nm-stat-msg {
   flex: 1;
