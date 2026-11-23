@@ -61,9 +61,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_ID</string>
     <key>CFBundleVersion</key>
-    <string>3.0.5</string>
+    <string>3.1.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>3.0.5</string>
+    <string>3.1.0</string>
     <key>MaziarGitCommit</key>
     <string>$GIT_COMMIT</string>
     <key>MaziarRepoPath</key>
