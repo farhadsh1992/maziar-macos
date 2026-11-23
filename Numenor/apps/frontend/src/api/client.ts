@@ -406,7 +406,7 @@ export function compileProject(payload: {
   mainFile: string;
   engine: 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic';
 }) {
-  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string }>(
+  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; timedOut?: boolean; replaced?: boolean }>(
     `/api/compile`,
     {
       method: 'POST',

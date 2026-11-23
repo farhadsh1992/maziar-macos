@@ -3357,6 +3357,15 @@ export default function EditorPage() {
         throw new Error(t('主文件不存在: {{file}}', { file: mainFile }));
       }
       const res = await compileProject({ projectId, mainFile, engine: compileEngine });
+      // A newer compile of this project took over (e.g. Compile clicked again): that one reports back.
+      if (res.replaced) return;
+      if (res.timedOut) {
+        // LaTeX got stuck in a loop and was stopped: keep its log so the Problems panel shows the first errors.
+        setCompileLog(`${res.error}\n\n${res.log || ''}`.trim());
+        setCompileState('failed');
+        setStatus(t('Compile stopped: LaTeX seemed stuck in a loop — see the first errors in Problems.'));
+        return;
+      }
       if (!res.ok || !res.pdf) {
         const detail = [res.error, res.log].filter(Boolean).join('\n');
         throw new Error(detail || t('后端编译失败'));
