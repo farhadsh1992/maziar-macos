@@ -29,7 +29,7 @@ import {
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, type ProjectLocation, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -202,6 +202,16 @@ function colorForKey(key: string) {
 
 function presenceInitials(name: string) {
   return name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
+}
+
+/** Loads the project's folder when the settings window opens (renders nothing). */
+function SettingsLocationLoader({ projectId, onLoad }: { projectId: string; onLoad: (loc: ProjectLocation | null) => void }) {
+  useEffect(() => {
+    if (!projectId) { onLoad(null); return; }
+    getProjectLocation(projectId).then(onLoad).catch(() => onLoad(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+  return null;
 }
 
 function pickCollabColor(seed?: string) {
@@ -1080,6 +1090,9 @@ export default function EditorPage() {
   const projectId = routeProjectId || '';
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Settings → "Where this project is saved" (owner's computer only).
+  const [projectLocation, setProjectLocation] = useState<ProjectLocation | null>(null);
+  const [locationNote, setLocationNote] = useState('');
   const [projectName, setProjectName] = useState('');
   const [tree, setTree] = useState<{ path: string; type: string }[]>([]);
   const [fileOrder, setFileOrder] = useState<Record<string, string[]>>({});
@@ -6491,12 +6504,50 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
       )}
       {settingsOpen && (
         <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
-          <div className="modal" onClick={(event) => event.stopPropagation()}>
+          <SettingsLocationLoader
+            projectId={isGuest ? '' : projectId || ''}
+            onLoad={(loc) => { setProjectLocation(loc); setLocationNote(''); }}
+          />
+          <div className="modal nm-settings-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <div>{t('Numenor Settings')}</div>
               <button className="icon-btn" onClick={() => setSettingsOpen(false)}>✕</button>
             </div>
             <div className="modal-body">
+              {projectLocation && (
+                <div className="field nm-location">
+                  <label>{t('Where this project is saved')}</label>
+                  <div className="nm-location-place">{projectLocation.place}</div>
+                  <code className="nm-location-path" title={projectLocation.path}>{projectLocation.path}</code>
+                  <div className="nm-location-actions">
+                    <button
+                      className="btn small"
+                      onClick={() => {
+                        if (!projectId) return;
+                        revealProject(projectId)
+                          .then(() => setLocationNote(t('Opened in Finder.')))
+                          .catch((err) => setLocationNote((err as Error).message));
+                      }}
+                    >
+                      {t('Show in Finder')}
+                    </button>
+                    <button
+                      className="btn small ghost"
+                      onClick={() => {
+                        navigator.clipboard.writeText(projectLocation.path)
+                          .then(() => setLocationNote(t('Path copied.')))
+                          .catch(() => setLocationNote(t('Couldn’t copy — select the path above instead.')));
+                      }}
+                    >
+                      {t('Copy path')}
+                    </button>
+                    {locationNote && <span className="muted nm-location-note">{locationNote}</span>}
+                  </div>
+                  <div className="muted">
+                    {t('The project’s files (.tex, .txt, .bib, images) are in this folder. Its history is in the hidden .numenor-history folder inside it. To keep it somewhere else, use Move… on the Projects page.')}
+                  </div>
+                </div>
+              )}
               <div className="field">
                 <label>{t('Language')}</label>
                 <select className="input" value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'} onChange={(e) => i18n.changeLanguage(e.target.value)}>

@@ -2495,3 +2495,13 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 .nm-missing-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .nm-missing-row code { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: var(--nm-surface-2); word-break: break-all; }
 .nm-missing-why { color: var(--nm-text-2); flex: 1 1 180px; }
+
+/* Settings → where this project is saved */
+.nm-location { padding: 10px 12px; border-radius: var(--nm-radius); background: var(--nm-surface-2); gap: 6px; }
+.nm-location-place { font-weight: 700; font-size: 13.5px; }
+.nm-location-path { display: block; font-size: 11.5px; padding: 6px 8px; border-radius: 6px; background: var(--nm-elevated); border: 1px solid var(--nm-line); word-break: break-all; user-select: all; }
+.nm-location-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nm-location-note { font-size: 12px; }
+/* The settings window fits the screen and scrolls inside (it was cut off at the top on short windows). */
+.modal.nm-settings-modal { max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
+.modal.nm-settings-modal .modal-body { overflow-y: auto; min-height: 0; }

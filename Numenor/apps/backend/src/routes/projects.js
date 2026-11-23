@@ -370,6 +370,40 @@ export function registerProjectRoutes(fastify) {
     return { items, fileOrder, mainFile, mainFiles: await mainFileCandidates(projectRoot, items) };
   });
 
+  // Where a project is kept on this computer (shown in the editor's settings). Only for the computer running
+  // Numenor — invited people never see the owner's folders.
+  fastify.get('/api/projects/:id/location', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false, error: 'Only on the computer running Numenor.' });
+    const projectRoot = await getProjectRoot(req.params.id);
+    const p = projectRoot.split(path.sep).join('/');
+    let place = 'This computer';
+    let m;
+    if ((m = p.match(/\/Library\/CloudStorage\/GoogleDrive-([^/]+)\//))) place = `Google Drive (${m[1]})`;
+    else if (/\/Library\/CloudStorage\/OneDrive-SharedLibraries/.test(p)) place = 'SharePoint (via OneDrive)';
+    else if ((m = p.match(/\/Library\/CloudStorage\/OneDrive-?([^/]*)\//))) place = m[1] ? `OneDrive (${m[1]})` : 'OneDrive';
+    else if (/\/Library\/CloudStorage\/Dropbox/.test(p)) place = 'Dropbox';
+    else if (/\/Library\/Mobile Documents\/com~apple~CloudDocs\//.test(p)) place = 'iCloud Drive';
+    return { ok: true, path: projectRoot, projectsFolder: path.dirname(projectRoot), place, inDataFolder: path.resolve(path.dirname(projectRoot)) === path.resolve(DATA_DIR) };
+  });
+
+  // "Show in Finder" (Explorer / file manager): the server runs on this computer, so it can open it.
+  fastify.post('/api/projects/:id/reveal', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false, error: 'Only on the computer running Numenor.' });
+    const projectRoot = await getProjectRoot(req.params.id);
+    const { spawn } = await import('child_process');
+    const [cmd, args] = process.platform === 'darwin' ? ['open', [projectRoot]]
+      : process.platform === 'win32' ? ['explorer', [projectRoot]]
+        : ['xdg-open', [projectRoot]];
+    try {
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+      child.on('error', () => {});
+      child.unref();
+      return { ok: true };
+    } catch (err) {
+      return reply.code(500).send({ ok: false, error: String(err?.message || err) });
+    }
+  });
+
   // The file to compile, saved in project.json so everyone working on the project (and every computer)
   // compiles the same one — e.g. main.txt in a project brought over from Overleaf.
   fastify.put('/api/projects/:id/main-file', async (req, reply) => {

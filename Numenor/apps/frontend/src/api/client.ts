@@ -944,3 +944,12 @@ export function startUpdate() {
 export function updateStatus() {
   return maziarRequest<{ ok: true } & UpdateProgress>('/api/update/status');
 }
+
+// Where a project is kept on this computer (editor settings), and opening that folder.
+export type ProjectLocation = { ok: true; path: string; projectsFolder: string; place: string; inDataFolder: boolean };
+export function getProjectLocation(id: string) {
+  return maziarRequest<ProjectLocation>(`/api/projects/${encodeURIComponent(id)}/location`);
+}
+export function revealProject(id: string) {
+  return maziarRequest<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/reveal`, { method: 'POST', body: '{}' });
+}
