@@ -186,7 +186,12 @@ export function trashProject(id: string, trashed: boolean) {
 }
 
 export function getProjectTree(id: string) {
-  return request<{ items: FileItem[]; fileOrder?: FileOrderMap }>(`/api/projects/${id}/tree`);
+  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; mainFiles?: string[] }>(`/api/projects/${id}/tree`);
+}
+
+/** Saves which file the project compiles (kept in project.json, so it's the same for everyone). */
+export function setProjectMainFile(id: string, filePath: string) {
+  return request<{ ok: boolean; mainFile: string }>(`/api/projects/${id}/main-file`, { method: 'PUT', body: JSON.stringify({ path: filePath }) });
 }
 
 export function getFile(id: string, filePath: string) {

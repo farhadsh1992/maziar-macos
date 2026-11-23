@@ -140,15 +140,20 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
         ...process.env,
         BIBINPUTS: `${projectRoot}:`,
         BSTINPUTS: `${projectRoot}:`,
+        // BibTeX writes main.bbl next to the .aux in the build folder, which is outside its working
+        // folder (the project); TeX Live blocks that unless writes may go anywhere.
+        openout_any: 'a',
       };
-      // Run bibtex/biber with cwd=outDir and relative base name to avoid
-      // openout_any=p blocking writes to absolute paths.
+      // BibTeX runs in the project folder, like on Overleaf, so \bibliography{./references} and
+      // \bibliography{refs/main} find the .bib files where they are; it reads the .aux from the build folder.
+      // Biber gets the project as its input directory instead.
+      const bibCwd = useBiber ? outDir : projectRoot;
       const bibArgs = useBiber
         ? [`--input-directory=${projectRoot}`, base]
-        : [base];
+        : [path.join(outDir, base)];
 
       try {
-        await runSpawn(bibCmd, bibArgs, outDir, pushLog, bibEnv, run);
+        await runSpawn(bibCmd, bibArgs, bibCwd, pushLog, bibEnv, run);
       } catch (err) {
         if (err instanceof CompileStopped) throw err;
         // bibtex/biber not installed or failed — continue without it

@@ -29,7 +29,7 @@ import {
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, type ShareState, type Me, type PresencePerson } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, type ShareState, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -1175,6 +1175,9 @@ export default function EditorPage() {
   const [draggingPath, setDraggingPath] = useState('');
   const [dragHint, setDragHint] = useState<{ text: string; x: number; y: number } | null>(null);
   const [mainFile, setMainFile] = useState('');
+  // The compile file saved in the project (project.json) and the files that can be compiled.
+  const [projectMainFile, setProjectMainFileState] = useState('');
+  const [mainFiles, setMainFiles] = useState<string[]>([]);
   const [fileFilter, setFileFilter] = useState('');
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const [fileContextMenu, setFileContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1574,8 +1577,11 @@ export default function EditorPage() {
     const res = await getProjectTree(projectId);
     setTree(res.items);
     setFileOrder(res.fileOrder || {});
+    setMainFiles(res.mainFiles || []);
+    setProjectMainFileState(res.mainFile || '');
     if (!keepActive || !activePath || !res.items.find((item) => item.path === activePath)) {
-      const main = res.items.find((item) => item.path.endsWith('main.tex'))?.path;
+      const main = (res.mainFile && res.items.some((item) => item.path === res.mainFile) ? res.mainFile : '')
+        || res.items.find((item) => item.path.endsWith('main.tex'))?.path;
       // Maziar: reopen the file that was open last time in this project.
       const lastFile = rememberRead('lastFile');
       const remembered = typeof lastFile === 'string' && res.items.some((item) => item.type === 'file' && item.path === lastFile) && isTextFile(lastFile) ? lastFile : '';
@@ -2993,6 +2999,13 @@ export default function EditorPage() {
     [tree]
   );
 
+  // What the main-file menu offers: .tex files plus .txt/.ltx files that start a document (from the server).
+  const mainCandidates = useMemo(() => {
+    const all = [...texFiles];
+    for (const f of mainFiles) if (!all.includes(f)) all.push(f);
+    return all;
+  }, [texFiles, mainFiles]);
+
   const bibFiles = useMemo(
     () => tree.filter((item) => item.type === 'file' && item.path.toLowerCase().endsWith('.bib')).map((item) => item.path),
     [tree]
@@ -3053,16 +3066,22 @@ export default function EditorPage() {
   }, [visionFile]);
 
   useEffect(() => {
-    if (texFiles.length === 0) return;
-    if (!texFiles.includes(mainFile)) {
+    if (mainCandidates.length === 0) return;
+    // The project's own choice wins (shared by everyone working on it).
+    if (projectMainFile && mainCandidates.includes(projectMainFile)) {
+      if (mainFile !== projectMainFile) setMainFile(projectMainFile);
+      else rememberRef.current.write('mainFile', mainFile);
+      return;
+    }
+    if (!mainCandidates.includes(mainFile)) {
       const saved = rememberRef.current.read('mainFile');
-      const preferred = (typeof saved === 'string' && texFiles.includes(saved) ? saved : '')
-        || texFiles.find((path) => path.endsWith('main.tex')) || texFiles[0];
+      const preferred = (typeof saved === 'string' && mainCandidates.includes(saved) ? saved : '')
+        || mainCandidates.find((path) => path.endsWith('main.tex')) || mainCandidates[0];
       setMainFile(preferred);
     } else {
       rememberRef.current.write('mainFile', mainFile);
     }
-  }, [texFiles, mainFile]);
+  }, [mainCandidates, mainFile, projectMainFile]);
 
   useEffect(() => {
     if (citeTargetFile) return;
@@ -3418,11 +3437,11 @@ export default function EditorPage() {
   const activeFileLoaded = Boolean(activePath) && Object.prototype.hasOwnProperty.call(files, activePath)
     && editorValue === files[activePath];
   useEffect(() => {
-    if (!projectId || !mainFile || !texFiles.includes(mainFile) || !activeFileLoaded) return;
+    if (!projectId || !mainFile || !mainCandidates.includes(mainFile) || !activeFileLoaded) return;
     if (autoCompiledRef.current === projectId) return;
     autoCompiledRef.current = projectId;
     compileRef.current().catch(() => {});
-  }, [projectId, mainFile, texFiles, activeFileLoaded]);
+  }, [projectId, mainFile, mainCandidates, activeFileLoaded]);
 
   const selectionText = useMemo(() => {
     const [start, end] = selectionRange;
@@ -6355,8 +6374,16 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
       )}
       {mainFileDropdownOpen && topBarDropdownRect && (
         <div className="ios-dropdown dropdown-fixed" style={{ top: topBarDropdownRect.top, left: topBarDropdownRect.left, minWidth: topBarDropdownRect.width }}>
-          {(texFiles.length > 0 ? texFiles : ['main.tex']).map((p) => (
-            <div key={p} className={`ios-dropdown-item ${mainFile === p ? 'active' : ''}`} onClick={() => { setMainFile(p); setMainFileDropdownOpen(false); }}>
+          {(mainCandidates.length > 0 ? mainCandidates : ['main.tex']).map((p) => (
+            <div key={p} className={`ios-dropdown-item ${mainFile === p ? 'active' : ''}`} onClick={() => {
+              setMainFile(p);
+              setMainFileDropdownOpen(false);
+              // Saved in the project, so it is the main file for everyone (view-only people can't change it).
+              if (projectId && !viewOnly) {
+                setProjectMainFileState(p);
+                setProjectMainFile(projectId, p).catch(() => {});
+              }
+            }}>
               {p}
               {mainFile === p && <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8L6.5 11.5L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             </div>

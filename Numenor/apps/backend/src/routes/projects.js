@@ -16,6 +16,35 @@ import { isLocalRequest } from '../utils/authUtils.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { getLang, t } from '../i18n/index.js';
 
+/**
+ * Files that can be compiled: every .tex file, plus .ltx / .txt files that start a document
+ * (\\documentclass near the top) — Overleaf projects sometimes keep the real document in main.txt.
+ */
+async function mainFileCandidates(projectRoot, items) {
+  const out = [];
+  for (const item of items) {
+    if (item.type !== 'file') continue;
+    const rel = item.path.split(path.sep).join('/');
+    if (/\.tex$/i.test(rel)) {
+      out.push(rel);
+      continue;
+    }
+    if (!/\.(ltx|txt)$/i.test(rel)) continue;
+    try {
+      const handle = await fs.open(path.join(projectRoot, item.path), 'r');
+      try {
+        const { buffer, bytesRead } = await handle.read(Buffer.alloc(8192), 0, 8192, 0);
+        if (/^[^%\n]*\\documentclass/m.test(buffer.toString('utf8', 0, bytesRead))) out.push(rel);
+      } finally {
+        await handle.close();
+      }
+    } catch {
+      /* unreadable: skip */
+    }
+  }
+  return out;
+}
+
 export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects', async (req) => {
     await ensureDir(DATA_DIR);
@@ -330,13 +359,37 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const items = await listFilesRecursive(projectRoot);
     let fileOrder = {};
+    let mainFile = '';
     try {
       const meta = await readJson(path.join(projectRoot, 'project.json'));
       fileOrder = meta?.fileOrder || {};
+      mainFile = typeof meta?.mainFile === 'string' ? meta.mainFile : '';
     } catch {
       fileOrder = {};
     }
-    return { items, fileOrder };
+    return { items, fileOrder, mainFile, mainFiles: await mainFileCandidates(projectRoot, items) };
+  });
+
+  // The file to compile, saved in project.json so everyone working on the project (and every computer)
+  // compiles the same one — e.g. main.txt in a project brought over from Overleaf.
+  fastify.put('/api/projects/:id/main-file', async (req, reply) => {
+    const projectRoot = await getProjectRoot(req.params.id);
+    const wanted = String(req.body?.path || '').replace(/\\/g, '/');
+    let abs;
+    try {
+      abs = safeJoin(projectRoot, wanted);
+      await fs.access(abs);
+    } catch {
+      return reply.code(400).send({ ok: false, error: 'That file doesn’t exist in this project.' });
+    }
+    if (!/\.(tex|ltx|txt)$/i.test(wanted)) return reply.code(400).send({ ok: false, error: 'Choose a .tex, .ltx or .txt file.' });
+    const metaPath = path.join(projectRoot, 'project.json');
+    const meta = await readJson(metaPath).catch(() => ({}));
+    if (meta.mainFile !== wanted) {
+      meta.mainFile = wanted;
+      await writeJson(metaPath, meta);
+    }
+    return { ok: true, mainFile: wanted };
   });
 
   fastify.post('/api/projects/:id/file-order', async (req) => {

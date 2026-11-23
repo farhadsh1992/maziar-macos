@@ -28,6 +28,9 @@ but it runs perfectly well on its own.
   saves it as a .zip you can import again; **Delete** moves it to Trash (with Undo), and **Delete
   forever** in Trash removes it from disk.
 - **Compile and preview** — pdfLaTeX, XeLaTeX, LuaLaTeX, latexmk or Tectonic, with bibliography passes.
+  BibTeX runs from the project folder like on Overleaf, so paths such as `\bibliography{./references}` work.
+  The main file can be any `.tex` file, or a `.txt` / `.ltx` file that starts with `\documentclass` (as some
+  Overleaf projects have); the choice is saved in the project, so it is the same for everyone.
   Opening a project compiles it and shows the PDF where you last left it.
 - **PDF viewer** — keeps your page, position and zoom across recompiles; pinch or Cmd/Ctrl + scroll zooms
   around the pointer; fit width / fit page; Space + drag to pan.
