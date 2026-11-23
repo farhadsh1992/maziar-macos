@@ -36,7 +36,7 @@ export default function CollabJoinPage() {
       const { message, data } = errorInfo(err);
       if (data.revoked || /removed/i.test(message)) setStatus(t('Your access to this project was removed by its owner.'));
       else if (data.expired) setStatus(t('This sign-in has ended. Open your invite link again and enter your access code.'));
-      else if (/invalid token/i.test(message)) setStatus(t('This invite link isn’t valid (it may have been replaced). Ask the owner for a new one.'));
+      else if (/invalid token/i.test(message)) setStatus(t('This link doesn’t match this Numenor — it is probably an old link. The share address changes each time the owner starts sharing (unless they set “Same link every time”), so ask them to send your link again. Your access code stays the same.'));
       else setStatus(t('Couldn’t open the project: {{error}}', { error: message }));
     };
     if (session) {

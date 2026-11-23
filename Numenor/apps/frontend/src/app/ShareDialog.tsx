@@ -451,7 +451,7 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
                     ? share?.active && !share.fixed
                       ? t('Set to {{domain}}, but it isn’t being used right now — links are temporary until it works.', { domain: fixedDomain })
                       : t('Links always use {{domain}}, so they keep working after a restart.', { domain: fixedDomain })
-                    : t('Off — links get a new address each time sharing starts, so you’d have to resend them.')}
+                    : t('Off — links get a new address each time sharing starts (also after a restart or update), and links sent before stop working: resend them, or set this up once.')}
                 </div>
               </div>
               {!domainOpen && (
