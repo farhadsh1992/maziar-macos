@@ -1978,14 +1978,24 @@ How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
 
 ### Sharing a project
 
-Numenor's Collab tab has **Share this project**: it opens a public link through a tunnel (Cloudflare if
-`cloudflared` is installed, else ngrok using the token in the ngrok app's config, else localtunnel),
-creates a 24-hour invite for that project and copies it. Maziar's Numenor toolbar shows a green
-**Sharing** item while a link is live, with **Stop sharing** (also in the ⋯ menu). Security model
-(`Numenor/apps/backend/src/utils/authUtils.js`): only requests made on this Mac — loopback, addressed to
-localhost, no proxy headers — are trusted; everything through the tunnel needs an invite token, and a
-token only reaches its own project (no other projects, folders, sharing controls or AI routes). Invites
-are signed with a random per-install secret (`data/.numenor-collab-secret`).
+**Share** in Numenor's editor top bar invites people one at a time (name, email, **Can edit** / **Can
+view**); each invite is its own signed link (`op2.` token naming the invite — no expiry; removing the person
+revokes it and closes their live connections). Invites live per Mac in `…/Maziar/Numenor/invites.json`
+(`NUMENOR_STATE_DIR`, set by Maziar along with `NUMENOR_OWNER_NAME` = your macOS full name, used in history).
+Sharing itself is a public link through a tunnel (Cloudflare if `cloudflared` is installed, else ngrok using
+the token in the ngrok app's config, else localtunnel); Maziar's Numenor toolbar shows a green **Sharing**
+item while it's live, with **Stop sharing**. Security model (`Numenor/apps/backend/src/utils/authUtils.js`):
+only requests made on this Mac — loopback, addressed to localhost, no proxy headers — are trusted; everything
+through the tunnel needs a live invite, which only reaches its own project (no other projects, folders,
+sharing controls or AI routes), and view-only invites can't change anything (HTTP or live editing). Invites
+are signed with a per-Mac secret (`…/Maziar/Numenor/collab-secret`). Older 24-hour links (`op1.`) no longer work.
+
+**Shared with me** (Projects page) keeps invite links others sent you (`…/Maziar/Numenor/shared-with-me.json`)
+and checks each owner's server for availability. **History** (`/history/<id>`) records every save — HTTP saves
+and live-collab flushes, attributed to the owner or the invite's name — in `<project>/.numenor-history/`, so it
+travels with the project through Google Drive. The **PDF pop-out** (`/pdf-window/<id>`) is a second window
+talking to the editor via `window.opener`/`postMessage`; Maziar gives it a proper window (and sends
+`mailto:` links to the Mail app).
 
 ### Changing Numenor and publishing it
 

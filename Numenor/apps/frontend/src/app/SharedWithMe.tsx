@@ -1,0 +1,112 @@
+// Projects page → "Shared with me": projects other people shared with you. Paste an invite link once and it
+// stays here, showing whether the owner's computer is reachable right now. Opening one opens the owner's
+// Numenor (the project stays on their computer).
+import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { addSharedWithMe, listSharedWithMe, removeSharedWithMe, type SharedProject } from '../api/client';
+import { IconLink, IconShare, IconTrash } from './icons';
+
+export function openSharedProject(link: string) {
+  const win = window.open(link, '_blank');
+  if (!win) window.location.href = link;
+}
+
+export default function SharedWithMe({ onCount }: { onCount?: (n: number) => void }) {
+  const { t } = useTranslation();
+  const [items, setItems] = useState<SharedProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [link, setLink] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const res = await listSharedWithMe();
+      setItems(res.items);
+      onCount?.(res.items.length);
+      setError('');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [onCount]);
+
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(load, 30000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  const add = async () => {
+    if (!link.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      await addSharedWithMe(link.trim());
+      setLink('');
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (item: SharedProject) => {
+    if (!window.confirm(t('Remove “{{name}}” from this list? (It stays with its owner — you can add it again with the link.)', { name: item.projectName }))) return;
+    await removeSharedWithMe(item.id).catch(() => {});
+    load();
+  };
+
+  const stateLabel = (s: SharedProject['state']) =>
+    s === 'ok' ? t('Available') : s === 'offline' ? t('Owner’s computer is offline') : s === 'revoked' ? t('Access removed') : t('Link no longer valid');
+
+  return (
+    <div className="nm-shared">
+      <div className="nm-shared-add">
+        <div className="nm-shared-add-text">
+          <b>{t('Add a project someone shared with you')}</b>
+          <span className="muted">{t('Paste the invite link they sent you (it contains “/collab?token=”).')}</span>
+        </div>
+        <div className="nm-shared-add-row">
+          <label className="nm-search nm-shared-input">
+            <IconLink size={16} />
+            <input className="project-search" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…/collab?token=…" onKeyDown={(e) => e.key === 'Enter' && add()} />
+          </label>
+          <button className="btn nm-primary" onClick={add} disabled={busy || !link.trim()}>{busy ? t('Checking…') : t('Add shared project')}</button>
+        </div>
+        {error && <div className="share-error">{error}</div>}
+      </div>
+
+      {loading ? (
+        <div className="muted nm-shared-empty">{t('Loading…')}</div>
+      ) : items.length === 0 ? (
+        <div className="nm-shared-empty">
+          <IconShare size={28} />
+          <div>{t('Nothing shared with you yet.')}</div>
+          <div className="muted">{t('When someone shares a Numenor project with you, paste their link above and it stays here.')}</div>
+        </div>
+      ) : (
+        <div className="nm-shared-list">
+          {items.map((item) => (
+            <div key={item.id} className={`nm-shared-item ${item.state}`}>
+              <div className="nm-shared-main">
+                <div className="nm-shared-name">{item.projectName}</div>
+                <div className="muted nm-shared-sub">
+                  {item.owner && item.owner !== 'Owner' ? t('Shared by {{owner}}', { owner: item.owner }) : t('Shared with you')}
+                  {' · '}{item.role === 'view' ? t('View only') : t('Can edit')}
+                  {' · '}<span className="nm-shared-host" title={item.origin}>{item.origin.replace(/^https?:\/\//, '')}</span>
+                </div>
+              </div>
+              <span className={`nm-shared-state ${item.state}`}><span className="share-dot" />{stateLabel(item.state)}</span>
+              <button className="btn nm-primary" disabled={item.state !== 'ok'} onClick={() => openSharedProject(item.link)}>{t('Open')}</button>
+              <button className="nm-icon-btn danger" onClick={() => remove(item)} title={t('Remove from this list')} aria-label={t('Remove')}><IconTrash size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="muted nm-shared-foot">{t('A shared project opens only while its owner’s computer is on and sharing. If their link changes, ask them to send it again and add it here — it replaces the old one.')}</div>
+    </div>
+  );
+}

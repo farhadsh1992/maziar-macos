@@ -4,7 +4,8 @@ import { pipeline } from 'stream/promises';
 import tar from 'tar';
 import unzipper from 'unzipper';
 import crypto from 'crypto';
-import { DATA_DIR, TEMPLATE_DIR } from '../config/constants.js';
+import { DATA_DIR, TEMPLATE_DIR, OWNER_NAME } from '../config/constants.js';
+import { recordEdit, recordEvent, authorOf } from '../services/historyService.js';
 import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { isTextFile, extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
@@ -414,6 +415,7 @@ export function registerProjectRoutes(fastify) {
           throw new Error('file is larger than the 200 MB upload limit');
         }
         saved.push(relPath);
+        recordEvent(projectRoot, 'upload', relPath, authorOf(req, OWNER_NAME));
       }
     } catch (err) {
       const reason = err?.message || String(err);
@@ -429,7 +431,10 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const abs = safeJoin(projectRoot, filePath);
     await ensureDir(path.dirname(abs));
+    let before = null;
+    try { before = await fs.readFile(abs, 'utf8'); } catch { /* new file */ }
     await fs.writeFile(abs, content ?? '', 'utf8');
+    if (isTextFile(filePath)) recordEdit(projectRoot, filePath, before, content ?? '', authorOf(req, OWNER_NAME));
     try {
       const metaPath = path.join(projectRoot, 'project.json');
       const meta = await readJson(metaPath);
@@ -508,6 +513,7 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const abs = safeJoin(projectRoot, folderPath);
     await ensureDir(abs);
+    recordEvent(projectRoot, 'folder', folderPath, authorOf(req, OWNER_NAME));
     return { ok: true };
   });
 
@@ -520,6 +526,7 @@ export function registerProjectRoutes(fastify) {
     const absTo = safeJoin(projectRoot, to);
     await ensureDir(path.dirname(absTo));
     await fs.rename(absFrom, absTo);
+    recordEvent(projectRoot, 'rename', from, authorOf(req, OWNER_NAME), { to });
     return { ok: true };
   });
 
@@ -543,6 +550,7 @@ export function registerProjectRoutes(fastify) {
       }
       throw err;
     }
+    recordEvent(projectRoot, 'delete', filePath, authorOf(req, OWNER_NAME));
     return { ok: true };
   });
 }

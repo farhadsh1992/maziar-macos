@@ -144,6 +144,17 @@ struct ScholarBrowserView: NSViewRepresentable {
         /// — since relying on MIME-showability alone (`canShowMIMEType`) would misfire for exports
         /// like PNG/SVG, which WKWebView *can* render inline and would otherwise just navigate to
         /// instead of downloading, even though the server intended them as a download.
+        /// `mailto:` links (e.g. Numenor's "Email the invite") go to the default mail app — a web view
+        /// can't open them itself and would silently do nothing.
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let url = navigationAction.request.url, let scheme = url.scheme?.lowercased(), ["mailto", "tel"].contains(scheme) {
+                NSWorkspace.shared.open(url)
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
         func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
             if let httpResponse = navigationResponse.response as? HTTPURLResponse,
                let contentDisposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition"),
@@ -211,9 +222,13 @@ struct ScholarBrowserView: NSViewRepresentable {
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             // An Numenor project opened in its own window (see `NumenorTheme.pageScript`) is a full
             // editor, not a small sign-in popup — give it an editor-sized, properly titled window.
-            let isEditorWindow = navigationAction.request.url?.path.hasPrefix("/editor/") == true
-            let width = windowFeatures.width?.doubleValue ?? (isEditorWindow ? 1280 : 520)
-            let height = windowFeatures.height?.doubleValue ?? (isEditorWindow ? 820 : 680)
+            // Numenor's PDF preview window, history page and shared projects (an invite link → /collab) get
+            // proper windows too.
+            let path = navigationAction.request.url?.path ?? ""
+            let isPdfWindow = path.hasPrefix("/pdf-window/")
+            let isEditorWindow = path.hasPrefix("/editor/") || path.hasPrefix("/history/") || path == "/collab"
+            let width = windowFeatures.width?.doubleValue ?? (isEditorWindow ? 1280 : isPdfWindow ? 920 : 520)
+            let height = windowFeatures.height?.doubleValue ?? (isEditorWindow ? 820 : isPdfWindow ? 1000 : 680)
             let popupWebView = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
             popupWebView.navigationDelegate = self
             popupWebView.uiDelegate = self
@@ -225,7 +240,7 @@ struct ScholarBrowserView: NSViewRepresentable {
                 backing: .buffered,
                 defer: false
             )
-            window.title = isEditorWindow ? "Numenor" : "Sign In"
+            window.title = isPdfWindow ? "PDF Preview" : isEditorWindow ? "Numenor" : "Sign In"
             window.contentView = popupWebView
             window.delegate = self
             // `NSWindow`'s default `isReleasedWhenClosed = true` makes AppKit itself release the

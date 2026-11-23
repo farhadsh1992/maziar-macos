@@ -33,7 +33,7 @@ export async function listFilesRecursive(root, rel = '') {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   const items = [];
   for (const entry of entries) {
-    if (entry.name === 'project.json' || entry.name === '.compile') continue;
+    if (entry.name === 'project.json' || entry.name === '.compile' || entry.name === '.numenor-history') continue;
     const itemRel = path.join(rel, entry.name);
     const full = path.join(root, itemRel);
     if (entry.isDirectory()) {

@@ -696,3 +696,74 @@ export function moveProject(projectId: string, folder: string) {
     body: JSON.stringify({ folder })
   });
 }
+
+// People with access to a project (owner only) — one invite per person, each with its own link.
+
+export type Invite = { id: string; projectId: string; name: string; email: string; role: 'edit' | 'view'; createdAt: string; lastSeenAt: string | null; token: string };
+
+export function listInvites(projectId: string) {
+  return maziarRequest<{ ok: true; invites: Invite[] }>(`/api/projects/${projectId}/invites`);
+}
+
+export function createInvite(projectId: string, data: { name: string; email: string; role: 'edit' | 'view' }) {
+  return maziarRequest<{ ok: true; invite: Invite }>(`/api/projects/${projectId}/invites`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateInvite(projectId: string, inviteId: string, data: { role?: 'edit' | 'view'; name?: string }) {
+  return maziarRequest<{ ok: true; invite: Invite }>(`/api/projects/${projectId}/invites/${inviteId}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export function revokeInvite(projectId: string, inviteId: string) {
+  return maziarRequest<{ ok: true }>(`/api/projects/${projectId}/invites/${inviteId}`, { method: 'DELETE' });
+}
+
+export function inviteLink(base: string, token: string) {
+  return `${base.replace(/\/$/, '')}/collab?token=${encodeURIComponent(token)}`;
+}
+
+export type Me = { ok: true; kind: 'owner' | 'guest'; name: string; role: 'owner' | 'edit' | 'view'; projectId?: string };
+
+export function whoAmI() {
+  return maziarRequest<Me>('/api/me');
+}
+
+// A project's change history.
+
+export type HistoryEntry = {
+  id: string; time: string; author: string; kind: 'owner' | 'guest';
+  action: 'edit' | 'create' | 'upload' | 'delete' | 'rename' | 'folder';
+  path: string; to?: string; added: number; removed: number;
+};
+export type DiffPart = { value: string; added: boolean; removed: boolean };
+
+export function getHistory(projectId: string, file = '') {
+  const qs = file ? `?file=${encodeURIComponent(file)}` : '';
+  return maziarRequest<{ ok: true; entries: HistoryEntry[] }>(`/api/projects/${projectId}/history${qs}`);
+}
+
+export function getHistoryEntry(projectId: string, entryId: string) {
+  return maziarRequest<{ ok: true; entry: HistoryEntry; parts: DiffPart[] }>(`/api/projects/${projectId}/history/${entryId}`);
+}
+
+export function restoreHistoryEntry(projectId: string, entryId: string, which: 'before' | 'after') {
+  return maziarRequest<{ ok: true; path: string }>(`/api/projects/${projectId}/history/${entryId}/restore`, { method: 'POST', body: JSON.stringify({ which }) });
+}
+
+// Projects other people shared with me (kept on this computer).
+
+export type SharedProject = {
+  id: string; origin: string; projectId: string; projectName: string; role: 'edit' | 'view'; owner: string;
+  addedAt: string; lastOnlineAt: string | null; state: 'ok' | 'offline' | 'revoked' | 'invalid'; link: string;
+};
+
+export function listSharedWithMe() {
+  return maziarRequest<{ ok: true; items: SharedProject[] }>('/api/shared-with-me');
+}
+
+export function addSharedWithMe(link: string) {
+  return maziarRequest<{ ok: true; item: SharedProject }>('/api/shared-with-me', { method: 'POST', body: JSON.stringify({ link }) });
+}
+
+export function removeSharedWithMe(id: string) {
+  return maziarRequest<{ ok: true }>(`/api/shared-with-me/${id}`, { method: 'DELETE' });
+}

@@ -8,6 +8,7 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { ensureDir, readJson, writeJson } from '../../utils/fsUtils.js';
 import { COLLAB_FLUSH_DEBOUNCE_MS } from '../../config/constants.js';
+import { recordEdit } from '../historyService.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -46,7 +47,17 @@ function broadcast(doc, payload, origin) {
 async function flushDoc(doc) {
   const text = doc.text.toString();
   await ensureDir(path.dirname(doc.absPath));
+  let before = null;
+  try { before = await fs.readFile(doc.absPath, 'utf8'); } catch { /* new */ }
   await fs.writeFile(doc.absPath, text, 'utf8');
+  // History: the people who typed since the last write.
+  const authors = [...doc.pendingAuthors.values()];
+  doc.pendingAuthors.clear();
+  if (authors.length && before !== text && doc.metaPath) {
+    const name = [...new Set(authors.map((a) => a.name))].sort().join(' & ');
+    const kind = authors.every((a) => a.kind === 'owner') ? 'owner' : 'guest';
+    recordEdit(path.dirname(doc.metaPath), doc.filePath, before, text, { name, kind });
+  }
   if (doc.metaPath) {
     try {
       const meta = await readJson(doc.metaPath);
@@ -91,7 +102,7 @@ function registerDocHandlers(doc) {
   });
 }
 
-export async function getOrCreateDoc({ key, absPath, metaPath }) {
+export async function getOrCreateDoc({ key, absPath, metaPath, filePath = '' }) {
   let doc = docs.get(key);
   if (doc) return doc;
   const ydoc = new Y.Doc();
@@ -113,6 +124,8 @@ export async function getOrCreateDoc({ key, absPath, metaPath }) {
     ydoc,
     awareness,
     text,
+    filePath: filePath || key.slice(key.indexOf(':') + 1),
+    pendingAuthors: new Map(),
     conns: new Set(),
     flushTimer: null,
     lastError: null,
@@ -123,8 +136,9 @@ export async function getOrCreateDoc({ key, absPath, metaPath }) {
   return doc;
 }
 
-export function setupConnection(doc, socket) {
-  const conn = { socket, awarenessClientIds: new Set() };
+/** who: { author: { name, kind }, inviteId?, readOnly? } */
+export function setupConnection(doc, socket, who = {}) {
+  const conn = { socket, awarenessClientIds: new Set(), author: who.author || null, inviteId: who.inviteId || null, readOnly: Boolean(who.readOnly) };
   doc.conns.add(conn);
   if (doc.cleanupTimer) {
     clearTimeout(doc.cleanupTimer);
@@ -152,6 +166,14 @@ export function setupConnection(doc, socket) {
     const decoder = decoding.createDecoder(buffer);
     const messageType = decoding.readVarUint(decoder);
     if (messageType === MESSAGE_SYNC) {
+      // View-only people may ask for the document (step 1) but their changes (step 2 / updates) are dropped.
+      if (conn.readOnly) {
+        const peek = decoding.createDecoder(buffer);
+        decoding.readVarUint(peek);
+        if (decoding.readVarUint(peek) !== syncProtocol.messageYjsSyncStep1) return;
+      } else if (conn.author) {
+        doc.pendingAuthors.set(conn.author.name + '|' + conn.author.kind, conn.author);
+      }
       const replyEncoder = encoding.createEncoder();
       encoding.writeVarUint(replyEncoder, MESSAGE_SYNC);
       syncProtocol.readSyncMessage(decoder, replyEncoder, doc.ydoc, conn);
@@ -198,4 +220,28 @@ export async function flushDocNow(key) {
   const doc = docs.get(key);
   if (!doc) return;
   await flushDoc(doc);
+}
+
+/** Closes every live editor connection opened with this invite (used when access is removed). */
+export function disconnectInvite(inviteId) {
+  for (const doc of docs.values()) {
+    for (const conn of doc.conns) {
+      if (conn.inviteId === inviteId) {
+        try { conn.socket.close(4401, 'Access removed'); } catch { /* gone */ }
+      }
+    }
+  }
+}
+
+/** After a file was changed on disk behind the live document's back (e.g. a restore), load it in. */
+export async function reloadDocFromDisk(key) {
+  const doc = docs.get(key);
+  if (!doc) return;
+  let content = '';
+  try { content = await fs.readFile(doc.absPath, 'utf8'); } catch { return; }
+  if (doc.text.toString() === content) return;
+  doc.ydoc.transact(() => {
+    doc.text.delete(0, doc.text.length);
+    doc.text.insert(0, content);
+  }, 'disk');
 }

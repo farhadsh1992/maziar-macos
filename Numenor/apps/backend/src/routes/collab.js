@@ -3,16 +3,20 @@ import { readJson } from '../utils/fsUtils.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { isTextFile } from '../utils/texUtils.js';
-import { issueToken, verifyToken } from '../services/collab/tokenService.js';
+import { issueToken, verifyToken, decodeToken } from '../services/collab/tokenService.js';
+import { createInvite, isRevoked } from '../services/inviteService.js';
+import { OWNER_NAME } from '../config/constants.js';
 import { getOrCreateDoc, setupConnection, flushDocNow, getDocDiagnostics } from '../services/collab/docStore.js';
 import { isLocalRequest } from '../utils/authUtils.js';
 
 export function registerCollabRoutes(fastify) {
-  fastify.post('/api/projects/:id/collab/invite', async (req) => {
+  // Old one-click invite: now creates a named "Link" invite (shows up under People with access).
+  fastify.post('/api/projects/:id/collab/invite', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false });
     const { id } = req.params;
     await getProjectRoot(id);
-    const token = issueToken({ projectId: id, role: 'admin' });
-    return { ok: true, token };
+    const invite = createInvite({ projectId: id, name: req.body?.name || 'Invite link', role: 'edit' });
+    return { ok: true, token: issueToken({ projectId: id, inviteId: invite.id }), invite };
   });
 
   fastify.get('/api/collab/resolve', async (req, reply) => {
@@ -21,6 +25,8 @@ export function registerCollabRoutes(fastify) {
     const payload = verifyToken(tokenValue);
     if (!payload) {
       reply.code(401);
+      const decoded = decodeToken(tokenValue);
+      if (decoded && isRevoked(decoded.inviteId)) return { ok: false, revoked: true, error: 'Your access to this project was removed.' };
       return { ok: false, error: 'Invalid token' };
     }
     const projectRoot = await getProjectRoot(payload.projectId);
@@ -31,7 +37,7 @@ export function registerCollabRoutes(fastify) {
     } catch {
       // ignore
     }
-    return { ok: true, projectId: payload.projectId, projectName, role: payload.role };
+    return { ok: true, projectId: payload.projectId, projectName, role: payload.role, name: payload.name, owner: OWNER_NAME };
   });
 
   fastify.post('/api/projects/:id/collab/flush', async (req) => {
@@ -100,7 +106,9 @@ export function registerCollabRoutes(fastify) {
     }
     const metaPath = path.join(projectRoot, 'project.json');
     const key = `${effectiveProjectId}:${filePath}`;
-    const doc = await getOrCreateDoc({ key, absPath, metaPath });
-    setupConnection(doc, conn.socket);
+    const doc = await getOrCreateDoc({ key, absPath, metaPath, filePath });
+    setupConnection(doc, conn.socket, payload
+      ? { author: { name: payload.name || 'Guest', kind: 'guest' }, inviteId: payload.inviteId, readOnly: payload.role === 'view' }
+      : { author: { name: OWNER_NAME, kind: 'owner' } });
   });
 }

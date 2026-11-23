@@ -50,3 +50,8 @@ export function NumenorMark({ size = 36 }: { size?: number }) {
 }
 export const IconCopy = (p: P) => <Svg {...p}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></Svg>;
 export const IconCheck = (p: P) => <Svg {...p}><path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>;
+export const IconShare = (p: P) => <Svg {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M18 8v6M15 11h6" /></Svg>;
+export const IconHistory = (p: P) => <Svg {...p}><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3 4v4h4" /><path d="M12 8v4.5l3 2" /></Svg>;
+export const IconPopOut = (p: P) => <Svg {...p}><rect x="3" y="6" width="13" height="13" rx="2" /><path d="M13 3h8v8M21 3l-9 9" /></Svg>;
+export const IconPopIn = (p: P) => <Svg {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 9l-6 6M9 10v5h5" /></Svg>;
+export const IconLink = (p: P) => <Svg {...p}><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></Svg>;

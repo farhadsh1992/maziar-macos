@@ -23,9 +23,12 @@ import { spellExtension } from '../latex/spell';
 import {
   NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconGear, IconUpload,
   IconSearch, IconSection, IconList, IconSigma, IconInsert, IconUndo, IconRedo, IconPlus, IconMinus, IconSync,
-  IconDownload, IconDots, IconCheckCircle, IconAlert, IconLayers, IconLog, IconSpinner, IconClose
+  IconDownload, IconDots, IconCheckCircle, IconAlert, IconLayers, IconLog, IconSpinner, IconClose,
+  IconShare, IconHistory, IconPopOut, IconPopIn, IconCopy
 } from './icons';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, type ShareState } from '../api/client';
+import ShareDialog from './ShareDialog';
+import type { PdfWindowMessage } from './PdfWindowPage';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, type ShareState, type Me } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -1244,6 +1247,16 @@ export default function EditorPage() {
   const collabActiveRef = useRef(false);
   const collabColorRef = useRef<string>(pickCollabColor(collabName));
   const collabCompartment = useMemo(() => new Compartment(), []);
+  const readOnlyCompartment = useMemo(() => new Compartment(), []);
+  // Who's using this editor: the owner (on this computer) or an invited person (and their rights).
+  const [me, setMe] = useState<Me | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const viewOnly = me?.kind === 'guest' && me.role === 'view';
+  // PDF preview in its own window (see PdfWindowPage).
+  const [pdfPopped, setPdfPopped] = useState(false);
+  const pdfPoppedRef = useRef(false);
+  pdfPoppedRef.current = pdfPopped;
+  const pdfWinRef = useRef<Window | null>(null);
   const spellCompartment = useMemo(() => new Compartment(), []);
   const pdfViewerRef = useRef<PdfViewerHandle | null>(null);
   const forwardSyncRef = useRef<() => void>(() => {});
@@ -1664,6 +1677,7 @@ export default function EditorPage() {
         editorTheme,
         Prec.high(syntaxHighlighting(numenorHighlight)),
         collabCompartment.of([]),
+        readOnlyCompartment.of([]),
         ghostField,
         diagnosticsExtension(),
         strongComments(),
@@ -3424,6 +3438,10 @@ export default function EditorPage() {
     const line = view.state.doc.lineAt(head);
     try {
       const { boxes } = await synctexForward(projectId, file, line.number, 0);
+      if (pdfPoppedRef.current && pdfWinRef.current && !pdfWinRef.current.closed) {
+        pdfWinRef.current.postMessage({ type: 'nm-pdf:reveal', box: boxes[0] } satisfies PdfWindowMessage, window.location.origin);
+        return;
+      }
       setRightView('pdf');
       window.requestAnimationFrame(() => pdfViewerRef.current?.revealBox(boxes[0]));
     } catch (err) {
@@ -3466,10 +3484,114 @@ export default function EditorPage() {
       setStatus(t('Compile the project first to jump between the PDF and the source.'));
       return;
     }
+    if (pdfPoppedRef.current && pdfWinRef.current && !pdfWinRef.current.closed) {
+      pdfWinRef.current.postMessage({ type: 'nm-pdf:reverse-request' } satisfies PdfWindowMessage, window.location.origin);
+      return;
+    }
     const point = pdfViewerRef.current?.sourcePoint();
     if (!point) return;
     reverseSync(point.page, point.x, point.y).catch(() => {});
   }, [pdfUrl, reverseSync, t]);
+
+  // ---------- PDF preview in a separate window ----------
+  const postToPdfWindow = useCallback((msg: PdfWindowMessage, transfer: Transferable[] = []) => {
+    const win = pdfWinRef.current;
+    if (!win || win.closed) return false;
+    win.postMessage(msg, window.location.origin, transfer);
+    return true;
+  }, []);
+  const sendPdfToWindowRef = useRef<() => Promise<void>>(async () => {});
+  sendPdfToWindowRef.current = async () => {
+    if (!pdfUrl) {
+      postToPdfWindow({ type: 'nm-pdf:pdf', bytes: null, title: projectName });
+      return;
+    }
+    const bytes = await (await fetch(pdfUrl)).arrayBuffer();
+    postToPdfWindow({ type: 'nm-pdf:pdf', bytes, title: projectName }, [bytes]);
+  };
+  const reverseSyncRef = useRef(reverseSync);
+  reverseSyncRef.current = reverseSync;
+
+  const popOutPdf = useCallback(() => {
+    if (!projectId) return;
+    const win = window.open(`/pdf-window/${projectId}`, `numenor-pdf-${projectId}`, 'width=920,height=1100');
+    if (!win) {
+      setStatus(t('The PDF window was blocked — allow pop-ups for Numenor and try again.'));
+      return;
+    }
+    pdfWinRef.current = win;
+    setPdfPopped(true);
+  }, [projectId, t]);
+
+  const dockPdf = useCallback(() => {
+    const win = pdfWinRef.current;
+    pdfWinRef.current = null;
+    setPdfPopped(false);
+    try { if (win && !win.closed) win.close(); } catch { /* gone */ }
+  }, []);
+
+  useEffect(() => {
+    if (pdfPopped) sendPdfToWindowRef.current().catch(() => {});
+  }, [pdfPopped, pdfUrl]);
+  useEffect(() => {
+    if (pdfPopped) postToPdfWindow({ type: 'nm-pdf:status', compiling: isCompiling, title: projectName });
+  }, [isCompiling, pdfPopped, projectName, postToPdfWindow]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !pdfWinRef.current || event.source !== pdfWinRef.current) return;
+      const msg = event.data as PdfWindowMessage;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'nm-pdf:hello') {
+        sendPdfToWindowRef.current().catch(() => {});
+        postToPdfWindow({ type: 'nm-pdf:status', compiling: false, title: projectName });
+      } else if (msg.type === 'nm-pdf:reverse') {
+        reverseSyncRef.current(msg.page, msg.x, msg.y).catch(() => {});
+        window.focus();
+      } else if (msg.type === 'nm-pdf:compile') {
+        compileRef.current().catch(() => {});
+      } else if (msg.type === 'nm-pdf:dock' || msg.type === 'nm-pdf:closed') {
+        pdfWinRef.current = null;
+        setPdfPopped(false);
+      }
+    };
+    window.addEventListener('message', onMessage);
+    const watch = window.setInterval(() => {
+      if (pdfPoppedRef.current && (!pdfWinRef.current || pdfWinRef.current.closed)) {
+        pdfWinRef.current = null;
+        setPdfPopped(false);
+      }
+    }, 1500);
+    const onUnload = () => postToPdfWindow({ type: 'nm-pdf:editor-closed' });
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('beforeunload', onUnload);
+      window.clearInterval(watch);
+      onUnload();
+    };
+  }, [postToPdfWindow, projectName]);
+
+  // ---------- who am I (owner, or invited with edit/view rights) ----------
+  const [accessRemoved, setAccessRemoved] = useState(false);
+  useEffect(() => {
+    whoAmI().then(setMe).catch(() => setMe(null));
+    if (!isGuest) return;
+    // An invited person: notice when the owner removes access or changes it (view ↔ edit).
+    const timer = window.setInterval(() => {
+      whoAmI()
+        .then((next) => setMe((prev) => (prev && prev.role === next.role ? prev : next)))
+        .catch((err) => {
+          if (/invite link/i.test(String((err as Error).message))) setAccessRemoved(true);
+        });
+    }, 20000);
+    return () => window.clearInterval(timer);
+  }, [isGuest]);
+  useEffect(() => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: readOnlyCompartment.reconfigure(viewOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []) });
+  }, [viewOnly, readOnlyCompartment]);
 
   // Maziar: editor zoom — Cmd/Ctrl + scroll or pinch over the editor, Cmd/Ctrl + = / - / 0, or the buttons.
   editorZoomRef.current = (delta) => {
@@ -3915,6 +4037,29 @@ export default function EditorPage() {
 
   return (
     <div className="app-shell">
+      {accessRemoved && (
+        <div className="modal-backdrop">
+          <div className="modal nm-access-removed">
+            <div className="modal-header"><div>{t('Access removed')}</div></div>
+            <div className="modal-body">
+              <p>{t('The owner removed your access to this project, or stopped sharing it. Changes you make now can’t be saved.')}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {shareOpen && projectId && (
+        <ShareDialog projectId={projectId} projectName={projectName || t('Project')} onClose={() => setShareOpen(false)} onStatus={setStatus} />
+      )}
+      {pdfPopped && (
+        <div className="nm-pdf-popped-bar" role="status">
+          <IconPopOut size={14} /> {t('The PDF preview is in its own window.')}
+          <button className="nm-icon-btn" onClick={() => forwardSyncRef.current()} disabled={!pdfUrl} title={t('Show the cursor’s line in the PDF (Cmd/Ctrl + Shift + J)')}>
+            <IconSync size={14} /> {t('Show in PDF')}
+          </button>
+          <button className="nm-icon-btn" onClick={() => pdfWinRef.current?.focus()}>{t('Show it')}</button>
+          <button className="nm-icon-btn" onClick={dockPdf}><IconPopIn size={14} /> {t('Back to editor')}</button>
+        </div>
+      )}
       <header className="top-bar nm-topbar">
         <div className="nm-topbar-left">
           <button
@@ -3956,7 +4101,20 @@ export default function EditorPage() {
               <IconChevronDown size={14} className={engineDropdownOpen ? 'rotate' : ''} />
             </button>
           </div>
-          <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>
+          {me?.kind === 'guest' && (
+            <span className={`nm-access-chip ${me.role}`} title={t('You were invited to this project')}>
+              {me.role === 'view' ? t('View only') : t('Can edit')}
+            </span>
+          )}
+          <Link to={`/history/${projectId}`} className="nm-icon-btn nm-topbar-btn" title={t('Who changed what, and when')}>
+            <IconHistory size={16} /> <span className="nm-hide-narrow">{t('History')}</span>
+          </Link>
+          {me?.kind !== 'guest' && (
+            <button className="nm-icon-btn nm-topbar-btn nm-share-btn" onClick={() => setShareOpen(true)} disabled={!projectId} title={t('Share this project with other people')}>
+              <IconShare size={16} /> <span className="nm-hide-narrow">{t('Share')}</span>
+            </button>
+          )}
+          {!viewOnly && <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>}
           <button onClick={compile} className="btn nm-primary nm-compile" disabled={isCompiling}>
             {isCompiling ? t('编译中...') : t('编译 PDF')}
           </button>
@@ -3977,7 +4135,7 @@ export default function EditorPage() {
       </header>
 
       <main
-        className="workspace"
+        className={`workspace ${pdfPopped ? 'pdf-popped' : ''}`}
         ref={gridRef}
         style={{
           '--col-sidebar': sidebarOpen ? `${columnSizes.sidebar}px` : '0px',
@@ -4214,8 +4372,15 @@ export default function EditorPage() {
                 <div className="collab-panel">
                   {isGuest ? (
                     <div className="share-box guest">
-                      <div className="share-title">{t('You were invited to this project')}</div>
-                      <div className="muted share-text">{t('Your edits appear for everyone working on it, live. Connect below if you are not connected yet.')}</div>
+                      <div className="share-title">{t('You were invited to this project')}{me?.kind === 'guest' ? ` — ${me.role === 'view' ? t('view only') : t('can edit')}` : ''}</div>
+                      <div className="muted share-text">{me?.role === 'view' ? t('You can read the project and the PDF; changes by others appear live.') : t('Your edits appear for everyone working on it, live. Connect below if you are not connected yet.')}</div>
+                      <div className="muted share-text">{t('Using Numenor on your own Mac or PC? Copy this link and add it there under Projects → Shared with me.')}</div>
+                      <div className="collab-row">
+                        <button className="ios-btn secondary" onClick={() => {
+                          const link = `${window.location.origin}/collab?token=${encodeURIComponent(collabToken)}`;
+                          navigator.clipboard.writeText(link).then(() => setStatus(t('Link copied.'))).catch(() => window.prompt(t('Copy this link:'), link));
+                        }}><IconCopy size={14} /> {t('Copy link for my Numenor')}</button>
+                      </div>
                     </div>
                   ) : (
                     <div className={`share-box ${share?.active ? 'on' : ''}`}>
@@ -4231,13 +4396,13 @@ export default function EditorPage() {
                         {share?.active && <span className="share-provider">{share.provider}</span>}
                       </div>
                       <div className="muted share-text">
-                        {t('People with the invite link can open and edit this project — only this one — in their browser, live, while Numenor is running on this computer. Links expire after 24 hours or when you stop sharing. AI features stay yours.')}
+                        {t('Each person you invite gets their own link to this project — only this one — and can edit or just view it, live, while Numenor is running on this computer. You can remove anyone’s access at any time. AI features stay yours.')}
                       </div>
                       {share?.note && <div className="share-note">{share.note}</div>}
                       {share?.error && !share.active && <div className="share-error">{share.error}</div>}
                       <div className="collab-row">
-                        <button className="ios-btn primary" onClick={() => shareThisProject()} disabled={shareBusy || !projectId}>
-                          {shareBusy ? t('Working…') : share?.active ? t('New invite link') : t('Share this project')}
+                        <button className="ios-btn primary" onClick={() => setShareOpen(true)} disabled={!projectId}>
+                          {t('Share with people…')}
                         </button>
                         {share?.active && (
                           <button className="ios-btn secondary" onClick={() => stopSharingNow()} disabled={shareBusy}>
@@ -5560,6 +5725,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                       <IconSync size={15} /> {t('Sync')}
                     </button>
                     <div className="nm-spacer" />
+                    <button className="nm-icon-btn" onClick={popOutPdf} title={t('Open the PDF in a separate window — the editor gets the full width')} aria-label={t('Open PDF in a separate window')}><IconPopOut size={16} /></button>
                     <button className="nm-icon-btn" onClick={downloadPdf} disabled={!pdfUrl} title={t('下载 PDF')} aria-label={t('下载 PDF')}><IconDownload size={16} /></button>
                     <div className="nm-menu">
                       <button className="nm-icon-btn borderless" onClick={() => setNmMenu(nmMenu === 'pdfmore' ? '' : 'pdfmore')} aria-haspopup="menu" aria-label={t('More PDF tools')}><IconDots size={18} /></button>
@@ -5572,6 +5738,8 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                             <div className="nm-menu-sep" />
                             <button className="nm-menu-item" disabled={!pdfUrl} onClick={() => forwardSyncRef.current()}>{t('Source → PDF')}</button>
                             <button className="nm-menu-item" disabled={!pdfUrl} onClick={() => reverseSyncFromPdf()}>{t('PDF → Source')}</button>
+                            <div className="nm-menu-sep" />
+                            <button className="nm-menu-item" onClick={popOutPdf}>{t('Open PDF in a separate window')}</button>
                             <div className="nm-menu-sep" />
                             <button className="nm-menu-item" onClick={() => setDiagnosticsOpen(true)}>{t('Problems')}</button>
                             <button className="nm-menu-item" onClick={() => setRightView('log')}>{t('Full log')}</button>

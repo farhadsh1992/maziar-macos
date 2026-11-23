@@ -40,11 +40,20 @@ but it runs perfectly well on its own.
 - **AI** (any OpenAI-compatible endpoint) — chat and agent editing with diff review, autocomplete,
   compile-error diagnosis, paper search, charts from tables, formula/table recognition from images, and
   template transfer between venues.
-- **Share a project** — in a project's Collab tab, **Share this project** opens a public link (Cloudflare
-  Tunnel if `cloudflared` is installed, else ngrok if you have an ngrok account token, else localtunnel),
-  creates an invite and copies it. Invited people edit that project — and only that project — live in
-  their browser while Numenor runs; links expire after 24 hours or when you press **Stop sharing**.
-  Invited visitors can't see other projects, your folders, or use your AI key.
+- **Share a project with people** — **Share** in the editor's top bar: add each person by name and
+  email, choose **Can edit** or **Can view**, and they get their own link (copied, or sent with
+  **Email**). The list shows who has access and when they last opened it; change anyone's rights or
+  **remove their access** at any time — their link stops working at once, even in an open editor. Sharing
+  goes through a public link (Cloudflare Tunnel if `cloudflared` is installed, else ngrok if you have an
+  ngrok account token, else localtunnel) while Numenor runs. Invited people only ever reach that one
+  project — not your other projects, your folders or your AI key.
+- **Shared with me** — on the Projects page, paste an invite someone sent you and the project stays listed
+  there, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
+- **History** — every save, by you or by the people you share with, is recorded per project
+  (`.numenor-history/` inside the project): who changed which file, when, and the exact lines added and
+  removed, with **Restore** for any version.
+- **PDF in its own window** — the pop-out button in the PDF toolbar moves the preview into a separate
+  window and gives the editor the full width; sync, compile and "Back to editor" work from both windows.
 - **Spelling and grammar** — LaTeX-aware (commands, math, citations and paths are skipped). This uses
   macOS's own checker and is available when Numenor runs inside Maziar.
 
@@ -84,6 +93,8 @@ Set these as environment variables before `npm start` (all optional):
 | `NUMENOR_MINERU_API_BASE`, `NUMENOR_MINERU_TOKEN` | MinerU service for PDF → LaTeX template transfer |
 | `NUMENOR_TUNNEL` | Start a share link at launch: `auto`, `cloudflared`, `ngrok` or `localtunnel` (or use the Collab tab) |
 | `NUMENOR_COLLAB_TOKEN_SECRET` | Secret for signing invite links (default: a random one created per install) |
+| `NUMENOR_STATE_DIR` | Where per-computer sharing state lives (`invites.json`, `shared-with-me.json`); default: the data folder |
+| `NUMENOR_OWNER_NAME` | Your name in project history (default: `Owner`) |
 
 The AI endpoint, key and model can also be entered in the Settings panel in the browser. Older
 `OPENPRISM_*` variable names still work.

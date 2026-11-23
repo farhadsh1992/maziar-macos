@@ -28,7 +28,10 @@ export default function CollabJoinPage() {
         navigate(`/editor/${res.projectId}`, { replace: true });
       })
       .catch((err) => {
-        setStatus(t('加入失败: {{error}}', { error: String(err) }));
+        const msg = String((err as Error)?.message || err);
+        if (/removed/i.test(msg)) setStatus(t('Your access to this project was removed by its owner.'));
+        else if (/invalid token/i.test(msg)) setStatus(t('This invite link isn’t valid (it may have been replaced). Ask the owner for a new one.'));
+        else setStatus(t('加入失败: {{error}}', { error: msg }));
       });
   }, [navigate, t]);
 

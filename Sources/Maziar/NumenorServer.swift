@@ -456,6 +456,11 @@ final class NumenorServer: ObservableObject {
             var env = Self.environment()
             env["PORT"] = String(port)
             env["NUMENOR_DATA_DIR"] = dataDirectory.path
+            // Per-Mac state (who each project is shared with, projects shared with me) stays out of the
+            // projects folder, which may be in Google Drive. Edits made here are recorded under this name.
+            env["NUMENOR_STATE_DIR"] = baseDirectory.path
+            let fullName = NSFullUserName().trimmingCharacters(in: .whitespaces)
+            env["NUMENOR_OWNER_NAME"] = fullName.isEmpty ? NSUserName() : fullName
             // The invite-signing secret stays on this Mac (not in the projects folder, which may be in Google Drive).
             if let secret = collabSecret() { env["NUMENOR_COLLAB_TOKEN_SECRET"] = secret }
             // Only this Mac can reach the editor — nobody else on the network.

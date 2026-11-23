@@ -1,7 +1,10 @@
 import crypto from 'crypto';
-import { COLLAB_TOKEN_SECRET, COLLAB_TOKEN_TTL } from '../../config/constants.js';
+import { COLLAB_TOKEN_SECRET } from '../../config/constants.js';
+import { getActiveInvite } from '../inviteService.js';
 
-const TOKEN_VERSION = 1;
+// v2 tokens name one invite (one person). They don't expire on their own; removing the person's access
+// (revoking the invite) is what ends them. v1 tokens (one anonymous link per project) are no longer accepted.
+const TOKEN_VERSION = 2;
 
 function base64UrlEncode(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
@@ -18,32 +21,38 @@ function sign(data) {
   return crypto.createHmac('sha256', COLLAB_TOKEN_SECRET).update(data).digest();
 }
 
-export function issueToken({ projectId, role = 'admin', ttlSeconds = COLLAB_TOKEN_TTL }) {
-  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const payload = { v: TOKEN_VERSION, pid: projectId, role, exp };
+export function issueToken({ projectId, inviteId }) {
+  const payload = { v: TOKEN_VERSION, pid: projectId, iid: inviteId };
   const body = base64UrlEncode(JSON.stringify(payload));
   const sig = base64UrlEncode(sign(body));
-  return `op1.${body}.${sig}`;
+  return `op2.${body}.${sig}`;
 }
 
-export function verifyToken(token) {
+/** Checks the signature only: { projectId, inviteId } or null. */
+export function decodeToken(token) {
   if (!token || typeof token !== 'string') return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [prefix, body, sig] = parts;
-  if (prefix !== 'op1') return null;
-  const expected = base64UrlEncode(sign(body));
-  const expectedBuf = Buffer.from(expected);
+  if (prefix !== 'op2') return null;
+  const expectedBuf = Buffer.from(base64UrlEncode(sign(body)));
   const sigBuf = Buffer.from(sig);
   if (expectedBuf.length !== sigBuf.length) return null;
   if (!crypto.timingSafeEqual(expectedBuf, sigBuf)) return null;
   try {
     const payload = JSON.parse(base64UrlDecode(body).toString('utf8'));
-    if (payload.v !== TOKEN_VERSION) return null;
-    if (!payload.pid || payload.role !== 'admin') return null;
-    if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return { projectId: payload.pid, role: payload.role, exp: payload.exp };
+    if (payload.v !== TOKEN_VERSION || !payload.pid || !payload.iid) return null;
+    return { projectId: payload.pid, inviteId: payload.iid };
   } catch {
     return null;
   }
+}
+
+/** A valid token whose invite is still active: { projectId, inviteId, role, name } or null. */
+export function verifyToken(token) {
+  const decoded = decodeToken(token);
+  if (!decoded) return null;
+  const invite = getActiveInvite(decoded.inviteId);
+  if (!invite || invite.projectId !== decoded.projectId) return null;
+  return { projectId: decoded.projectId, inviteId: invite.id, role: invite.role, name: invite.name };
 }

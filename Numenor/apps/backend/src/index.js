@@ -20,6 +20,9 @@ import { registerSynctexRoutes } from './routes/synctex.js';
 import { registerSpellRoutes } from './routes/spell.js';
 import { registerFolderRoutes } from './routes/folders.js';
 import { registerShareRoutes } from './routes/share.js';
+import { registerInviteRoutes } from './routes/invites.js';
+import { registerHistoryRoutes } from './routes/history.js';
+import { registerSharedWithMeRoutes } from './routes/sharedWithMe.js';
 import { setSharePort, startSharing } from './services/shareService.js';
 import { requireAuthIfRemote, remoteRequestAllowed } from './utils/authUtils.js';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +70,9 @@ registerSynctexRoutes(fastify);
 registerSpellRoutes(fastify);
 registerFolderRoutes(fastify);
 registerShareRoutes(fastify);
+registerInviteRoutes(fastify);
+registerHistoryRoutes(fastify);
+registerSharedWithMeRoutes(fastify);
 
 // Serve frontend static files in tunnel/production mode
 const __filename = fileURLToPath(import.meta.url);

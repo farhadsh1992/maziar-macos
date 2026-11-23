@@ -26,8 +26,9 @@ import TransferPanel from './TransferPanel';
 import FolderPicker from './FolderPicker';
 import {
   NumenorMark, IconFolder, IconFile, IconArchive, IconTrash, IconTag, IconGear, IconSearch, IconChevronDown,
-  IconPlus, IconDots, IconStar, IconCopy, IconCheck
+  IconPlus, IconDots, IconStar, IconCopy, IconCheck, IconShare
 } from './icons';
+import SharedWithMe from './SharedWithMe';
 
 const TARGET_FOLDER_KEY = 'numenor.projects.targetFolder';
 
@@ -117,6 +118,8 @@ export default function ProjectPage() {
   const [filter, setFilter] = useState('');
 
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+  const [sharedView, setSharedView] = useState(false);
+  const [sharedCount, setSharedCount] = useState<number | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>('updatedAt');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -584,14 +587,19 @@ export default function ProjectPage() {
           {navItems.map((item) => (
             <div
               key={item.key}
-              className={`sidebar-nav-item${viewFilter === item.key && !activeTag ? ' active' : ''}`}
-              onClick={() => { setViewFilter(item.key); setActiveTag(null); }}
+              className={`sidebar-nav-item${viewFilter === item.key && !activeTag && !sharedView ? ' active' : ''}`}
+              onClick={() => { setViewFilter(item.key); setActiveTag(null); setSharedView(false); }}
             >
               <span className="sidebar-nav-icon">{navIcons[item.key]}</span>
               <span className="sidebar-nav-label">{item.label}</span>
               <span className="sidebar-nav-count">{viewCounts[item.key]}</span>
             </div>
           ))}
+          <div className={`sidebar-nav-item${sharedView ? ' active' : ''}`} onClick={() => { setSharedView(true); setActiveTag(null); }}>
+            <span className="sidebar-nav-icon"><IconShare size={18} /></span>
+            <span className="sidebar-nav-label">{t('Shared with me')}</span>
+            <span className="sidebar-nav-count">{sharedCount ?? ''}</span>
+          </div>
         </nav>
 
         <div className="sidebar-tags-section">
@@ -641,7 +649,7 @@ export default function ProjectPage() {
       <div className="project-main">
         <header className="project-main-header">
           <h1 className="project-main-title">
-            {activeTag ? `${t('标签')}: ${activeTag}` : navItems.find((n) => n.key === viewFilter)?.label || t('所有项目')}
+            {sharedView ? t('Shared with me') : activeTag ? `${t('标签')}: ${activeTag}` : navItems.find((n) => n.key === viewFilter)?.label || t('所有项目')}
           </h1>
           <div className="project-main-header-actions">
             {viewFilter === 'trash' && viewCounts.trash > 0 && (
@@ -671,6 +679,7 @@ export default function ProjectPage() {
           </div>
         </header>
 
+        {sharedView ? <SharedWithMe onCount={setSharedCount} /> : (<>
         {folders.length > 0 && (
           <div className="nm-folders" aria-label={t('Project folders')}>
             <div className="nm-folders-label">{t('Project folders')}</div>
@@ -1012,6 +1021,7 @@ export default function ProjectPage() {
         <div className="project-footer">
           {filteredProjects.length === 1 ? t('1 project') : t('{{count}} projects', { count: filteredProjects.length })}
         </div>
+        </>)}
       </div>
 
       <input
