@@ -252,6 +252,24 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
     }
   };
 
+  const startNow = async () => {
+    setBusy(true);
+    setError('');
+    setShare((s) => (s ? { ...s, starting: true } : s));
+    onStatus?.(t('Starting a share link… (can take up to 30 seconds)'));
+    try {
+      const next = await startShare();
+      setShare(next);
+      if (next.active) onStatus?.(t('Sharing is on — the people you invited can open the project again.'));
+      else setError(next.error || t('Couldn’t start sharing.'));
+    } catch (err) {
+      setError((err as Error).message);
+      shareStatus().then(setShare).catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const stopAll = async () => {
     setBusy(true);
     try {
@@ -405,13 +423,23 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
                 </>
               ) : (
                 <>
-                  {t('Sharing is paused')}
-                  <div className="muted">{t('Inviting someone turns it on. Removing a person cancels only their link.')}</div>
+                  {share?.starting || (busy && !share?.active) ? t('Starting sharing…') : t('Sharing is paused')}
+                  <div className="muted">
+                    {invites.length > 0
+                      ? t('The people below can’t open the project until you start sharing.')
+                      : t('Inviting someone turns it on. Removing a person cancels only their link.')}
+                  </div>
                 </>
               )}
               {share?.note && <div className="share-note">{share.note}</div>}
             </div>
-            {share?.active && <button className="btn ghost" onClick={stopAll} disabled={busy}>{t('Pause sharing')}</button>}
+            {share?.active ? (
+              <button className="btn ghost" onClick={stopAll} disabled={busy}>{t('Pause sharing')}</button>
+            ) : (
+              <button className="btn nm-primary" onClick={startNow} disabled={busy || Boolean(share?.starting)}>
+                {busy || share?.starting ? t('Starting…') : t('Start sharing')}
+              </button>
+            )}
           </div>
 
           <div className="nm-share-fixed">
