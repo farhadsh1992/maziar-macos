@@ -2364,3 +2364,40 @@ button.nm-brand-btn:hover { background: var(--nm-hover); }
   display: flex; align-items: center; justify-content: center; gap: 6px;
   width: 100%; margin-top: 8px;
 }
+
+/* Share dialog → "Email invites" */
+.nm-share-mailsetup { margin-top: 10px; }
+.nm-share-mail-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.nm-mail-form { display: flex; flex-direction: column; gap: 10px; }
+.nm-mail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.nm-mail-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--nm-muted, inherit); }
+.nm-mail-grid .input { width: 100%; }
+.nm-share-mail-note { margin-top: 8px; font-size: 12.5px; color: var(--nm-gold, #b8892b); }
+button.nm-share-mail { white-space: nowrap; }
+@media (max-width: 560px) { .nm-mail-grid { grid-template-columns: 1fr; } }
+
+/* Access codes: Share dialog chip, code inputs, and the "enter your code" page */
+.nm-share-code {
+  font-family: var(--nm-mono, Menlo, monospace); font-size: 11.5px; letter-spacing: 1px; font-weight: 600;
+  padding: 1px 6px; margin-right: 6px; border-radius: 4px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--nm-gold, #b8892b) 60%, transparent);
+  background: color-mix(in srgb, var(--nm-gold, #b8892b) 12%, transparent); color: inherit;
+}
+.nm-share-code:hover { background: color-mix(in srgb, var(--nm-gold, #b8892b) 24%, transparent); }
+.nm-share-newcode { border: 0; background: none; padding: 0; font-size: 11.5px; color: var(--nm-gold, #b8892b); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.nm-code-input { font-family: var(--nm-mono, Menlo, monospace); letter-spacing: 1.5px; text-transform: uppercase; }
+.nm-shared-add-row .nm-code-input { width: 130px; flex: 0 0 auto; }
+.nm-join-card { max-width: 420px; width: calc(100% - 32px); padding: 28px 28px 22px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.nm-join-brand { display: flex; align-items: center; justify-content: center; gap: 10px; font-family: var(--nm-serif, Georgia, serif); font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.nm-join-title { font-family: var(--nm-serif, Georgia, serif); font-size: 20px; font-weight: 700; }
+.nm-join-sub { font-size: 13px; margin-bottom: 8px; }
+.nm-join-label { font-size: 13px; font-weight: 600; text-align: left; }
+.nm-join-code { font-family: var(--nm-mono, Menlo, monospace); font-size: 24px; letter-spacing: 4px; text-align: center; text-transform: uppercase; padding: 10px; }
+.nm-join-btn { padding: 10px; font-size: 15px; }
+.nm-join-help { font-size: 12.5px; line-height: 1.45; margin-top: 4px; }
+.nm-join-status { padding: 10px 0; }
+.nm-join-card .share-error { color: #ff9b8f; background: rgba(255, 110, 95, 0.12); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+:root[data-theme="light"] .nm-join-card .share-error { color: #a3261a; }
+.nm-share-code { color: #f1dfaf; }
+:root[data-theme="light"] .nm-share-code { color: #5a4210; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .nm-share-code { color: #5a4210; } }

@@ -40,6 +40,7 @@ import {
   getFile,
   getProjectTree,
   getCollabToken,
+  getCollabInviteToken,
   listProjects,
   renamePath,
   deleteFile,
@@ -4368,10 +4369,10 @@ export default function EditorPage() {
                     <div className="share-box guest">
                       <div className="share-title">{t('You were invited to this project')}{me?.kind === 'guest' ? ` — ${me.role === 'view' ? t('view only') : t('can edit')}` : ''}</div>
                       <div className="muted share-text">{me?.role === 'view' ? t('You can read the project and the PDF; changes by others appear live.') : t('Your edits appear for everyone working on it, live. Connect below if you are not connected yet.')}</div>
-                      <div className="muted share-text">{t('Using Numenor on your own Mac or PC? Copy this link and add it there under Projects → Shared with me.')}</div>
+                      <div className="muted share-text">{t('Using Numenor on your own Mac or PC? Copy this link and add it there under Projects → Add shared link, with your access code — you then only enter the code once.')}</div>
                       <div className="collab-row">
                         <button className="ios-btn secondary" onClick={() => {
-                          const link = `${window.location.origin}/collab?token=${encodeURIComponent(collabToken)}`;
+                          const link = `${window.location.origin}/collab?token=${encodeURIComponent(getCollabInviteToken() || collabToken)}`;
                           navigator.clipboard.writeText(link).then(() => setStatus(t('Link copied.'))).catch(() => window.prompt(t('Copy this link:'), link));
                         }}><IconCopy size={14} /> {t('Copy link for my Numenor')}</button>
                       </div>

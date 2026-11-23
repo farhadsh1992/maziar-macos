@@ -74,6 +74,17 @@ export function clearCollabToken() {
   window.sessionStorage.removeItem(COLLAB_TOKEN_KEY);
 }
 
+// The invite link's own token (not the pass), so a guest can copy their link for their own Numenor.
+const COLLAB_INVITE_KEY = 'numenor-collab-invite';
+export function setCollabInviteToken(token: string) {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(COLLAB_INVITE_KEY, token);
+}
+export function getCollabInviteToken() {
+  if (typeof window === 'undefined') return '';
+  return window.sessionStorage.getItem(COLLAB_INVITE_KEY) || '';
+}
+
 export function getCollabToken() {
   if (typeof window === 'undefined') return '';
   return window.sessionStorage.getItem(COLLAB_TOKEN_KEY) || '';
@@ -346,7 +357,15 @@ export function createCollabInvite(id: string) {
 
 export function resolveCollabToken(token: string) {
   const qs = new URLSearchParams({ token }).toString();
-  return request<{ ok: boolean; projectId: string; projectName: string; role: string }>(`/api/collab/resolve?${qs}`);
+  return request<{ ok: boolean; needsCode?: boolean; projectId: string; projectName: string; role: string; name?: string; owner?: string }>(`/api/collab/resolve?${qs}`);
+}
+
+/** Invite link token + access code → a pass for the editor. */
+export function unlockCollab(token: string, code: string) {
+  return request<{ ok: boolean; session: string; hours: number; projectId: string; projectName: string; role: string }>('/api/collab/unlock', {
+    method: 'POST',
+    body: JSON.stringify({ token, code })
+  });
 }
 
 export function flushCollabFile(id: string, filePath: string) {
@@ -717,7 +736,7 @@ export function moveProject(projectId: string, folder: string) {
 
 // People with access to a project (owner only) — one invite per person, each with its own link.
 
-export type Invite = { id: string; projectId: string; name: string; email: string; role: 'edit' | 'view'; createdAt: string; lastSeenAt: string | null; token: string };
+export type Invite = { id: string; projectId: string; name: string; email: string; role: 'edit' | 'view'; createdAt: string; lastSeenAt: string | null; emailedAt?: string | null; code: string; token: string };
 
 export function listInvites(projectId: string) {
   return maziarRequest<{ ok: true; invites: Invite[] }>(`/api/projects/${projectId}/invites`);
@@ -727,8 +746,31 @@ export function createInvite(projectId: string, data: { name: string; email: str
   return maziarRequest<{ ok: true; invite: Invite }>(`/api/projects/${projectId}/invites`, { method: 'POST', body: JSON.stringify(data) });
 }
 
-export function updateInvite(projectId: string, inviteId: string, data: { role?: 'edit' | 'view'; name?: string }) {
+export function updateInvite(projectId: string, inviteId: string, data: { role?: 'edit' | 'view'; name?: string; newCode?: boolean }) {
   return maziarRequest<{ ok: true; invite: Invite }>(`/api/projects/${projectId}/invites/${inviteId}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export type MailStatus = { configured: boolean; provider?: 'gmail' | 'outlook' | 'icloud' | 'other'; host?: string; port?: number; user?: string; fromName?: string };
+export type MailSettingsInput = { provider: string; user: string; pass: string; fromName: string; host?: string; port?: number };
+
+export function getMailSettings() {
+  return maziarRequest<{ ok: true } & MailStatus>('/api/mail/settings');
+}
+
+export function saveMailSettings(data: MailSettingsInput) {
+  return maziarRequest<{ ok: true } & MailStatus>('/api/mail/settings', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function clearMailSettings() {
+  return maziarRequest<{ ok: true } & MailStatus>('/api/mail/settings', { method: 'DELETE' });
+}
+
+export function sendTestMail() {
+  return maziarRequest<{ ok: true }>('/api/mail/test', { method: 'POST', body: '{}' });
+}
+
+export function emailInvite(projectId: string, inviteId: string, projectName: string) {
+  return maziarRequest<{ ok: true; invite: Invite }>(`/api/projects/${projectId}/invites/${inviteId}/email`, { method: 'POST', body: JSON.stringify({ projectName }) });
 }
 
 export function revokeInvite(projectId: string, inviteId: string) {
@@ -771,15 +813,29 @@ export function restoreHistoryEntry(projectId: string, entryId: string, which: '
 
 export type SharedProject = {
   id: string; origin: string; projectId: string; projectName: string; role: 'edit' | 'view'; owner: string;
-  addedAt: string; lastOnlineAt: string | null; state: 'ok' | 'offline' | 'revoked' | 'invalid'; link: string;
+  addedAt: string; lastOnlineAt: string | null; state: 'ok' | 'offline' | 'revoked' | 'invalid'; link: string; hasCode?: boolean;
 };
+
+/** "ABCDEFGH" → "ABCD-EFGH" (easier to read out). */
+export function prettyCode(code: string) {
+  return code && code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
 
 export function listSharedWithMe() {
   return maziarRequest<{ ok: true; items: SharedProject[] }>('/api/shared-with-me');
 }
 
-export function addSharedWithMe(link: string) {
-  return maziarRequest<{ ok: true; item: SharedProject }>('/api/shared-with-me', { method: 'POST', body: JSON.stringify({ link }) });
+export function addSharedWithMe(link: string, code: string) {
+  return maziarRequest<{ ok: true; item: SharedProject }>('/api/shared-with-me', { method: 'POST', body: JSON.stringify({ link, code }) });
+}
+
+/** A ready-to-open address for a saved shared project (the saved code is used, never shown). */
+export function openSharedWithMe(id: string) {
+  return maziarRequest<{ ok: true; url: string }>(`/api/shared-with-me/${id}/open`, { method: 'POST', body: '{}' });
+}
+
+export function setSharedWithMeCode(id: string, code: string) {
+  return maziarRequest<{ ok: true }>(`/api/shared-with-me/${id}/code`, { method: 'PUT', body: JSON.stringify({ code }) });
 }
 
 export function removeSharedWithMe(id: string) {

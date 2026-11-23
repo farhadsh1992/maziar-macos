@@ -10,6 +10,19 @@ const FILE = path.join(STATE_DIR, 'invites.json');
 let cache = null;
 let cacheMtime = 0;
 
+// The 8-character access code each person types (once in their Numenor, each visit in a browser) on top of
+// their link. No I, L, O, 0 or 1, so it can be read out or copied by hand without mix-ups.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export function newAccessCode() {
+  let code = '';
+  for (let n = 0; n < 8; n += 1) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+  return code;
+}
+/** "abcd-efgh", " ABCD EFGH " → "ABCDEFGH" */
+export function normalizeCode(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 function load() {
   try {
     const mtime = fs.statSync(FILE).mtimeMs;
@@ -17,6 +30,8 @@ function load() {
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
     cache = Array.isArray(raw.invites) ? raw.invites : [];
     cacheMtime = mtime;
+    // Invites made before access codes existed get one now (their links then need it too).
+    if (cache.some((i) => !i.code && !i.revokedAt)) save(cache.map((i) => (i.code || i.revokedAt ? i : { ...i, code: newAccessCode() })));
   } catch {
     if (!cache) cache = [];
   }
@@ -32,7 +47,7 @@ function save(list) {
   try { cacheMtime = fs.statSync(FILE).mtimeMs; } catch { /* ignore */ }
 }
 
-const publicView = ({ id, projectId, name, email, role, createdAt, lastSeenAt }) => ({ id, projectId, name, email, role, createdAt, lastSeenAt: lastSeenAt || null });
+const publicView = ({ id, projectId, name, email, role, code, createdAt, lastSeenAt, emailedAt }) => ({ id, projectId, name, email, role, code: code || '', createdAt, lastSeenAt: lastSeenAt || null, emailedAt: emailedAt || null });
 
 export function listInvites(projectId) {
   return load().filter((i) => i.projectId === projectId && !i.revokedAt).map(publicView);
@@ -45,6 +60,7 @@ export function createInvite({ projectId, name, email, role }) {
     name: String(name || '').trim().slice(0, 80) || String(email || '').split('@')[0] || 'Guest',
     email: String(email || '').trim().slice(0, 200),
     role: role === 'view' ? 'view' : 'edit',
+    code: newAccessCode(),
     createdAt: new Date().toISOString(),
     lastSeenAt: null,
     revokedAt: null
@@ -59,8 +75,17 @@ export function updateInvite(projectId, id, changes) {
     const next = { ...i };
     if (changes.role) next.role = changes.role === 'view' ? 'view' : 'edit';
     if (typeof changes.name === 'string' && changes.name.trim()) next.name = changes.name.trim().slice(0, 80);
+    if (changes.newCode) next.code = newAccessCode(); // old code (and passes made with it) stop working
     return next;
   });
+  save(list);
+  const found = list.find((i) => i.id === id && i.projectId === projectId && !i.revokedAt);
+  return found ? publicView(found) : null;
+}
+
+/** Remembers when the invite email was last sent, so the Share dialog can show it. */
+export function markInviteEmailed(projectId, id) {
+  const list = load().map((i) => (i.id === id && i.projectId === projectId && !i.revokedAt ? { ...i, emailedAt: new Date().toISOString() } : i));
   save(list);
   const found = list.find((i) => i.id === id && i.projectId === projectId && !i.revokedAt);
   return found ? publicView(found) : null;

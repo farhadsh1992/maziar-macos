@@ -129,6 +129,7 @@ export default function ProjectPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [sharedLinkOpen, setSharedLinkOpen] = useState(false);
   const [sharedLink, setSharedLink] = useState('');
+  const [sharedCode, setSharedCode] = useState('');
   const [sharedLinkBusy, setSharedLinkBusy] = useState(false);
   const [sharedLinkError, setSharedLinkError] = useState('');
   const [sharedReload, setSharedReload] = useState(0);
@@ -571,13 +572,14 @@ export default function ProjectPage() {
 
   const submitSharedLink = async () => {
     const link = sharedLink.trim();
-    if (!link || sharedLinkBusy) return;
+    if (!link || !sharedCode.trim() || sharedLinkBusy) return;
     setSharedLinkBusy(true);
     setSharedLinkError('');
     try {
-      await addSharedWithMe(link);
+      await addSharedWithMe(link, sharedCode);
       setSharedLinkOpen(false);
       setSharedLink('');
+      setSharedCode('');
       setSharedView(true);
       setActiveTag(null);
       setSharedReload((n) => n + 1);
@@ -607,7 +609,7 @@ export default function ProjectPage() {
           <button className="btn ghost" style={{ flex: 1 }} onClick={() => setImportOpen(true)}>{t('导入项目')}</button>
           <button className="btn ghost" style={{ flex: 1 }} onClick={() => setTemplateGalleryOpen(true)}>{t('模板库')}</button>
         </div>
-        <button className="btn ghost nm-add-shared-btn" onClick={() => { setSharedLink(''); setSharedLinkError(''); setSharedLinkOpen(true); }} title={t('Add a project someone shared with you, using the link they sent')}>
+        <button className="btn ghost nm-add-shared-btn" onClick={() => { setSharedLink(''); setSharedCode(''); setSharedLinkError(''); setSharedLinkOpen(true); }} title={t('Add a project someone shared with you, using the link they sent')}>
           <IconLink size={15} /> {t('Add shared link')}
         </button>
 
@@ -1087,12 +1089,24 @@ export default function ProjectPage() {
                   placeholder="https://…/collab?token=…"
                 />
               </div>
-              <div className="muted">{t('Paste the link someone sent you for their Numenor project (it contains “/collab?token=”). It is saved under “Shared with me”, so you can open it from here any time while its owner is sharing.')}</div>
+              <div className="field">
+                <label>{t('Access code')}</label>
+                <input
+                  className="input nm-code-input"
+                  value={sharedCode}
+                  onChange={(event) => setSharedCode(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && submitSharedLink()}
+                  placeholder="XXXX-XXXX"
+                  maxLength={9}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="muted">{t('Paste the link someone sent you for their Numenor project and the 8-character access code that came with it. Both are saved under “Shared with me”, so you only enter the code once and can open the project from here any time while its owner is sharing.')}</div>
               {sharedLinkError && <div className="share-error">{sharedLinkError}</div>}
             </div>
             <div className="modal-actions">
               <button className="btn ghost" onClick={() => setSharedLinkOpen(false)}>{t('取消')}</button>
-              <button className="btn nm-primary" onClick={submitSharedLink} disabled={sharedLinkBusy || !sharedLink.trim()}>{sharedLinkBusy ? t('Checking…') : t('Add shared project')}</button>
+              <button className="btn nm-primary" onClick={submitSharedLink} disabled={sharedLinkBusy || !sharedLink.trim() || !sharedCode.trim()}>{sharedLinkBusy ? t('Checking…') : t('Add shared project')}</button>
             </div>
           </div>
         </div>

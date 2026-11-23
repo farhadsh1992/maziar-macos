@@ -3,7 +3,7 @@
 // Numenor (the project stays on their computer).
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { addSharedWithMe, listSharedWithMe, removeSharedWithMe, type SharedProject } from '../api/client';
+import { addSharedWithMe, listSharedWithMe, openSharedWithMe, removeSharedWithMe, setSharedWithMeCode, type SharedProject } from '../api/client';
 import { IconLink, IconShare, IconTrash } from './icons';
 
 export function openSharedProject(link: string) {
@@ -11,11 +11,48 @@ export function openSharedProject(link: string) {
   if (!win) window.location.href = link;
 }
 
+/** Opens a saved shared project with its saved access code (asks for the code if it's missing or changed). */
+export async function openSavedShared(item: SharedProject, t: (k: string, o?: Record<string, unknown>) => string): Promise<string | null> {
+  // Open the window now (a click), fill it in when the address is ready — otherwise it's a blocked pop-up.
+  const win = window.open('', '_blank');
+  const go = (url: string) => {
+    if (win && !win.closed) win.location.href = url;
+    else window.location.href = url;
+  };
+  const errorOf = (err: unknown) => {
+    try { return JSON.parse((err as Error).message); } catch { return { error: (err as Error).message }; }
+  };
+  try {
+    go((await openSharedWithMe(item.id)).url);
+    return null;
+  } catch (err) {
+    const data = errorOf(err);
+    if (!data.needsCode) {
+      win?.close();
+      return String(data.error || err);
+    }
+    const entered = window.prompt(`${data.error || t('Enter the access code for this project once.')}\n\n${t('Access code for “{{name}}” (8 characters):', { name: item.projectName })}`);
+    if (!entered) {
+      win?.close();
+      return null;
+    }
+    try {
+      await setSharedWithMeCode(item.id, entered);
+      go((await openSharedWithMe(item.id)).url);
+      return null;
+    } catch (again) {
+      win?.close();
+      return String(errorOf(again).error || again);
+    }
+  }
+}
+
 export default function SharedWithMe({ onCount }: { onCount?: (n: number) => void }) {
   const { t } = useTranslation();
   const [items, setItems] = useState<SharedProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [link, setLink] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,12 +76,13 @@ export default function SharedWithMe({ onCount }: { onCount?: (n: number) => voi
   }, [load]);
 
   const add = async () => {
-    if (!link.trim()) return;
+    if (!link.trim() || !code.trim()) return;
     setBusy(true);
     setError('');
     try {
-      await addSharedWithMe(link.trim());
+      await addSharedWithMe(link.trim(), code);
       setLink('');
+      setCode('');
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -67,14 +105,15 @@ export default function SharedWithMe({ onCount }: { onCount?: (n: number) => voi
       <div className="nm-shared-add">
         <div className="nm-shared-add-text">
           <b>{t('Add a project someone shared with you')}</b>
-          <span className="muted">{t('Paste the invite link they sent you (it contains “/collab?token=”).')}</span>
+          <span className="muted">{t('Paste the invite link they sent you and its 8-character access code. Numenor remembers the code, so you only enter it once.')}</span>
         </div>
         <div className="nm-shared-add-row">
           <label className="nm-search nm-shared-input">
             <IconLink size={16} />
             <input className="project-search" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…/collab?token=…" onKeyDown={(e) => e.key === 'Enter' && add()} />
           </label>
-          <button className="btn nm-primary" onClick={add} disabled={busy || !link.trim()}>{busy ? t('Checking…') : t('Add shared project')}</button>
+          <input className="input nm-code-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('Access code')} maxLength={9} spellCheck={false} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <button className="btn nm-primary" onClick={add} disabled={busy || !link.trim() || !code.trim()}>{busy ? t('Checking…') : t('Add shared project')}</button>
         </div>
         {error && <div className="share-error">{error}</div>}
       </div>
@@ -100,7 +139,7 @@ export default function SharedWithMe({ onCount }: { onCount?: (n: number) => voi
                 </div>
               </div>
               <span className={`nm-shared-state ${item.state}`}><span className="share-dot" />{stateLabel(item.state)}</span>
-              <button className="btn nm-primary" disabled={item.state !== 'ok'} onClick={() => openSharedProject(item.link)}>{t('Open')}</button>
+              <button className="btn nm-primary" disabled={item.state !== 'ok'} onClick={async () => { const err = await openSavedShared(item, t); if (err) setError(err); }}>{t('Open')}</button>
               <button className="nm-icon-btn danger" onClick={() => remove(item)} title={t('Remove from this list')} aria-label={t('Remove')}><IconTrash size={15} /></button>
             </div>
           ))}

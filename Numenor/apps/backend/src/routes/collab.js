@@ -3,11 +3,25 @@ import { readJson } from '../utils/fsUtils.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { isTextFile } from '../utils/texUtils.js';
-import { issueToken, verifyToken, decodeToken } from '../services/collab/tokenService.js';
-import { createInvite, isRevoked } from '../services/inviteService.js';
+import crypto from 'crypto';
+import { issueToken, verifyToken, decodeToken, verifyInviteToken, issueSessionToken, SESSION_HOURS } from '../services/collab/tokenService.js';
+import { createInvite, isRevoked, getActiveInvite, normalizeCode } from '../services/inviteService.js';
 import { OWNER_NAME } from '../config/constants.js';
 import { getOrCreateDoc, setupConnection, flushDocNow, getDocDiagnostics } from '../services/collab/docStore.js';
 import { isLocalRequest } from '../utils/authUtils.js';
+
+const failures = new Map(); // inviteId → times of recent wrong codes
+const MAX_TRIES = 10;
+const LOCK_MS = 15 * 60 * 1000;
+
+async function projectNameOf(projectId) {
+  try {
+    const meta = await readJson(path.join(await getProjectRoot(projectId), 'project.json'));
+    return meta?.name || projectId;
+  } catch {
+    return projectId;
+  }
+}
 
 export function registerCollabRoutes(fastify) {
   // Old one-click invite: now creates a named "Link" invite (shows up under People with access).
@@ -19,25 +33,58 @@ export function registerCollabRoutes(fastify) {
     return { ok: true, token: issueToken({ projectId: id, inviteId: invite.id }), invite };
   });
 
+  // What a link or pass is for. A pass (after the access code) gets everything; a bare invite link only
+  // gets the project's name and owner, so the page can ask for the code.
   fastify.get('/api/collab/resolve', async (req, reply) => {
     const { token } = req.query || {};
     const tokenValue = Array.isArray(token) ? token[0] : token;
-    const payload = verifyToken(tokenValue);
+    const session = verifyToken(tokenValue);
+    const payload = session || verifyInviteToken(tokenValue);
     if (!payload) {
       reply.code(401);
       const decoded = decodeToken(tokenValue);
       if (decoded && isRevoked(decoded.inviteId)) return { ok: false, revoked: true, error: 'Your access to this project was removed.' };
+      if (String(tokenValue || '').startsWith('ops.')) return { ok: false, expired: true, error: 'This sign-in has ended — open your invite link again and enter your access code.' };
       return { ok: false, error: 'Invalid token' };
     }
-    const projectRoot = await getProjectRoot(payload.projectId);
-    let projectName = payload.projectId;
-    try {
-      const meta = await readJson(path.join(projectRoot, 'project.json'));
-      projectName = meta?.name || projectName;
-    } catch {
-      // ignore
-    }
+    const projectName = await projectNameOf(payload.projectId);
+    if (!session) return { ok: true, needsCode: true, projectId: payload.projectId, projectName, role: payload.role, name: payload.name, owner: OWNER_NAME };
     return { ok: true, projectId: payload.projectId, projectName, role: payload.role, name: payload.name, owner: OWNER_NAME };
+  });
+
+  // Link + access code → a pass for SESSION_HOURS. Too many wrong codes lock that link for a while.
+  fastify.post('/api/collab/unlock', async (req, reply) => {
+    const { token, code } = req.body || {};
+    const invite = verifyInviteToken(String(token || ''));
+    if (!invite) {
+      const decoded = decodeToken(String(token || ''));
+      if (decoded && isRevoked(decoded.inviteId)) return reply.code(401).send({ ok: false, revoked: true, error: 'Your access to this project was removed.' });
+      return reply.code(401).send({ ok: false, error: 'This invite link isn’t valid.' });
+    }
+    const now = Date.now();
+    const tries = (failures.get(invite.inviteId) || []).filter((t) => now - t < LOCK_MS);
+    if (tries.length >= MAX_TRIES) {
+      return reply.code(429).send({ ok: false, locked: true, error: 'Too many wrong codes — try again in 15 minutes, or ask the owner for your code.' });
+    }
+    const stored = getActiveInvite(invite.inviteId)?.code || '';
+    const given = Buffer.from(normalizeCode(code));
+    const want = Buffer.from(stored);
+    if (!stored || given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+      tries.push(now);
+      failures.set(invite.inviteId, tries);
+      return reply.code(401).send({ ok: false, wrongCode: true, error: 'That access code isn’t right.' });
+    }
+    failures.delete(invite.inviteId);
+    return {
+      ok: true,
+      session: issueSessionToken({ projectId: invite.projectId, inviteId: invite.inviteId, code: stored }),
+      hours: SESSION_HOURS,
+      projectId: invite.projectId,
+      projectName: await projectNameOf(invite.projectId),
+      role: invite.role,
+      name: invite.name,
+      owner: OWNER_NAME
+    };
   });
 
   fastify.post('/api/projects/:id/collab/flush', async (req) => {

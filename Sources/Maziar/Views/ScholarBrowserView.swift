@@ -206,6 +206,51 @@ struct ScholarBrowserView: NSViewRepresentable {
             }
         }
 
+        // -- alert / confirm / prompt --
+
+        /// `WKWebView` has no built-in host for JavaScript `alert()`, `confirm()` or `prompt()` either.
+        /// Without these methods an alert shows nothing, `confirm()` silently answers *Cancel* and
+        /// `prompt()` answers *null* — so every "Are you sure?" step quietly did nothing (reported as
+        /// Numenor's Share → remove person "doesn't work"; also New code, Turn off, Shared with me →
+        /// remove, and the access-code prompt). Shown as a sheet on the page's window, or a modal
+        /// alert if the web view has no window yet.
+        func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+            let alert = NSAlert()
+            alert.messageText = message
+            alert.addButton(withTitle: "OK")
+            present(alert, for: webView) { _ in completionHandler() }
+        }
+
+        func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+            let alert = NSAlert()
+            alert.messageText = message
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Cancel")
+            present(alert, for: webView) { response in completionHandler(response == .alertFirstButtonReturn) }
+        }
+
+        func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+            let alert = NSAlert()
+            alert.messageText = prompt
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Cancel")
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+            field.stringValue = defaultText ?? ""
+            alert.accessoryView = field
+            alert.window.initialFirstResponder = field
+            present(alert, for: webView) { response in
+                completionHandler(response == .alertFirstButtonReturn ? field.stringValue : nil)
+            }
+        }
+
+        private func present(_ alert: NSAlert, for webView: WKWebView, done: @escaping (NSApplication.ModalResponse) -> Void) {
+            if let window = webView.window {
+                alert.beginSheetModal(for: window, completionHandler: done)
+            } else {
+                done(alert.runModal())
+            }
+        }
+
         // -- popup windows --
 
         /// `WKWebView` has no built-in host for a JavaScript `window.open()` call — without a

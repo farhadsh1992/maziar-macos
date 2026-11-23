@@ -42,7 +42,12 @@ but it runs perfectly well on its own.
   template transfer between venues.
 - **Share a project with people** — **Share** in the editor's top bar: add each person by name and
   email, choose **Can edit** or **Can view**, and they get their own link (copied, or sent with
-  **Email**). The list shows who has access and when they last opened it; change anyone's rights or
+  **Email**; set up **Email invites** once in the Share dialog — Gmail, Outlook, iCloud or any SMTP server,
+  with an app password kept only on this computer in `mail-settings.json` — and Numenor emails each person
+  their link itself when you invite them). Each person also gets an **8-character access code** (shown next to
+  their name, included in the email and in the copied text; **New code** replaces it). The link alone opens
+  nothing: in a browser the code is asked each time the link is opened (the sign-in lasts 12 hours in that
+  tab), while their own Numenor asks once and remembers it. Ten wrong codes lock that link for 15 minutes. The list shows who has access and when they last opened it; change anyone's rights or
   **remove their access** at any time — their link stops working at once, even in an open editor. Sharing
   goes through a public link (Cloudflare Tunnel if `cloudflared` is installed, else ngrok if you have an
   ngrok account token, else localtunnel) while Numenor runs. Invited people only ever reach that one
@@ -51,7 +56,7 @@ but it runs perfectly well on its own.
   ngrok account includes (dashboard.ngrok.com/domains) and links keep working after a restart (saved in
   `share-settings.json` in the state folder).
 - **Shared with me** — on the Projects page, click **Add shared link** (left sidebar) and paste an invite
-  someone sent you; the project stays listed under Shared with me, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
+  someone sent you with its access code (asked only this once); the project stays listed under Shared with me, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
 - **History** — every save, by you or by the people you share with, is recorded per project
   (`.numenor-history/` inside the project): who changed which file, when, and the exact lines added and
   removed, with **Restore** for any version.
