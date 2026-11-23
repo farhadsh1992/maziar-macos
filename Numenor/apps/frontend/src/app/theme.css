@@ -1960,13 +1960,20 @@ button.nm-brand-btn:hover { background: var(--nm-hover); }
   transition: none !important;
 }
 
-/* When space runs out, toolbars wrap onto a second row instead of hiding buttons. */
+/* When space runs out, toolbars wrap onto a second row instead of hiding buttons. They keep their full
+   height (never squeezed by the editor below) and don't clip, so the Section / List / Equation / Insert
+   menus open fully. The file tab row above keeps its height too, so the file name isn't cut off. */
 .nm-pdf-toolbar,
 .nm-insert-bar {
   flex-wrap: wrap !important;
   row-gap: 6px !important;
-  overflow-x: visible !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+  height: auto !important;
+  position: relative;
+  z-index: 20;
 }
+.nm-file-tabs { flex-shrink: 0; }
 
 /* Project folders: full path under the label, with a copy button; chips wrap instead of scrolling. */
 .nm-folders {
