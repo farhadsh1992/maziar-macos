@@ -8,7 +8,7 @@ import os from 'os';
 import path from 'path';
 import { DATA_DIR } from '../config/constants.js';
 import { isLocalRequest } from '../utils/authUtils.js';
-import { expandHome, getExtraFolders, setExtraFolders, getProjectFolders } from '../services/projectService.js';
+import { expandHome, getExtraFolders, setExtraFolders, getProjectFolders, clearProjectCache } from '../services/projectService.js';
 
 function isThisComputer(req) {
   return isLocalRequest(req);
@@ -127,6 +127,27 @@ export function registerFolderRoutes(fastify) {
     // Only forgets the folder — the projects in it stay on disk untouched.
     await setExtraFolders((await getExtraFolders()).filter((f) => path.resolve(f) !== folder));
     return describe();
+  });
+
+  // ↻ next to a folder: look at it again now. Listing a Google Drive folder also makes Drive for desktop
+  // fetch what changed there; which copy of a project is newest is worked out afresh.
+  fastify.post('/api/folders/refresh', async (req, reply) => {
+    if (!localOnly(req, reply)) return reply;
+    clearProjectCache();
+    const folder = path.resolve(expandHome(String(req.body?.path || '')));
+    let projects = 0;
+    try {
+      for (const entry of await fs.readdir(folder, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const dir = path.join(folder, entry.name);
+        if (!existsSync(path.join(dir, 'project.json'))) continue;
+        projects += 1;
+        await fs.readdir(dir).catch(() => {});
+      }
+    } catch (err) {
+      return reply.code(400).send({ ok: false, error: `Can't open ${folder}: ${err.code || err.message}` });
+    }
+    return { ...(await describe()), checked: folder, projects, checkedAt: new Date().toISOString() };
   });
 
   fastify.get('/api/folders/browse', async (req, reply) => {

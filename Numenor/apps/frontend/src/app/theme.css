@@ -2509,3 +2509,16 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 /* A file changed outside Numenor while it had unsaved edits here */
 .nm-external { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 8px; padding: 8px 10px; border-radius: var(--nm-radius); border: 1px solid var(--nm-gold-line); background: var(--nm-gold-soft); font-size: 12.5px; color: var(--nm-text); }
 .nm-external > span { flex: 1 1 240px; }
+
+/* ↻ "check this folder again" — a round button next to a folder path */
+.nm-folder-refresh, .nm-location-refresh {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px;
+  width: 26px; height: 26px; border-radius: 50% !important; padding: 0 !important;
+  border: 1px solid var(--nm-line-strong) !important; background: var(--nm-elevated) !important;
+  color: var(--nm-gold-text) !important; cursor: pointer;
+}
+.nm-folder-refresh:hover:not(:disabled), .nm-location-refresh:hover:not(:disabled) { border-color: var(--nm-gold-line) !important; background: var(--nm-gold-soft) !important; }
+.nm-folder-refresh.spinning svg, .nm-location-refresh.spinning svg { animation: nm-spin 0.8s linear infinite; }
+.nm-folder-refresh.done, .nm-location-refresh.done { color: var(--nm-success) !important; border-color: var(--nm-success) !important; }
+.nm-location-pathrow { display: flex; align-items: center; gap: 8px; }
+.nm-location-pathrow .nm-location-path { flex: 1; min-width: 0; }

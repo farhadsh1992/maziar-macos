@@ -700,6 +700,11 @@ export function addFolder(path: string) {
   return maziarRequest<{ ok: true; primary: string; folders: ProjectFolder[] }>('/api/folders', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
+/** ↻ Looks at a projects folder again now (e.g. after another computer changed it through Google Drive). */
+export function refreshFolder(path: string) {
+  return maziarRequest<{ ok: true; primary: string; folders: ProjectFolder[]; projects: number; checkedAt: string }>('/api/folders/refresh', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
 export function removeFolder(path: string) {
   return maziarRequest<{ ok: true; primary: string; folders: ProjectFolder[] }>(`/api/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
@@ -946,7 +951,7 @@ export function updateStatus() {
 }
 
 // Where a project is kept on this computer (editor settings), and opening that folder.
-export type ProjectLocation = { ok: true; path: string; projectsFolder: string; place: string; inDataFolder: boolean };
+export type ProjectLocation = { ok: true; path: string; projectsFolder: string; place: string; inDataFolder: boolean; otherCopies?: string[] };
 export function getProjectLocation(id: string) {
   return maziarRequest<ProjectLocation>(`/api/projects/${encodeURIComponent(id)}/location`);
 }

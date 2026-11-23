@@ -18,6 +18,7 @@ import {
   listFolders,
   addFolder,
   removeFolder,
+  refreshFolder,
   moveProject,
   projectDownloadUrl,
   addSharedWithMe
@@ -27,7 +28,7 @@ import TransferPanel from './TransferPanel';
 import FolderPicker from './FolderPicker';
 import {
   NumenorMark, IconFolder, IconFile, IconArchive, IconTrash, IconTag, IconGear, IconSearch, IconChevronDown,
-  IconPlus, IconDots, IconStar, IconCopy, IconCheck, IconShare, IconLink
+  IconPlus, IconDots, IconStar, IconCopy, IconCheck, IconShare, IconLink, IconSync
 } from './icons';
 import { VersionBadge } from './UpdateNotice';
 import SharedWithMe from './SharedWithMe';
@@ -178,6 +179,24 @@ export default function ProjectPage() {
     const res = await listProjects();
     setProjects(res.projects || []);
   }, []);
+
+  // ↻ next to a folder path: check that folder again and update the list.
+  const [refreshingFolder, setRefreshingFolder] = useState('');
+  const [refreshedFolder, setRefreshedFolder] = useState('');
+  const refreshOneFolder = async (folderPath: string) => {
+    setRefreshingFolder(folderPath);
+    try {
+      const res = await refreshFolder(folderPath);
+      setFolders(res.folders);
+      await loadProjects();
+      setRefreshedFolder(folderPath);
+      window.setTimeout(() => setRefreshedFolder((f) => (f === folderPath ? '' : f)), 2000);
+    } catch (err) {
+      window.alert((err as Error).message);
+    } finally {
+      setRefreshingFolder('');
+    }
+  };
 
   const loadFolders = useCallback(async () => {
     try {
@@ -744,6 +763,15 @@ export default function ProjectPage() {
                         <span className="nm-folder-label">{folder.cloud === 'google' ? `Google Drive / ${folderLabel(folder.path).split(' / ').pop()}` : folderLabel(folder.path)}</span>
                         <span className="nm-folder-path">{folder.path}</span>
                       </span>
+                    </button>
+                    <button
+                      className={`nm-folder-refresh ${refreshingFolder === folder.path ? 'spinning' : ''} ${refreshedFolder === folder.path ? 'done' : ''}`}
+                      onClick={() => refreshOneFolder(folder.path)}
+                      disabled={Boolean(refreshingFolder)}
+                      title={t('Check this folder again now — picks up projects and changes that arrived from another computer (Google Drive…)')}
+                      aria-label={t('Check this folder again')}
+                    >
+                      {refreshedFolder === folder.path ? <IconCheck size={14} /> : <IconSync size={14} />}
                     </button>
                     <button
                       className={`nm-folder-copy ${copiedFolder === folder.path ? 'done' : ''}`}

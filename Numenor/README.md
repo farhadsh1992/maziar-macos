@@ -28,6 +28,10 @@ but it runs perfectly well on its own.
   cursor stays put), new and removed files appear in the file tree, and the Projects page refreshes when
   you return to it. If you had unsaved edits to that same file, nothing is overwritten: a bar asks whether
   to load the new version or keep yours.
+- **Same project in two folders** — e.g. an old copy in this computer's own folder and the live one in a
+  Google Drive folder: Numenor uses the most recently changed copy and says where the older one is (editor
+  settings). The round **↻** next to each folder path on the Projects page (and next to the path in the
+  editor settings) checks that folder again right away.
 - **Move, download, delete** — **Move…** puts a project in another projects folder (moving it into a
   Google Drive folder uploads it to Google Drive; moving it out removes it from there); **Download**
   saves it as a .zip you can import again; **Delete** moves it to Trash (with Undo), and **Delete

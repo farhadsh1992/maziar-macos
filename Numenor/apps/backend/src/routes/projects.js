@@ -10,7 +10,7 @@ import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { isTextFile, extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject } from '../services/templateService.js';
-import { getProjectRoot, getProjectFolders, resolveTargetFolder, expandHome } from '../services/projectService.js';
+import { getProjectRoot, getProjectCopies, getProjectFolders, resolveTargetFolder, expandHome } from '../services/projectService.js';
 import { buildZip } from '../utils/zipWriter.js';
 import { isLocalRequest } from '../utils/authUtils.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
@@ -49,7 +49,7 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects', async (req) => {
     await ensureDir(DATA_DIR);
     const projects = [];
-    const seen = new Set();
+    const where = new Map(); // id → folders that hold it
     // Every project folder (the main one plus any added on the Projects page); `folder` says which.
     for (const folder of await getProjectFolders()) {
       let entries = [];
@@ -59,15 +59,36 @@ export function registerProjectRoutes(fastify) {
         continue; // e.g. a Google Drive folder that isn't available right now
       }
       for (const entry of entries) {
-      if (!entry.isDirectory() || seen.has(entry.name)) continue;
-      const metaPath = path.join(folder, entry.name, 'project.json');
+        if (!entry.isDirectory()) continue;
+        try {
+          await fs.access(path.join(folder, entry.name, 'project.json'));
+        } catch {
+          continue;
+        }
+        if (!where.has(entry.name)) where.set(entry.name, []);
+        where.get(entry.name).push(folder);
+      }
+    }
+    for (const [id, folders] of where) {
+      // In more than one folder: show the most recently changed copy (see getProjectCopies).
+      let folder = folders[0];
+      let otherCopies = [];
+      if (folders.length > 1) {
+        try {
+          const copies = await getProjectCopies(id);
+          folder = path.dirname(copies[0].root);
+          otherCopies = copies.slice(1).map((c) => path.dirname(c.root));
+        } catch {
+          /* keep the first */
+        }
+      }
       try {
-        const meta = await readJson(metaPath);
-        seen.add(entry.name);
+        const meta = await readJson(path.join(folder, id, 'project.json'));
         projects.push({
           ...meta,
-          id: entry.name,
+          id,
           folder,
+          otherCopies,
           updatedAt: meta.updatedAt || meta.createdAt,
           tags: meta.tags || [],
           archived: meta.archived || false,
@@ -76,7 +97,6 @@ export function registerProjectRoutes(fastify) {
         });
       } catch {
         // ignore
-      }
       }
     }
     // An invited visitor sees only the project they were invited to.
@@ -401,7 +421,8 @@ export function registerProjectRoutes(fastify) {
     else if ((m = p.match(/\/Library\/CloudStorage\/OneDrive-?([^/]*)\//))) place = m[1] ? `OneDrive (${m[1]})` : 'OneDrive';
     else if (/\/Library\/CloudStorage\/Dropbox/.test(p)) place = 'Dropbox';
     else if (/\/Library\/Mobile Documents\/com~apple~CloudDocs\//.test(p)) place = 'iCloud Drive';
-    return { ok: true, path: projectRoot, projectsFolder: path.dirname(projectRoot), place, inDataFolder: path.resolve(path.dirname(projectRoot)) === path.resolve(DATA_DIR) };
+    const otherCopies = (await getProjectCopies(req.params.id)).slice(1).map((c) => c.root);
+    return { ok: true, path: projectRoot, projectsFolder: path.dirname(projectRoot), place, inDataFolder: path.resolve(path.dirname(projectRoot)) === path.resolve(DATA_DIR), otherCopies };
   });
 
   // "Show in Finder" (Explorer / file manager): the server runs on this computer, so it can open it.

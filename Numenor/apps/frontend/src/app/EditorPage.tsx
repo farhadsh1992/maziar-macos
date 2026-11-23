@@ -24,12 +24,12 @@ import {
   NumenorMark, IconSidebar, IconArrowLeft, IconChevronRight, IconChevronLeft, IconChevronDown, IconUpload,
   IconSearch, IconSection, IconList, IconSigma, IconInsert, IconUndo, IconRedo, IconPlus, IconMinus, IconSync,
   IconDownload, IconDots, IconCheckCircle, IconAlert, IconLayers, IconLog, IconSpinner, IconClose,
-  IconShare, IconHistory, IconPopOut, IconPopIn, IconCopy, IconCloud
+  IconShare, IconHistory, IconPopOut, IconPopIn, IconCopy, IconCloud, IconCheck
 } from './icons';
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, projectStat, type ProjectLocation, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, projectStat, refreshFolder, type ProjectLocation, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
@@ -1095,6 +1095,7 @@ export default function EditorPage() {
   // Settings → "Where this project is saved" (owner's computer only).
   const [projectLocation, setProjectLocation] = useState<ProjectLocation | null>(null);
   const [locationNote, setLocationNote] = useState('');
+  const [locationChecking, setLocationChecking] = useState<'' | 'busy' | 'done'>('');
   const [projectName, setProjectName] = useState('');
   const [tree, setTree] = useState<{ path: string; type: string }[]>([]);
   const [fileOrder, setFileOrder] = useState<Record<string, string[]>>({});
@@ -6622,7 +6623,42 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                 <div className="field nm-location">
                   <label>{t('Where this project is saved')}</label>
                   <div className="nm-location-place">{projectLocation.place}</div>
-                  <code className="nm-location-path" title={projectLocation.path}>{projectLocation.path}</code>
+                  <div className="nm-location-pathrow">
+                    <code className="nm-location-path" title={projectLocation.path}>{projectLocation.path}</code>
+                    <button
+                      className={`nm-location-refresh ${locationChecking === 'busy' ? 'spinning' : ''} ${locationChecking === 'done' ? 'done' : ''}`}
+                      disabled={locationChecking === 'busy'}
+                      title={t('Check this folder again now and update the project (picks up changes that arrived from another computer)')}
+                      aria-label={t('Check this folder again')}
+                      onClick={async () => {
+                        if (!projectId) return;
+                        setLocationChecking('busy');
+                        try {
+                          await refreshFolder(projectLocation.projectsFolder);
+                          setProjectLocation(await getProjectLocation(projectId));
+                          await refreshTree();
+                          const path = activePathRef.current;
+                          if (path && !isDirty && !collabActiveRef.current) {
+                            const { content } = await getFile(projectId, path);
+                            loadExternalVersion(path, content);
+                          }
+                          setLocationNote(t('Checked — showing the latest files.'));
+                          setLocationChecking('done');
+                          window.setTimeout(() => setLocationChecking(''), 2000);
+                        } catch (err) {
+                          setLocationNote((err as Error).message);
+                          setLocationChecking('');
+                        }
+                      }}
+                    >
+                      {locationChecking === 'done' ? <IconCheck size={13} /> : <IconSync size={13} />}
+                    </button>
+                  </div>
+                  {projectLocation.otherCopies && projectLocation.otherCopies.length > 0 && (
+                    <div className="muted">
+                      {t('An older copy of this project is also in {{folders}} — Numenor uses the most recently changed copy (the one above).', { folders: projectLocation.otherCopies.join(', ') })}
+                    </div>
+                  )}
                   <div className="nm-location-actions">
                     <button
                       className="btn small"
