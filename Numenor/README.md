@@ -59,7 +59,8 @@ but it runs perfectly well on its own.
 - **See who's here** — everyone who has the project open shows in the editor's top bar (initials and name
   in a coloured ring; hover for their access and the file they're in). Their cursor in the text has the
   same colour and their name on it, and the owner joins live editing automatically as soon as someone else
-  is in.
+  is in. Click someone's name to jump to them: Numenor opens the file they're in and scrolls to their
+  cursor, which flashes.
 - **Shared with me** — on the Projects page, click **Add shared link** (left sidebar) and paste an invite
   someone sent you with its access code (asked only this once); the project stays listed under Shared with me, showing whether its owner's computer is reachable; **Open** opens it in the owner's Numenor.
 - **Copies in Google Drive, SharePoint and other folders** — **Copies** in the editor's top bar keeps the

@@ -1270,6 +1270,8 @@ export default function EditorPage() {
   const collabDocRef = useRef<{ doc: Y.Doc; text: Y.Text; awareness: Awareness } | null>(null);
   const collabActiveRef = useRef(false);
   const collabColorRef = useRef<string>(pickCollabColor(collabName));
+  // Who this editor is ('owner' / 'invite:<id>'), sent with the cursor so others can find it by name.
+  const meKeyRef = useRef('');
   const collabCompartment = useMemo(() => new Compartment(), []);
   const readOnlyCompartment = useMemo(() => new Compartment(), []);
   // Who's using this editor: the owner (on this computer) or an invited person (and their rights).
@@ -1312,11 +1314,13 @@ export default function EditorPage() {
   useEffect(() => {
     persistCollabName(collabName);
     collabColorRef.current = me?.key ? colorForKey(me.key) : pickCollabColor(collabName);
+    meKeyRef.current = me?.key || '';
     if (collabDocRef.current) {
       collabDocRef.current.awareness.setLocalStateField('user', {
         name: collabName,
         color: collabColorRef.current,
-        colorLight: `${collabColorRef.current}33`
+        colorLight: `${collabColorRef.current}33`,
+        key: meKeyRef.current
       });
     }
   }, [collabName, me]);
@@ -1423,7 +1427,8 @@ export default function EditorPage() {
     awareness.setLocalStateField('user', {
       name: collabName,
       color: collabColorRef.current,
-      colorLight: `${collabColorRef.current}33`
+      colorLight: `${collabColorRef.current}33`,
+      key: meKeyRef.current
     });
     const provider = new CollabProvider({
       serverUrl: normalizeServerUrl(collabServer) || (typeof window === 'undefined' ? '' : window.location.origin),
@@ -3633,6 +3638,73 @@ export default function EditorPage() {
     if (projectId && activePath) presence(projectId, activePath).catch(() => {});
   }, [projectId, activePath]);
   const others = useMemo(() => people.filter((p) => p.key !== presenceYou), [people, presenceYou]);
+
+  /** Scrolls to someone's cursor in the open file and makes it flash. False if it isn't in this file. */
+  const jumpToPerson = useCallback((key: string) => {
+    const view = cmViewRef.current;
+    const cd = collabDocRef.current;
+    if (!view || !cd) return false;
+    let head: number | null = null;
+    cd.awareness.getStates().forEach((st, id) => {
+      if (id === cd.awareness.clientID || head !== null) return;
+      const state = st as { user?: { key?: string }; cursor?: { head?: unknown } | null };
+      if (state.user?.key !== key || !state.cursor?.head) return;
+      const abs = Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(state.cursor.head), cd.doc);
+      if (abs && abs.type === cd.text) head = abs.index;
+    });
+    if (head === null) return false;
+    const pos = Math.min(head, view.state.doc.length);
+    view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+    // Flash their caret (carets are drawn in the person's colour).
+    const probe = document.createElement('span');
+    probe.style.color = colorForKey(key);
+    const want = probe.style.color;
+    window.setTimeout(() => {
+      view.dom.querySelectorAll<HTMLElement>('.cm-ySelectionCaret').forEach((el) => {
+        if (el.style.borderColor !== want && el.style.backgroundColor !== want) return;
+        el.style.color = want;
+        el.classList.remove('nm-caret-flash');
+        void el.offsetWidth;
+        el.classList.add('nm-caret-flash');
+        window.setTimeout(() => el.classList.remove('nm-caret-flash'), 2600);
+      });
+    }, 120);
+    return true;
+  }, []);
+
+  const followTimerRef = useRef<number | null>(null);
+  /** Click on someone in the top bar: open the file they're in and show where their cursor is. */
+  const followPerson = async (p: PresencePerson) => {
+    if (followTimerRef.current) window.clearInterval(followTimerRef.current);
+    if (p.file && p.file !== activePathRef.current) {
+      if (!isTextPath(p.file)) {
+        setStatus(t('{{name}} is looking at {{file}}', { name: p.name, file: p.file }));
+        await handleFileSelect(p.file);
+        return;
+      }
+      await handleFileSelect(p.file);
+    }
+    if (jumpToPerson(p.key)) {
+      setStatus(t('{{name}}’s cursor', { name: p.name }));
+      return;
+    }
+    // The file (and their cursor) may still be loading: keep looking for a few seconds.
+    const until = Date.now() + 6000;
+    followTimerRef.current = window.setInterval(() => {
+      if (jumpToPerson(p.key)) {
+        window.clearInterval(followTimerRef.current!);
+        followTimerRef.current = null;
+        setStatus(t('{{name}}’s cursor', { name: p.name }));
+      } else if (Date.now() > until) {
+        window.clearInterval(followTimerRef.current!);
+        followTimerRef.current = null;
+        setStatus(p.file
+          ? t('{{name}} is in {{file}} but hasn’t put the cursor in the text yet.', { name: p.name, file: p.file })
+          : t('{{name}} hasn’t opened a file yet.', { name: p.name }));
+      }
+    }, 300);
+  };
+  useEffect(() => () => { if (followTimerRef.current) window.clearInterval(followTimerRef.current); }, []);
   // Someone else is in: join live editing so both see each other's cursor and changes as they type.
   useEffect(() => {
     if (others.length > 0 && !collabEnabled && activePath && isTextPath(activePath)) setCollabEnabled(true);
@@ -4182,10 +4254,17 @@ export default function EditorPage() {
                 const where = p.file ? t('in {{file}}', { file: p.file }) : '';
                 const what = p.role === 'owner' ? t('Owner') : p.role === 'view' ? t('View only') : t('Can edit');
                 return (
-                  <span key={p.key} className="nm-presence-chip" style={{ borderColor: color }} title={`${p.name} — ${what}${where ? ` · ${where}` : ''}`}>
+                  <button
+                    key={p.key}
+                    type="button"
+                    className="nm-presence-chip"
+                    style={{ borderColor: color }}
+                    onClick={() => { followPerson(p).catch(() => {}); }}
+                    title={`${p.name} — ${what}${where ? ` · ${where}` : ''}\n${t('Click to see where their cursor is')}`}
+                  >
                     <span className="nm-presence-avatar" style={{ background: color }}>{presenceInitials(p.name)}</span>
                     <span className="nm-presence-name nm-hide-narrow">{p.name}</span>
-                  </span>
+                  </button>
                 );
               })}
               {others.length > 5 && <span className="nm-presence-more" title={others.slice(5).map((p) => p.name).join(', ')}>+{others.length - 5}</span>}

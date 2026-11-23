@@ -2459,3 +2459,8 @@ button.nm-share-mail { white-space: nowrap; }
 /* Their cursor in the text: always show the name tag, not only on hover */
 .cm-editor .cm-ySelectionInfo { opacity: 1 !important; top: -1.25em !important; font-size: 10.5px !important; font-weight: 700 !important; padding: 1px 5px !important; border-radius: 4px 4px 4px 0 !important; color: #fff !important; transition-delay: 0s !important; }
 .cm-editor .cm-ySelectionCaret { border-left-width: 2px !important; }
+button.nm-presence-chip { cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; }
+button.nm-presence-chip:hover { background: var(--nm-hover); }
+/* Clicked someone's name: their caret pulses so it's easy to spot */
+.cm-editor .cm-ySelectionCaret.nm-caret-flash { animation: nm-caret-flash 0.65s ease-in-out 4; }
+@keyframes nm-caret-flash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 5px currentColor, 0 0 14px 6px currentColor; } }
