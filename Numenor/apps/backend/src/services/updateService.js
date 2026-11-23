@@ -66,7 +66,11 @@ export async function checkForUpdate({ force = false } = {}) {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'numenor-updater' },
       signal: AbortSignal.timeout(10000)
     });
-    if (commit.ok) notes = String((await commit.json())?.commit?.message || '').split('\nSynced from maziar@')[0].trim();
+    if (commit.ok) {
+      const lines = String((await commit.json())?.commit?.message || '').split('\nSynced from maziar@')[0].trim().split('\n');
+      // The sync commit repeats its subject as the first "- " line of the list below it.
+      notes = lines.filter((line, i) => i === 0 || line.trim() !== `- ${lines[0].trim()}`).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
   } catch {
     /* no notes */
   }
