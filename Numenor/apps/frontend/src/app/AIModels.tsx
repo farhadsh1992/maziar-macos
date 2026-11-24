@@ -30,25 +30,26 @@ function isLoopback(endpoint: string) {
 
 export function AIIndicator({ status, open }: { status?: AIStatus; open: () => void }) {
   const { t } = useTranslation();
-  if (!status) return null;
-  const state = status.localStatus;
-  let label = status.active === 'off' ? t('AI Off') : t(providerNames[status.active]);
-  if (status.active === 'local') {
+  const state = status?.localStatus;
+  let label = status ? t(status.active === 'off' ? 'AI Off' : providerNames[status.active]) : '';
+  if (status?.active === 'local') {
     const model = status.catalog.find((item) => item.id === status.local);
-    label = !model?.installed || state.runtime === 'unavailable' ? t('Local AI unavailable')
-      : state.runtime === 'loading' ? t('AI loading') : status.generating ? t('AI generating')
-        : state.runtime === 'ready' ? t('AI ready') : model.name;
-  } else if (status.generating) {
+    label = !model?.installed || state?.runtime === 'unavailable' ? t('Local AI unavailable')
+      : state?.runtime === 'loading' ? t('AI loading') : status.generating ? t('AI generating')
+        : state?.runtime === 'ready' ? t('AI ready') : model.name;
+  } else if (status?.generating) {
     label = t('AI generating');
   }
-  const remote = status.active === 'openai' || status.active === 'gemini' || status.active === 'ollama';
-  const offDevice = remote && !isLoopback(status.remote[status.active as RemoteAIProvider]?.endpoint ?? '');
+  const active = status?.active;
+  const remote = active === 'openai' || active === 'gemini' || active === 'ollama';
+  const offDevice = remote && !isLoopback(status?.remote[active]?.endpoint ?? '');
+  const title = [t('AI & Models'), label, offDevice ? t('Off-device') : '', status?.lastError].filter(Boolean).join(' · ');
   return (
     <div className="nm-ai-indicator">
-      <button type="button" className="nm-icon-btn" onClick={open} title={status.lastError || t('AI & Models')}>
-        {label}{offDevice ? ` · ${t('Off-device')}` : ''}
+      <button type="button" className="nm-icon-btn nm-ai-star" onClick={open} title={title} aria-label={t('AI & Models')}>
+        <span aria-hidden="true">✦</span>
       </button>
-      {status.generating && (
+      {status?.generating && (
         <button type="button" className="nm-icon-btn" onClick={() => { void aiAction('cancel-generation').catch(() => {}); }}>
           {t('Cancel AI')}
         </button>

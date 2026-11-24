@@ -1,3 +1,5 @@
+import { updateProjectMetadata, writingStatus, remapWritingStatuses } from '../services/projectMetadata.js';
+import { projectChanged } from '../services/projectEvents.js';
 import path from 'path';
 import { promises as fs, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
@@ -237,10 +239,7 @@ export function registerProjectRoutes(fastify) {
     const { name } = req.body || {};
     if (!name) return { ok: false, error: 'Missing name' };
     const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, name };
-    await writeJson(metaPath, next);
+    const next = await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, name }));
     return { ok: true, project: next };
   });
 
@@ -269,10 +268,7 @@ export function registerProjectRoutes(fastify) {
   fastify.delete('/api/projects/:id', async (req) => {
     const { id } = req.params;
     const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, trashed: true, trashedAt: new Date().toISOString() };
-    await writeJson(metaPath, next);
+    await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, trashed: true, trashedAt: new Date().toISOString() }));
     return { ok: true };
   });
 
@@ -340,10 +336,7 @@ export function registerProjectRoutes(fastify) {
     const { tags } = req.body || {};
     if (!Array.isArray(tags)) return { ok: false, error: 'tags must be an array' };
     const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, tags, updatedAt: new Date().toISOString() };
-    await writeJson(metaPath, next);
+    const next = await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, tags, updatedAt: new Date().toISOString() }));
     return { ok: true, project: next };
   });
 
@@ -351,10 +344,7 @@ export function registerProjectRoutes(fastify) {
     const { id } = req.params;
     const { archived } = req.body || {};
     const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, archived: !!archived, updatedAt: new Date().toISOString() };
-    await writeJson(metaPath, next);
+    const next = await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, archived: !!archived, updatedAt: new Date().toISOString() }));
     return { ok: true, project: next };
   });
 
@@ -362,15 +352,12 @@ export function registerProjectRoutes(fastify) {
     const { id } = req.params;
     const { trashed } = req.body || {};
     const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = {
+    const next = await updateProjectMetadata(projectRoot, (meta) => ({
       ...meta,
       trashed: !!trashed,
       trashedAt: trashed ? new Date().toISOString() : null,
       updatedAt: new Date().toISOString()
-    };
-    await writeJson(metaPath, next);
+    }));
     return { ok: true, project: next };
   });
 
@@ -379,13 +366,20 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const items = await listFilesRecursive(projectRoot);
     let fileOrder = {};
+    let statuses = {};
     let mainFile = '';
     try {
       const meta = await readJson(path.join(projectRoot, 'project.json'));
       fileOrder = meta?.fileOrder || {};
+      statuses = meta?.writingStatuses || {};
       mainFile = typeof meta?.mainFile === 'string' ? meta.mainFile : '';
     } catch {
       fileOrder = {};
+    }
+    for (const item of items) {
+      if (item.type !== 'file' || !/\.txt$/i.test(item.path)) continue;
+      const saved = writingStatus(statuses[item.path]);
+      if (saved) item.writingStatus = saved;
     }
     return { items, fileOrder, mainFile, mainFiles: await mainFileCandidates(projectRoot, items) };
   });
@@ -445,6 +439,29 @@ export function registerProjectRoutes(fastify) {
 
   // The file to compile, saved in project.json so everyone working on the project (and every computer)
   // compiles the same one — e.g. main.txt in a project brought over from Overleaf.
+  fastify.put('/api/projects/:id/writing-status', async (req, reply) => {
+    const { path: file, tag } = req.body || {};
+    const saved = tag === null ? null : writingStatus(tag);
+    if (typeof file !== 'string' || !/\.txt$/i.test(file) || (tag !== null && !saved)) {
+      return reply.code(400).send({ ok: false, error: 'Choose a TXT file and a valid writing status.' });
+    }
+    const root = await getProjectRoot(req.params.id);
+    const abs = safeJoin(root, file);
+    const key = path.relative(root, abs).split(path.sep).join('/');
+    let exists = false;
+    await updateProjectMetadata(root, async (meta) => {
+      exists = Boolean((await fs.lstat(abs).catch(() => null))?.isFile());
+      if (!exists) return meta;
+      const statuses = { ...meta.writingStatuses };
+      if (saved) statuses[key] = saved;
+      else delete statuses[key];
+      return { ...meta, writingStatuses: statuses };
+    });
+    if (!exists) return reply.code(404).send({ ok: false, error: 'The file no longer exists.' });
+    projectChanged(root);
+    return { ok: true, tag: saved };
+  });
+
   fastify.put('/api/projects/:id/main-file', async (req, reply) => {
     const projectRoot = await getProjectRoot(req.params.id);
     const wanted = String(req.body?.path || '').replace(/\\/g, '/');
@@ -456,12 +473,7 @@ export function registerProjectRoutes(fastify) {
       return reply.code(400).send({ ok: false, error: 'That file doesn’t exist in this project.' });
     }
     if (!/\.(tex|ltx|txt)$/i.test(wanted)) return reply.code(400).send({ ok: false, error: 'Choose a .tex, .ltx or .txt file.' });
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath).catch(() => ({}));
-    if (meta.mainFile !== wanted) {
-      meta.mainFile = wanted;
-      await writeJson(metaPath, meta);
-    }
+    await updateProjectMetadata(projectRoot, (meta) => meta.mainFile === wanted ? meta : { ...meta, mainFile: wanted });
     return { ok: true, mainFile: wanted };
   });
 
@@ -472,10 +484,7 @@ export function registerProjectRoutes(fastify) {
       return { ok: false, error: 'Missing order.' };
     }
     const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, fileOrder: { ...(meta.fileOrder || {}), [folder]: order } };
-    await writeJson(metaPath, next);
+    await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, fileOrder: { ...(meta.fileOrder || {}), [folder]: order } }));
     return { ok: true };
   });
 
@@ -562,10 +571,7 @@ export function registerProjectRoutes(fastify) {
     await fs.writeFile(abs, content ?? '', 'utf8');
     if (isTextFile(filePath)) recordEdit(projectRoot, filePath, before, content ?? '', authorOf(req, OWNER_NAME));
     try {
-      const metaPath = path.join(projectRoot, 'project.json');
-      const meta = await readJson(metaPath);
-      meta.updatedAt = new Date().toISOString();
-      await writeJson(metaPath, meta);
+      await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
     } catch { /* ignore */ }
     return { ok: true };
   });
@@ -650,13 +656,28 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const absFrom = safeJoin(projectRoot, from);
     const absTo = safeJoin(projectRoot, to);
-    // Never overwrite a file that's already there (a move would silently replace it). Renaming only the
-    // letter case (Main.tex → main.tex) is fine: on macOS that is the same file.
-    if (path.resolve(absFrom).toLowerCase() !== path.resolve(absTo).toLowerCase() && await fs.access(absTo).then(() => true, () => false)) {
-      return { ok: false, error: `${to} already exists.` };
-    }
-    await ensureDir(path.dirname(absTo));
-    await fs.rename(absFrom, absTo);
+    const keyFrom = path.relative(projectRoot, absFrom).split(path.sep).join('/');
+    const keyTo = path.relative(projectRoot, absTo).split(path.sep).join('/');
+    let conflict = false;
+    await updateProjectMetadata(projectRoot, async (meta) => {
+      const existing = await fs.lstat(absTo).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+        return null;
+      });
+      if (existing && keyFrom !== keyTo) {
+        const original = await fs.lstat(absFrom);
+        const sameFile = original.dev === existing.dev && original.ino === existing.ino;
+        if (!sameFile || keyFrom.toLowerCase() !== keyTo.toLowerCase()) {
+          conflict = true;
+          return meta;
+        }
+      }
+      const next = remapWritingStatuses(meta, keyFrom, keyTo);
+      await ensureDir(path.dirname(absTo));
+      await fs.rename(absFrom, absTo);
+      return next;
+    }, () => fs.rename(absTo, absFrom));
+    if (conflict) return { ok: false, error: `${to} already exists.` };
     recordEvent(projectRoot, 'rename', from, authorOf(req, OWNER_NAME), { to });
     return { ok: true };
   });
@@ -667,14 +688,13 @@ export function registerProjectRoutes(fastify) {
     if (!filePath) return { ok: false, error: 'Missing file path' };
     const projectRoot = await getProjectRoot(id);
     const abs = safeJoin(projectRoot, filePath);
-    // Check if it's a directory
+    const key = path.relative(projectRoot, abs).split(path.sep).join('/');
     try {
-      const stat = await fs.stat(abs);
-      if (stat.isDirectory()) {
-        await fs.rm(abs, { recursive: true, force: true });
-      } else {
-        await fs.rm(abs, { force: true });
-      }
+      await updateProjectMetadata(projectRoot, async (meta) => {
+        const stat = await fs.stat(abs);
+        await fs.rm(abs, { recursive: stat.isDirectory() });
+        return remapWritingStatuses(meta, key);
+      });
     } catch (err) {
       if (err.code === 'ENOENT') {
         return { ok: false, error: 'File not found' };

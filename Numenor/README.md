@@ -56,6 +56,7 @@ but it runs perfectly well on its own.
   glow in the editor.
 - **Editor** — LaTeX highlighting, folding, autocompletion, Cmd/Ctrl + / to comment lines, `%%%` notes
   shown in bold green, zoom with Cmd/Ctrl + scroll or Cmd/Ctrl + = / −.
+- **Writing status** — use the trailing button on a TXT file in Project Files to mark it To do, In progress, or Done. The optional note and date live in project metadata and follow in-project renames and moves.
 - **LaTeX structure** — the file sidebar's **Outline** follows the cursor through sections, subsections,
   and subsubsections. Turn on **LaTeX mode** beside an open `.txt` file's tab to use the same tools there.
   Display equations and tables have gutter folds and right-click previews. **View in PDF** uses the
@@ -65,7 +66,7 @@ but it runs perfectly well on its own.
   table, and note styling, equation and table folds and previews, and the Outline independently.
   Comment headings such as `%%h1/g> Experiments` support sizes `h1` through `h5` and green, red,
   blue, purple, and orange (`g`, `r`, `b`, `p`, `o`).
-- **AI & Models** — open **Numenor Settings → AI & Models** or click the AI indicator in the editor. AI
+- **AI & Models** — open **Numenor Settings → AI & Models** or click the glowing star in the editor toolbar. AI
   starts Off. Choose a managed Qwen3 model, Apple's system model, Ollama, an OpenAI-compatible endpoint
   such as a llama.cpp server, or Gemini. Provider selection and remote connection tests are explicit.
   Credentials are stored in macOS Keychain. Re-enter credentials from older Numenor releases here.

@@ -11,9 +11,16 @@ export interface ProjectMeta {
   folder?: string;
 }
 
+export interface FileWritingStatus {
+  status: 'todo' | 'in-progress' | 'done';
+  note: string;
+  date: string;
+}
+
 export interface FileItem {
   path: string;
   type: 'file' | 'dir';
+  writingStatus?: FileWritingStatus;
 }
 
 export interface FileOrderMap {
@@ -176,6 +183,12 @@ export function trashProject(id: string, trashed: boolean) {
   return request<{ ok: boolean; project?: ProjectMeta }>(`/api/projects/${id}/trash`, {
     method: 'PATCH',
     body: JSON.stringify({ trashed })
+  });
+}
+
+export function setFileWritingStatus(id: string, path: string, tag: FileWritingStatus | null) {
+  return request<{ ok: true; tag: FileWritingStatus | null }>(`/api/projects/${id}/writing-status`, {
+    method: 'PUT', body: JSON.stringify({ path, tag })
   });
 }
 

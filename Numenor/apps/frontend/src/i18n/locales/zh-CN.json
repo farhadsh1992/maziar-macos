@@ -591,5 +591,16 @@
   "installed": "已安装",
   "failed": "失败",
   "cancelled": "已取消",
-  "Check availability on this Mac.": "检查这台 Mac 的可用性。"
+  "Check availability on this Mac.": "检查这台 Mac 的可用性。",
+  "Writing status": "写作状态",
+  "Set writing status for {{name}}": "设置 {{name}} 的写作状态",
+  "Writing status for {{name}}": "{{name}} 的写作状态",
+  "To do": "待办",
+  "In progress": "进行中",
+  "Done": "已完成",
+  "Note": "备注",
+  "Date": "日期",
+  "Clear date": "清除日期",
+  "Clear status": "清除状态",
+  "Save": "保存"
 }

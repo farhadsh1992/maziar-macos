@@ -218,16 +218,14 @@ function decorate(state: EditorState, preview: LatexBlock | null): Presentation 
         decorations.push(Decoration.mark({ class: `cm-nm-heading-title-${item.level}` })
           .range(item.titleFrom, item.titleTo));
       }
-      if (item.level < 3) {
-        const line = doc.lineAt(item.pos);
-        gutters.push(new HeadingGutterMarker(item.level).range(line.from));
-        if (item.level === 1) {
-          const lastLine = doc.lineAt(item.titleTo).number;
-          for (let number = line.number; number <= lastLine; number++) {
-            const className = number === line.number ? 'cm-nm-section cm-nm-section-start' : 'cm-nm-section';
-            decorations.push(Decoration.line({ class: className }).range(doc.line(number).from));
-          }
-        }
+      const firstLine = doc.lineAt(item.pos);
+      const lastLine = doc.lineAt(item.titleTo).number;
+      gutters.push(new HeadingGutterMarker(item.level).range(firstLine.from));
+      for (let number = firstLine.number; number <= lastLine; number++) {
+        const classes = ['cm-nm-heading', `cm-nm-heading-${item.level}`];
+        if (number === firstLine.number) classes.push('cm-nm-heading-start');
+        if (number === lastLine) classes.push('cm-nm-heading-end');
+        decorations.push(Decoration.line({ class: classes.join(' ') }).range(doc.line(number).from));
       }
     }
   }

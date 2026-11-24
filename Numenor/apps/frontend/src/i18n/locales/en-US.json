@@ -593,5 +593,16 @@
   "cancelled": "cancelled",
   "Check availability on this Mac.": "Check availability on this Mac.",
   "Connected. {{count}} models available._one": "Connected. {{count}} model available.",
-  "Connected. {{count}} models available._other": "Connected. {{count}} models available."
+  "Connected. {{count}} models available._other": "Connected. {{count}} models available.",
+  "Writing status": "Writing status",
+  "Set writing status for {{name}}": "Set writing status for {{name}}",
+  "Writing status for {{name}}": "Writing status for {{name}}",
+  "To do": "To do",
+  "In progress": "In progress",
+  "Done": "Done",
+  "Note": "Note",
+  "Date": "Date",
+  "Clear date": "Clear date",
+  "Clear status": "Clear status",
+  "Save": "Save"
 }

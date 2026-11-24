@@ -34,6 +34,7 @@ export async function listFilesRecursive(root, rel = '') {
   const items = [];
   for (const entry of entries) {
     if (entry.name === 'project.json' || entry.name === '.compile' || entry.name === '.numenor-history') continue;
+    if (!rel && /^\.numenor-project-.*\.tmp$/.test(entry.name)) continue;
     const itemRel = path.join(rel, entry.name);
     const full = path.join(root, itemRel);
     if (entry.isDirectory()) {

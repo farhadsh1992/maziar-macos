@@ -1,3 +1,5 @@
+import WritingStatus from './WritingStatus';
+import { setFileWritingStatus, type FileItem } from '../api/client';
 import AIModels, { AIIndicator, useAIStatus } from './AIModels';
 import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1027,7 +1029,7 @@ export default function EditorPage() {
   const { projectId: routeProjectId } = useParams();
   const projectId = routeProjectId || '';
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<false | 'general' | 'ai'>(false);
   // A file changed on disk by something else (Google Drive from another computer…) while it had unsaved edits here.
   const [externalChange, setExternalChange] = useState<{ path: string; content: string } | null>(null);
   // Settings → "Where this project is saved" (owner's computer only).
@@ -1035,7 +1037,7 @@ export default function EditorPage() {
   const [locationNote, setLocationNote] = useState('');
   const [locationChecking, setLocationChecking] = useState<'' | 'busy' | 'done'>('');
   const [projectName, setProjectName] = useState('');
-  const [tree, setTree] = useState<{ path: string; type: string }[]>([]);
+  const [tree, setTree] = useState<FileItem[]>([]);
   const [fileOrder, setFileOrder] = useState<Record<string, string[]>>({});
   const [activePath, setActivePath] = useState<string>('');
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -3130,6 +3132,8 @@ export default function EditorPage() {
     await goToSourceRef.current(error.file, error.line);
   };
 
+  const writingStatuses = useMemo(() => new Map(tree.map((item) => [item.path, item.writingStatus])), [tree]);
+
   const renderTree = (nodes: TreeNode[], depth = 0) =>
     nodes.map((node) => {
       const isDir = node.type === 'dir';
@@ -3217,13 +3221,16 @@ export default function EditorPage() {
       }
 
       return (
-        <button
+        <div
           key={node.path}
           className={`tree-row file ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''} ${isDragOver ? (dragOverKind === 'file' ? 'drag-over-file' : 'drag-over') : ''} ${draggingPath === node.path ? 'dragging' : ''}`}
-          style={{ paddingLeft: paddingLeft + 14 }}
-          onClick={() => handleFileSelect(node.path)}
+          style={{ '--nm-file-indent': `${paddingLeft}px` } as CSSProperties}
           draggable
           onDragStart={(event) => {
+            if (event.target instanceof Element && event.target.closest('.nm-writing-slot, .inline-input')) {
+              event.preventDefault();
+              return;
+            }
             event.dataTransfer.setData('text/plain', node.path);
             setDraggingPath(node.path);
           }}
@@ -3277,9 +3284,10 @@ export default function EditorPage() {
             moveFileWithOrder(from, targetParent, node.name).catch((err) => setStatus(t('移动失败: {{error}}', { error: String(err) })));
           }}
         >
-          <span className={`tree-icon file ext-${getFileTypeLabel(node.path).toLowerCase()}`}>{getFileTypeLabel(node.path)}</span>
           {inlineEdit?.kind === 'rename' && inlineEdit.path === node.path ? (
-            <input
+            <div className="nm-file-open">
+              <span className={`tree-icon file ext-${getFileTypeLabel(node.path).toLowerCase()}`}>{getFileTypeLabel(node.path)}</span>
+              <input
               className="inline-input"
               autoFocus
               value={inlineEdit.value}
@@ -3296,12 +3304,24 @@ export default function EditorPage() {
               }}
               onBlur={() => cancelInlineEdit()}
             />
+            </div>
           ) : (
-            <span className="tree-label">{node.name}</span>
+            <button type="button" className="nm-file-open" onClick={() => handleFileSelect(node.path)}>
+              <span className={`tree-icon file ext-${getFileTypeLabel(node.path).toLowerCase()}`}>{getFileTypeLabel(node.path)}</span>
+              <span className="tree-label">{node.name}</span>
+              {isFigureFile(node.path) && <span className="tree-tag">FIG</span>}
+              {node.path.endsWith('.bib') && <span className="tree-tag">BIB</span>}
+            </button>
           )}
-          {isFigureFile(node.path) && <span className="tree-tag">FIG</span>}
-          {node.path.endsWith('.bib') && <span className="tree-tag">BIB</span>}
-        </button>
+          {/\.txt$/i.test(node.path) && (
+            <WritingStatus name={node.name} tag={writingStatuses.get(node.path)} readOnly={viewOnly}
+              save={async (tag) => {
+                const result = await setFileWritingStatus(projectId!, node.path, tag);
+                setTree((items) => items.map((item) => item.path === node.path
+                  ? { ...item, writingStatus: result.tag ?? undefined } : item));
+              }} />
+          )}
+        </div>
       );
     });
 
@@ -4331,7 +4351,7 @@ export default function EditorPage() {
           >
             <IconSidebar size={17} />
           </button>
-          <button type="button" className="nm-brand-link nm-brand-btn" onClick={() => setSettingsOpen(true)} title={t('Numenor settings')}>
+          <button type="button" className="nm-brand-link nm-brand-btn" onClick={() => setSettingsOpen('general')} title={t('Numenor settings')}>
             <NumenorMark size={30} />
             <span className="nm-star" aria-hidden="true">✦</span>
             <span className="nm-wordmark">Numenor</span>
@@ -4404,7 +4424,7 @@ export default function EditorPage() {
             </button>
           )}
           {!viewOnly && <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>}
-          {!isGuest && <AIIndicator status={aiStatus} open={() => setSettingsOpen(true)} />}
+          {!isGuest && <AIIndicator status={aiStatus} open={() => setSettingsOpen('ai')} />}
           <button onClick={compile} className="btn nm-primary nm-compile" disabled={isCompiling}>
             {isCompiling ? t('编译中...') : t('编译 PDF')}
           </button>
@@ -6562,17 +6582,18 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
       )}
       {settingsOpen && (
         <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
-          <SettingsLocationLoader
+          {settingsOpen === 'general' && <SettingsLocationLoader
             projectId={isGuest ? '' : projectId || ''}
             onLoad={(loc) => { setProjectLocation(loc); setLocationNote(''); }}
-          />
+          />}
           <div className="modal nm-settings-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
-              <div>{t('Numenor Settings')}</div>
+              <div>{t(settingsOpen === 'ai' ? 'AI & Models' : 'Numenor Settings')}</div>
               <button className="icon-btn" onClick={() => setSettingsOpen(false)}>✕</button>
             </div>
             <div className="modal-body">
               {!isGuest && <AIModels status={aiStatus} onUpdate={setAIStatus} />}
+              {settingsOpen === 'general' && <>
               {projectLocation && (
                 <div className="field nm-location">
                   <label>{t('Where this project is saved')}</label>
@@ -6664,6 +6685,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                 </select>
                 <div className="muted">{t('The language of Numenor’s menus and buttons.')}</div>
               </div>
+              </>}
             </div>
             <div className="modal-actions">
               <button className="btn ghost" onClick={() => setSettingsOpen(false)}>{t('关闭')}</button>
