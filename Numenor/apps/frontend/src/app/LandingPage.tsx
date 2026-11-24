@@ -1,3 +1,4 @@
+import { interfaceLanguages, interfaceLanguageLabel } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -41,14 +42,14 @@ export default function LandingPage() {
       <div className="landing-top-bar">
         <div className="ios-select-wrapper">
           <button className="ios-select-trigger" onClick={() => setLangDropdownOpen(!langDropdownOpen)}>
-            <span>{i18n.language === 'en-US' ? t('English') : t('中文')}</span>
+            <span>{interfaceLanguageLabel(i18n.language)}</span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={langDropdownOpen ? 'rotate' : ''}>
               <path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
           {langDropdownOpen && (
             <div className="ios-dropdown dropdown-down">
-              {([['zh-CN', t('中文')], ['en-US', t('English')]] as [string, string][]).map(([val, label]) => (
+              {interfaceLanguages.map(([val, label]) => (
                 <div key={val} className={`ios-dropdown-item ${i18n.language === val ? 'active' : ''}`} onClick={() => { i18n.changeLanguage(val); setLangDropdownOpen(false); }}>
                   {label}
                   {i18n.language === val && (

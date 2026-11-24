@@ -61,7 +61,7 @@ const COLLAB_SERVER_KEY = 'numenor-collab-server';
 function getLangHeader() {
   if (typeof window === 'undefined') return 'zh-CN';
   const stored = window.localStorage.getItem(LANG_KEY);
-  return stored === 'en-US' ? 'en-US' : 'zh-CN';
+  return stored === 'pt-PT' || stored === 'en-US' ? stored : 'zh-CN';
 }
 
 export function setCollabToken(token: string) {
@@ -132,7 +132,7 @@ export function listProjects() {
   return request<{ projects: ProjectMeta[] }>('/api/projects');
 }
 
-export function createProject(payload: { name: string; template?: string; folder?: string }) {
+export function createProject(payload: { name: string; template?: string; folder?: string; source?: string }) {
   return request<ProjectMeta>('/api/projects', {
     method: 'POST',
     body: JSON.stringify(payload)

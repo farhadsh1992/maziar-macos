@@ -108,15 +108,25 @@ export function registerProjectRoutes(fastify) {
 
   fastify.post('/api/projects', async (req, reply) => {
     await ensureDir(DATA_DIR);
-    const { name = 'Untitled', template, folder } = req.body || {};
+    const { name = 'Untitled', template, folder, source } = req.body || {};
+    if (source !== undefined && (template || typeof source !== 'string' || !source.trim() || source.length > 200000)) {
+      return reply.code(400).send({ ok: false, error: 'Provide a LaTeX draft or a template.' });
+    }
     const id = crypto.randomUUID();
     const projectRoot = path.join(await resolveTargetFolder(folder), id);
     await ensureDir(projectRoot);
     const meta = { id, name, createdAt: new Date().toISOString() };
-    await writeJson(path.join(projectRoot, 'project.json'), meta);
-    if (template) {
-      const templateRoot = path.join(TEMPLATE_DIR, template);
-      await copyDir(templateRoot, projectRoot);
+    try {
+      if (source !== undefined) {
+        await fs.writeFile(path.join(projectRoot, 'main.tex'), source, 'utf8');
+        meta.mainFile = 'main.tex';
+      } else if (template) {
+        await copyDir(path.join(TEMPLATE_DIR, template), projectRoot);
+      }
+      await writeJson(path.join(projectRoot, 'project.json'), meta);
+    } catch (error) {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+      throw error;
     }
     reply.send(meta);
   });

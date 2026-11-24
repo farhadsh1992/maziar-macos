@@ -1,3 +1,4 @@
+import { interfaceLanguages } from '../i18n';
 import type { ChatSnapshot } from './ChatWindow';
 import SourceComments, { CommentBorder, CommentIcon } from './SourceComments';
 import { OutlineList, type OutlineSnapshot } from './OutlineWindow';
@@ -1071,7 +1072,6 @@ export default function EditorPage() {
   const [translateScopeDropdownOpen, setTranslateScopeDropdownOpen] = useState(false);
   const [translateTargetDropdownOpen, setTranslateTargetDropdownOpen] = useState(false);
   const [rightViewDropdownOpen, setRightViewDropdownOpen] = useState(false);
-  const [mainFileDropdownOpen, setMainFileDropdownOpen] = useState(false);
   const [engineDropdownOpen, setEngineDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [topBarDropdownRect, setTopBarDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -1148,7 +1148,7 @@ export default function EditorPage() {
   const [mainFiles, setMainFiles] = useState<string[]>([]);
   const [fileFilter, setFileFilter] = useState('');
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
-  const [fileContextMenu, setFileContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [fileContextMenu, setFileContextMenu] = useState<{ x: number; y: number; path?: string } | null>(null);
   const [outlineCollapsed, setOutlineCollapsed] = useState(false);
   const [outlineHeight, setOutlineHeight] = useState(() => {
     try { return Math.max(80, Math.min(450, Number(localStorage.getItem('numenor-outline-height')) || 220)); }
@@ -3125,6 +3125,7 @@ export default function EditorPage() {
   const translateTargetOptions = useMemo(
     () => [
       { value: 'English', label: t('English') },
+      { value: 'Português', label: 'Português' },
       { value: '中文', label: t('中文') },
       { value: '日本語', label: t('日本語') },
       { value: '한국어', label: t('한국어') },
@@ -3357,6 +3358,7 @@ export default function EditorPage() {
       return (
         <div
           key={node.path}
+          data-file-path={node.path}
           className={`tree-row file ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''} ${isDragOver ? (dragOverKind === 'file' ? 'drag-over-file' : 'drag-over') : ''} ${draggingPath === node.path ? 'dragging' : ''}`}
           style={{ '--nm-file-indent': `${paddingLeft}px` } as CSSProperties}
           draggable
@@ -3443,6 +3445,8 @@ export default function EditorPage() {
             <button type="button" className="nm-file-open" onClick={() => handleFileSelect(node.path)}>
               <span className={`tree-icon file ext-${getFileTypeLabel(node.path).toLowerCase()}`}>{getFileTypeLabel(node.path)}</span>
               <span className="tree-label">{node.name}</span>
+              {mainFile === node.path && <span className="nm-main-file-star" title={t('Main file')}
+                role="img" aria-label={t('Main file')}>★</span>}
               {isFigureFile(node.path) && <span className="tree-tag">FIG</span>}
               {node.path.endsWith('.bib') && <span className="tree-tag">BIB</span>}
             </button>
@@ -4568,19 +4572,9 @@ export default function EditorPage() {
         </div>
         <div className="nm-topbar-right">
           <div className="ios-select-wrapper nm-select">
-            <button className="ios-select-trigger" title={t('Root document')} onClick={(e) => {
-              const opening = !mainFileDropdownOpen;
-              setMainFileDropdownOpen(opening); setEngineDropdownOpen(false); setLangDropdownOpen(false);
-              if (opening) { const r = e.currentTarget.getBoundingClientRect(); setTopBarDropdownRect({ top: r.bottom + 6, left: r.left, width: r.width }); }
-            }}>
-              <span className="nm-select-text">{mainFile}</span>
-              <IconChevronDown size={14} className={mainFileDropdownOpen ? 'rotate' : ''} />
-            </button>
-          </div>
-          <div className="ios-select-wrapper nm-select">
             <button className="ios-select-trigger" title={t('Compiler')} onClick={(e) => {
               const opening = !engineDropdownOpen;
-              setEngineDropdownOpen(opening); setMainFileDropdownOpen(false); setLangDropdownOpen(false);
+              setEngineDropdownOpen(opening); setLangDropdownOpen(false);
               if (opening) { const r = e.currentTarget.getBoundingClientRect(); setTopBarDropdownRect({ top: r.bottom + 6, left: r.left, width: r.width }); }
             }}>
               <span className="nm-select-text">{({'pdflatex':'pdfLaTeX','xelatex':'XeLaTeX','lualatex':'LuaLaTeX','latexmk':'Latexmk','tectonic':'Tectonic'} as Record<string,string>)[compileEngine] || compileEngine}</span>
@@ -4784,11 +4778,14 @@ export default function EditorPage() {
                   ref={fileTreeRef}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    const menuH = 380;
+                    const row = (event.target as Element).closest<HTMLElement>('[data-file-path]');
+                    const path = row?.dataset.filePath;
+                    if (path) setSelectedPath(path);
+                    const menuH = path && mainCandidates.includes(path) && !viewOnly ? 416 : 380;
                     const menuW = 180;
                     const y = event.clientY + menuH > window.innerHeight ? Math.max(8, window.innerHeight - menuH - 8) : event.clientY;
                     const x = event.clientX + menuW > window.innerWidth ? Math.max(8, window.innerWidth - menuW - 8) : event.clientX;
-                    setFileContextMenu({ x, y });
+                    setFileContextMenu({ x, y, path });
                   }}
                   onDragOver={(event) => {
                     event.preventDefault();
@@ -5991,12 +5988,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
               <span className="nm-file-tab-name">{activePath ? activePath.split('/').pop() : t('No file')}</span>
               {currentHeading && <span className="nm-file-tab-heading">· {currentHeading.title}</span>}
             </div>
-            {isTxt && (
-              <button type="button" className="nm-icon-btn nm-language-mode"
-                aria-pressed={latexHighlights} onClick={toggleLatexMode}>
-                {t('LaTeX mode')}
-              </button>
-            )}
           </div>
           <div className="editor-toolbar nm-insert-bar">
             <div className="nm-menu">
@@ -6716,6 +6707,10 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
           <CommentIcon />{t('Comments')}
           {commentPass && <CommentBorder key={commentPass.id} width={commentPass.width} height={commentPass.height} />}
         </button>
+        {isTxt && (
+          <button type="button" className="nm-stat-btn nm-language-mode" aria-pressed={latexHighlights}
+            onClick={toggleLatexMode}>{t('LaTeX mode')}</button>
+        )}
         {commentsOpen && <SourceComments anchor={commentButton}
           comments={comments.map((comment) => {
             const view = cmViewRef.current;
@@ -6737,26 +6732,8 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
       </footer>
 
       {/* Top-bar dropdown portals — rendered outside top-bar to escape backdrop-filter stacking context */}
-      {(mainFileDropdownOpen || engineDropdownOpen || langDropdownOpen) && (
-        <div className="topbar-dropdown-backdrop" onClick={() => { setMainFileDropdownOpen(false); setEngineDropdownOpen(false); setLangDropdownOpen(false); }} />
-      )}
-      {mainFileDropdownOpen && topBarDropdownRect && (
-        <div className="ios-dropdown dropdown-fixed" style={{ top: topBarDropdownRect.top, left: topBarDropdownRect.left, minWidth: topBarDropdownRect.width }}>
-          {(mainCandidates.length > 0 ? mainCandidates : ['main.tex']).map((p) => (
-            <div key={p} className={`ios-dropdown-item ${mainFile === p ? 'active' : ''}`} onClick={() => {
-              setMainFile(p);
-              setMainFileDropdownOpen(false);
-              // Saved in the project, so it is the main file for everyone (view-only people can't change it).
-              if (projectId && !viewOnly) {
-                setProjectMainFileState(p);
-                setProjectMainFile(projectId, p).catch(() => {});
-              }
-            }}>
-              {p}
-              {mainFile === p && <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8L6.5 11.5L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </div>
-          ))}
-        </div>
+      {(engineDropdownOpen || langDropdownOpen) && (
+        <div className="topbar-dropdown-backdrop" onClick={() => { setEngineDropdownOpen(false); setLangDropdownOpen(false); }} />
       )}
       {engineDropdownOpen && topBarDropdownRect && (
         <div className="ios-dropdown dropdown-fixed" style={{ top: topBarDropdownRect.top, left: topBarDropdownRect.left, minWidth: topBarDropdownRect.width }}>
@@ -6772,6 +6749,19 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
       {fileContextMenu && (
         <div className="ctx-menu-backdrop" onClick={() => setFileContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setFileContextMenu(null); }}>
           <div className="ctx-menu" style={{ left: fileContextMenu.x, top: fileContextMenu.y }} onClick={(e) => e.stopPropagation()}>
+            {!viewOnly && fileContextMenu.path && mainCandidates.includes(fileContextMenu.path) && (
+              <button type="button" className="ctx-menu-item" disabled={fileContextMenu.path === mainFile}
+                onClick={async () => {
+                  const path = fileContextMenu.path;
+                  setFileContextMenu(null);
+                  if (!projectId || !path) return;
+                  try {
+                    await setProjectMainFile(projectId, path);
+                    setProjectMainFileState(path);
+                    setMainFile(path);
+                  } catch (error) { setStatus(String(error)); }
+                }}>{t('Set as main file')}</button>
+            )}
             <div className="ctx-menu-group">{t('创建')}</div>
             <button className="ctx-menu-item" onClick={() => { beginInlineCreate('new-file'); setFileContextMenu(null); }}>{t('新建文件')}</button>
             <button className="ctx-menu-item" onClick={() => { beginInlineCreate('new-folder'); setFileContextMenu(null); }}>{t('新建文件夹')}</button>
@@ -6940,9 +6930,8 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
               <CompilerSetup />
               <div className="field">
                 <label>{t('Language')}</label>
-                <select className="input" value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'} onChange={(e) => i18n.changeLanguage(e.target.value)}>
-                  <option value="en-US">English</option>
-                  <option value="zh-CN">中文</option>
+                <select className="input" value={i18n.language} onChange={(e) => i18n.changeLanguage(e.target.value)}>
+                  {interfaceLanguages.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
                 </select>
                 <div className="muted">{t('The language of Numenor’s menus and buttons.')}</div>
               </div>

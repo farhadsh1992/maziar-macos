@@ -1,3 +1,6 @@
+import WorkspaceChat from './WorkspaceChat';
+import { AIIndicator, useAIStatus } from './AIModels';
+import { interfaceLanguages, interfaceLanguageLabel } from '../i18n';
 import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -130,6 +133,10 @@ export default function ProjectPage() {
   const [tagsExpanded, setTagsExpanded] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [workspaceChatOpen, setWorkspaceChatOpen] = useState(false);
+  const [createSource, setCreateSource] = useState<string>();
+  const [creating, setCreating] = useState(false);
+  const { status: workspaceAI, setStatus: setWorkspaceAI } = useAIStatus(workspaceChatOpen);
   const [sharedLinkOpen, setSharedLinkOpen] = useState(false);
   const [sharedLink, setSharedLink] = useState('');
   const [sharedCode, setSharedCode] = useState('');
@@ -346,20 +353,26 @@ export default function ProjectPage() {
   }, [templates, galleryCat, galleryFeatured, gallerySearch]);
 
   const handleCreate = async () => {
+    if (creating) return;
     const name = createName.trim();
     if (!name) {
       setStatus(t('请输入项目名称。'));
       return;
     }
+    setCreating(true);
     try {
-      const created = await createProject({ name, template: createTemplate || undefined, folder: newProjectFolder || undefined });
+      const created = await createProject({
+        name, template: createSource ? undefined : createTemplate || undefined,
+        folder: newProjectFolder || undefined, source: createSource
+      });
       setCreateOpen(false);
       setCreateName('');
+      setCreateSource(undefined);
       await loadProjects();
       navigate(`/editor/${created.id}`);
     } catch (err) {
       setStatus(t('创建失败: {{error}}', { error: String(err) }));
-    }
+    } finally { setCreating(false); }
   };
 
   const handleRename = async () => {
@@ -721,16 +734,17 @@ export default function ProjectPage() {
             {viewFilter === 'trash' && viewCounts.trash > 0 && (
               <button className="btn ghost" onClick={handleEmptyTrash}>{t('清空回收站')}</button>
             )}
+            <AIIndicator status={workspaceAI} open={() => setWorkspaceChatOpen(true)} label={t('Workspace AI')} />
             <div className="ios-select-wrapper">
               <button className="ios-select-trigger" onClick={() => setLangDropdownOpen(!langDropdownOpen)}>
-                <span>{i18n.language === 'en-US' ? t('English') : t('中文')}</span>
+                <span>{interfaceLanguageLabel(i18n.language)}</span>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={langDropdownOpen ? 'rotate' : ''}>
                   <path d="M3 5L6 8L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
               {langDropdownOpen && (
                 <div className="ios-dropdown dropdown-down">
-                  {([['zh-CN', t('中文')], ['en-US', t('English')]] as [string, string][]).map(([val, label]) => (
+                  {interfaceLanguages.map(([val, label]) => (
                     <div key={val} className={`ios-dropdown-item ${i18n.language === val ? 'active' : ''}`} onClick={() => { i18n.changeLanguage(val); setLangDropdownOpen(false); }}>
                       {label}
                       {i18n.language === val && (
@@ -1157,12 +1171,19 @@ export default function ProjectPage() {
         </div>
       )}
 
+      <WorkspaceChat visible={workspaceChatOpen} status={workspaceAI} onStatus={setWorkspaceAI}
+        close={() => setWorkspaceChatOpen(false)} create={(source) => {
+          setWorkspaceChatOpen(false);
+          setCreateSource(source);
+          setCreateOpen(true);
+        }} />
+
       {createOpen && (
-        <div className="modal-backdrop" onClick={() => setCreateOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { setCreateOpen(false); setCreateSource(undefined); }}>
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <div>{t('新建项目')}</div>
-              <button className="icon-btn" onClick={() => setCreateOpen(false)}>✕</button>
+              <button className="icon-btn" onClick={() => { setCreateOpen(false); setCreateSource(undefined); }}>✕</button>
             </div>
             <div className="modal-body">
               <div className="field">
@@ -1184,6 +1205,7 @@ export default function ProjectPage() {
                   </select>
                 </div>
               )}
+              {createSource ? <p>{t('AI draft will be saved as main.tex.')}</p> : (
               <div className="field">
                 <label>{t('模板')}</label>
                 <div className="ios-select-wrapper">
@@ -1207,10 +1229,11 @@ export default function ProjectPage() {
                   )}
                 </div>
               </div>
+              )}
             </div>
             <div className="modal-actions">
-              <button className="btn ghost" onClick={() => setCreateOpen(false)}>{t('取消')}</button>
-              <button className="btn" onClick={handleCreate}>{t('创建')}</button>
+              <button className="btn ghost" onClick={() => { setCreateOpen(false); setCreateSource(undefined); }}>{t('取消')}</button>
+              <button className="btn" disabled={creating} onClick={handleCreate}>{t('创建')}</button>
             </div>
           </div>
         </div>
@@ -1331,7 +1354,7 @@ export default function ProjectPage() {
                     className={`template-cat-tab${galleryCat === cat.id ? ' active' : ''}`}
                     onClick={() => setGalleryCat(cat.id)}
                   >
-                    {i18n.language === 'en-US' ? cat.labelEn : cat.label}
+                    {i18n.language === 'zh-CN' ? cat.label : cat.labelEn}
                   </button>
                 ))}
               </div>
@@ -1359,7 +1382,7 @@ export default function ProjectPage() {
                     <div className="template-card-body">
                       <div className="template-card-title">{tpl.label}</div>
                       <div className="template-card-desc">
-                        {i18n.language === 'en-US' ? (tpl.descriptionEn || tpl.description) : tpl.description}
+                        {i18n.language === 'zh-CN' ? tpl.description : (tpl.descriptionEn || tpl.description)}
                       </div>
                       {tpl.tags?.length > 0 && (
                         <div className="template-card-tags">

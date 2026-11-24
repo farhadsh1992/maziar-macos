@@ -617,5 +617,13 @@
   "Open Outline in a floating window": "Open Outline in a floating window",
   "Open Chat in a separate window": "Open Chat in a separate window",
   "Return Chat to editor": "Return Chat to editor",
-  "Chat message": "Chat message"
+  "Chat message": "Chat message",
+  "Main file": "Main file",
+  "Set as main file": "Set as main file",
+  "Workspace AI": "Workspace AI",
+  "Back to Chat": "Back to Chat",
+  "Draft a LaTeX project": "Draft a LaTeX project",
+  "Use draft in a new project": "Use draft in a new project",
+  "Ask a question or describe a new project.": "Ask a question or describe a new project.",
+  "AI draft will be saved as main.tex.": "AI draft will be saved as main.tex."
 }

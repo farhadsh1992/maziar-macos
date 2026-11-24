@@ -615,5 +615,13 @@
   "Open Outline in a floating window": "在浮动窗口中打开大纲",
   "Open Chat in a separate window": "在独立窗口中打开聊天",
   "Return Chat to editor": "将聊天移回编辑器",
-  "Chat message": "聊天消息"
+  "Chat message": "聊天消息",
+  "Main file": "主文件",
+  "Set as main file": "设为主文件",
+  "Workspace AI": "工作区 AI",
+  "Back to Chat": "返回聊天",
+  "Draft a LaTeX project": "起草 LaTeX 项目",
+  "Use draft in a new project": "将草稿用于新项目",
+  "Ask a question or describe a new project.": "提问或描述一个新项目。",
+  "AI draft will be saved as main.tex.": "AI 草稿将保存为 main.tex。"
 }
