@@ -14,7 +14,6 @@ export function registerAgentRoutes(fastify) {
       projectId,
       activePath,
       compileLog,
-      llmConfig,
       interaction = 'agent',
       history = []
     } = req.body || {};
@@ -37,9 +36,6 @@ export function registerAgentRoutes(fastify) {
 
       const result = await callOpenAICompatible({
         messages: [{ role: 'system', content: system }, ...safeHistory, { role: 'user', content: user }],
-        model: llmConfig?.model,
-        endpoint: llmConfig?.endpoint,
-        apiKey: llmConfig?.apiKey
       });
 
       if (!result.ok) {
@@ -53,12 +49,14 @@ export function registerAgentRoutes(fastify) {
       return { ok: true, reply: result.content || '', suggestion: '' };
     }
 
-    if (mode === 'tools') {
-      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, llmConfig, lang });
+    if (mode === 'tools' && !['polish', 'debug_compile', 'explain_equation'].includes(task)) {
+      return runToolAgent({ projectId, activePath, task, prompt, selection, compileLog, lang });
     }
 
     const system =
-      task === 'autocomplete'
+      ['debug_compile', 'compile_summary'].includes(task)
+        ? 'Diagnose the supplied LaTeX compile excerpt. Return JSON with a concise reply and an empty suggestion.'
+        : task === 'autocomplete'
         ? [
             'You are an autocomplete engine for LaTeX.',
             'Only return JSON with keys: reply, suggestion.',
@@ -75,8 +73,9 @@ export function registerAgentRoutes(fastify) {
       `Task: ${task}`,
       mode === 'tools' ? 'Mode: tools (use extra reasoning)' : 'Mode: direct',
       prompt ? `User Prompt: ${prompt}` : '',
-      selection ? `Selection:\n${selection}` : '',
-      selection ? '' : `Full Content:\n${content}`
+      ['debug_compile', 'compile_summary'].includes(task) ? `Compile log excerpt:\n${String(compileLog || selection).slice(-2500)}`
+        : selection ? `Selection:\n${selection}` : '',
+      ['debug_compile', 'compile_summary'].includes(task) || selection ? '' : `Full Content:\n${content}`
     ].filter(Boolean).join('\n\n');
 
     const result = await callOpenAICompatible({
@@ -84,9 +83,6 @@ export function registerAgentRoutes(fastify) {
         { role: 'system', content: system },
         { role: 'user', content: user }
       ],
-      model: llmConfig?.model,
-      endpoint: llmConfig?.endpoint,
-      apiKey: llmConfig?.apiKey
     });
 
     if (!result.ok) {

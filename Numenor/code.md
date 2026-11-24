@@ -77,12 +77,14 @@ scripts/bump-version.mjs
 - `maziar/Sources/Maziar/NumenorServer.swift` copies this folder into the app bundle (`build_app.sh`), then
   into Application Support when its digest changes, runs `npm install` only if `package-lock.json` changed,
   `npm run build`, and starts `node apps/backend/src/index.js` on a free port from 8787 with env:
-  `NUMENOR_HOST=127.0.0.1`, `NUMENOR_LLM_LOCKED=1` + `NUMENOR_LLM_*`, `NUMENOR_DATA_DIR`, `NUMENOR_STATE_DIR`,
-  `NUMENOR_OWNER_NAME`, `NUMENOR_COLLAB_TOKEN_SECRET`, `MAZIAR_SPELL_HELPER`, `NUMENOR_SUPERVISED=1`.
+  `NUMENOR_HOST=127.0.0.1`, `NUMENOR_DATA_DIR`, `NUMENOR_STATE_DIR`, `NUMENOR_OWNER_NAME`,
+  `NUMENOR_COLLAB_TOKEN_SECRET`, `MAZIAR_SPELL_HELPER`, `NUMENOR_AI_HELPER`, `NUMENOR_SUPERVISED=1`.
+- The editor owns **Settings → AI & Models**. `services/ai/` stores settings and model files in
+  Application Support. The bundled `NumenorAI` executable handles Keychain and Apple Foundation Models
+  over standard input and output. New installations begin with AI Off.
 - Self-update under Maziar exits with **code 75**; Maziar restarts it. Standalone, the server re-spawns itself.
 - `Views/NumenorView.swift` (`NumenorTheme.pageScript`) injects JS that keys off Numenor's **CSS class names**
-  (dark mode, greeting, hiding AI fields whose `<label>` matches `/LLM|VLM/`, opening projects in windows).
-  Renaming classes or those labels breaks Maziar without any error.
+  (dark mode, greeting, opening projects in windows). Renaming those classes can break the embedding.
 - Maziar's web view (`ScholarBrowserView.swift`) implements `alert`/`confirm`/`prompt`; without that, every
   `window.confirm` silently returned false (e.g. "remove person" did nothing).
 - Stored names still say `openPrism` (`maziar.openPrism.*`, Drive `op-<id>.zip`) on purpose — don't rename.

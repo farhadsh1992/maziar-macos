@@ -7,12 +7,8 @@ import WebKit
 /// mounted after the first visit so switching sidebar sections doesn't reload the editor.
 struct NumenorView: View {
     @ObservedObject private var server = NumenorServer.shared
-    @EnvironmentObject private var aiSettings: AISettings
     @EnvironmentObject private var texManager: TeXInstallationManager
     @State private var attemptedMacTeXSetup = false
-
-    /// Hands Maziar's chosen AI (provider, model, key) to the server; restarts it only if that changed.
-    private func syncAI() { server.setAI(aiSettings.numenorConfig()) }
 
     var body: some View {
         Group {
@@ -49,14 +45,7 @@ struct NumenorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            syncAI()
-            server.startIfNeeded()
-        }
-        // Provider/model/URL edits publish; a key saved in Settings → AI doesn't, so also re-check whenever
-        // a Maziar window (e.g. Settings, once closed) becomes key again.
-        .onReceive(aiSettings.objectWillChange.receive(on: RunLoop.main)) { _ in syncAI() }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in syncAI() }
+        .onAppear { server.startIfNeeded() }
     }
 
     private func installMacTeXIfNeeded() {
@@ -172,7 +161,7 @@ enum NumenorTheme: String, CaseIterable, Identifiable {
         return "(\(json))[0]"
     }
 
-    static func pageScript(dark: Bool, popOut: Bool, greeting: String, aiNote: String, spellLanguage: String = defaultSpellLanguage) -> String {
+    static func pageScript(dark: Bool, popOut: Bool, greeting: String, spellLanguage: String = defaultSpellLanguage) -> String {
         """
         (function () {
           try { if (!localStorage.getItem('numenor-lang')) localStorage.setItem('numenor-lang', 'en-US'); } catch (e) {}
@@ -235,35 +224,6 @@ enum NumenorTheme: String, CaseIterable, Identifiable {
           }
           window.__maziarSyncGreeting();
 
-          // Numenor's "Workspace Settings" dialog is nothing but AI endpoint / model / key fields. The AI is
-          // Maziar's now (Settings \u{2192} AI), so those fields are hidden and a note takes their place.
-          window.__maziarAINote = \(jsString(aiNote));
-          if (!window.__maziarAIInstalled) {
-            window.__maziarAIInstalled = true;
-            window.__maziarHideAIFields = function () {
-              document.querySelectorAll('.modal-body').forEach(function (body) {
-                var fields = Array.from(body.querySelectorAll('.field')).filter(function (field) {
-                  var label = field.querySelector('label');
-                  return label && /\\b(LLM|VLM)\\b/i.test(label.textContent);
-                });
-                if (!fields.length) return;
-                fields.forEach(function (field) { field.style.display = 'none'; });
-                var note = body.querySelector('[data-maziar-ai]');
-                if (!note) {
-                  note = document.createElement('div');
-                  note.setAttribute('data-maziar-ai', '1');
-                  note.className = 'muted';
-                  note.style.cssText = 'padding: 12px 4px; line-height: 1.6;';
-                  body.insertBefore(note, body.firstChild);
-                }
-                if (note.textContent !== window.__maziarAINote) note.textContent = window.__maziarAINote;
-              });
-            };
-            new MutationObserver(function () { window.__maziarHideAIFields(); })
-              .observe(document.documentElement, { childList: true, subtree: true });
-          }
-          window.__maziarHideAIFields();
-
           window.__maziarPopOut = \(popOut ? "true" : "false");
           if (!window.__maziarPatched) {
             window.__maziarPatched = true;
@@ -287,7 +247,6 @@ enum NumenorTheme: String, CaseIterable, Identifiable {
 private struct NumenorBrowser: View {
     let url: URL
     @ObservedObject var server: NumenorServer
-    @EnvironmentObject private var aiSettings: AISettings
 
     @State private var canGoBack = false
     @State private var canGoForward = false
@@ -308,21 +267,6 @@ private struct NumenorBrowser: View {
         case .light: return false
         case .dark: return true
         }
-    }
-
-    /// Swaps the page's start-up script for the current settings and applies it to the page already showing.
-    private var aiNote: String {
-        if let ai = server.aiConfig {
-            return "AI for Numenor: \(ai.label). It comes from Maziar \u{2014} pick the model in the \u{22EF} menu above (AI model), and manage keys in Maziar \u{2192} Settings \u{2192} AI."
-        }
-        return "Numenor's AI has no key yet. Add an API key in Maziar \u{2192} Settings \u{2192} AI, then pick the model in the \u{22EF} menu above (AI model)."
-    }
-
-    private var providerChoice: Binding<String> {
-        Binding(
-            get: { aiSettings.numenorProvider?.rawValue ?? "same" },
-            set: { aiSettings.numenorProvider = $0 == "same" ? nil : AIProviderKind(rawValue: $0) }
-        )
     }
 
     /// Pick a new home for all Numenor projects — e.g. a folder in Google Drive, so Google Drive for desktop
@@ -348,7 +292,7 @@ private struct NumenorBrowser: View {
 
     private func applyPageSettings() {
         guard let view = webViewHolder.view else { return }
-        let script = NumenorTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote, spellLanguage: spellLanguage)
+        let script = NumenorTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, spellLanguage: spellLanguage)
         let controller = view.configuration.userContentController
         controller.removeAllUserScripts()
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -394,17 +338,6 @@ private struct NumenorBrowser: View {
                 .fixedSize()
                 .help("Light or dark")
                 Menu {
-                    Menu("AI model: \(server.aiConfig?.label ?? "none")") {
-                        Picker("AI model", selection: providerChoice) {
-                            Text("Same as AI Assistant (\(aiSettings.activeProvider.displayName))").tag("same")
-                            ForEach(aiSettings.numenorSelectableProviders) { provider in
-                                Text("\(provider.displayName) \u{B7} \(aiSettings.model(for: provider))").tag(provider.rawValue)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                        Divider()
-                        Text("Keys and models: Settings \u{2192} AI")
-                    }
                     Toggle("Open projects in a separate window", isOn: $popOutProjects)
                     Divider()
                     Text("Projects folder: \(server.dataDirectory.path)")
@@ -444,14 +377,13 @@ private struct NumenorBrowser: View {
                 canGoForward: $canGoForward,
                 isLoading: $isLoading,
                 currentURL: $currentURL,
-                documentStartScript: NumenorTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, aiNote: aiNote, spellLanguage: spellLanguage)
+                documentStartScript: NumenorTheme.pageScript(dark: isDark, popOut: popOutProjects, greeting: greeting, spellLanguage: spellLanguage)
             )
         }
         .onChange(of: isDark) { _, _ in applyPageSettings() }
         .onChange(of: popOutProjects) { _, _ in applyPageSettings() }
         .onChange(of: greeting) { _, _ in applyPageSettings() }
         .onChange(of: spellLanguage) { _, _ in applyPageSettings() }
-        .onChange(of: aiNote) { _, _ in applyPageSettings() }
         .sheet(isPresented: $showLog) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Numenor server log").font(.headline)

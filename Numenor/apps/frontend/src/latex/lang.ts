@@ -1,29 +1,28 @@
 import { StreamLanguage } from '@codemirror/language';
 import { Decoration, EditorView, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
-import { tags as t } from '@lezer/highlight';
 
 // Simple LaTeX mode for CodeMirror 6
 const latexMode = {
-  startState: () => ({
-    inMathMode: false,
-    inComment: false
-  }),
+  startState: () => ({ inlineCloser: '' }),
+  blankLine(state: { inlineCloser: string }) {
+    state.inlineCloser = '';
+  },
+  token(stream: any, state: { inlineCloser: string }) {
+    if (stream.sol()) state.inlineCloser = '';
+    if (stream.match(/^%.*$/)) return 'comment';
 
-  token: (stream: any, state: any) => {
-    // Comments
-    if (stream.match(/^%.*$/)) {
-      return 'comment';
-    }
-
-    // Math mode delimiters
-    if (stream.match(/^\$\$/)) {
-      state.inMathMode = !state.inMathMode;
+    // Display delimiters are handled by the structural tokenizer. Keep an
+    // unclosed math delimiter from changing the color of following lines.
+    if (stream.match(/^\$\$|^\\[\[\]]/)) {
+      state.inlineCloser = '';
       return 'keyword';
     }
-    if (stream.match(/^\$/)) {
-      state.inMathMode = !state.inMathMode;
+    if (stream.match(/^\\\(|^\\\)|^\$/)) {
+      const delimiter = stream.current();
+      state.inlineCloser = delimiter === state.inlineCloser ? '' : delimiter === '\\(' ? '\\)' : delimiter === '$' ? '$' : '';
       return 'keyword';
     }
+    if (stream.match(/^\\[^a-zA-Z@]/)) return state.inlineCloser ? 'number' : 'keyword';
 
     // Commands
     if (stream.match(/^\\[a-zA-Z@]+/)) {
@@ -36,7 +35,7 @@ const latexMode = {
     }
 
     // Math mode content
-    if (state.inMathMode) {
+    if (state.inlineCloser) {
       stream.next();
       return 'number';
     }

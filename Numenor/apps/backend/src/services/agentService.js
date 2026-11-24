@@ -2,14 +2,13 @@ import { promises as fs } from 'fs';
 import { applyPatch, createTwoFilesPatch } from 'diff';
 import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
-import { ChatOpenAI } from '@langchain/openai';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { AgentExecutor, createOpenAIToolsAgent } from 'langchain/agents';
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
 import { safeJoin } from '../utils/pathUtils.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { extractPathFromPatch } from '../utils/diffUtils.js';
-import { resolveLLMConfig, normalizeBaseURL, normalizeChatEndpoint } from './llmService.js';
+import { activeChatModel } from './llmService.js';
 import { getProjectRoot } from './projectService.js';
 import { extractArxivId, fetchArxivEntry, buildArxivBibtex } from './arxivService.js';
 import { t } from '../i18n/index.js';
@@ -21,7 +20,6 @@ export async function runToolAgent({
   prompt,
   selection,
   compileLog,
-  llmConfig,
   lang = 'zh-CN'
 }) {
   if (!projectId) {
@@ -147,18 +145,7 @@ export async function runToolAgent({
     }
   });
 
-  const resolved = resolveLLMConfig(llmConfig);
-  if (!resolved.apiKey) {
-    return { ok: false, reply: 'NUMENOR_LLM_API_KEY not set', patches: [] };
-  }
-
-  const llm = new ChatOpenAI({
-    model: resolved.model,
-    temperature: 0.2,
-    apiKey: resolved.apiKey,
-    openAIApiKey: resolved.apiKey,
-    configuration: { baseURL: normalizeBaseURL(normalizeChatEndpoint(resolved.endpoint)) }
-  });
+  const llm = activeChatModel();
 
   const system = [
     'You are a LaTeX paper assistant for Numenor.',

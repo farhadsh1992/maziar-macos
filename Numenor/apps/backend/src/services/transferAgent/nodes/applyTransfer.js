@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
-import { ChatOpenAI } from '@langchain/openai';
-import { resolveLLMConfig, normalizeBaseURL } from '../../llmService.js';
+import { activeChatModel } from '../../llmService.js';
 import { safeJoin } from '../../../utils/pathUtils.js';
 import { writeFileWithSnapshot, stripCodeFences } from '../utils.js';
 
@@ -76,14 +75,8 @@ Output ONLY the complete LaTeX file content. No explanations, no markdown fences
  * Legacy mode: LLM migrates LaTeX source into target template.
  */
 async function applyTransferLegacy(state) {
-  const { endpoint, apiKey, model } = resolveLLMConfig(state.llmConfig);
 
-  const llm = new ChatOpenAI({
-    modelName: model,
-    openAIApiKey: apiKey,
-    configuration: { baseURL: normalizeBaseURL(endpoint) },
-    temperature: 0.2,
-  });
+  const llm = activeChatModel();
 
   const prompt = buildTransferPrompt(state);
   const response = await llm.invoke([{ role: 'user', content: prompt }]);
@@ -105,14 +98,8 @@ async function applyTransferLegacy(state) {
  * MinerU mode: LLM fills Markdown content into target template.
  */
 async function applyTransferMineru(state) {
-  const { endpoint, apiKey, model } = resolveLLMConfig(state.llmConfig);
 
-  const llm = new ChatOpenAI({
-    modelName: model,
-    openAIApiKey: apiKey,
-    configuration: { baseURL: normalizeBaseURL(endpoint) },
-    temperature: 0.2,
-  });
+  const llm = activeChatModel();
 
   const prompt = buildMineruTransferPrompt(state);
   const response = await llm.invoke([{ role: 'user', content: prompt }]);

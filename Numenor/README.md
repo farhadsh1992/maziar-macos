@@ -56,9 +56,26 @@ but it runs perfectly well on its own.
   glow in the editor.
 - **Editor** — LaTeX highlighting, folding, autocompletion, Cmd/Ctrl + / to comment lines, `%%%` notes
   shown in bold green, zoom with Cmd/Ctrl + scroll or Cmd/Ctrl + = / −.
-- **AI** (any OpenAI-compatible endpoint) — chat and agent editing with diff review, autocomplete,
-  compile-error diagnosis, paper search, charts from tables, formula/table recognition from images, and
-  template transfer between venues.
+- **LaTeX structure** — the file sidebar's **Outline** follows the cursor through sections, subsections,
+  and subsubsections. Turn on **LaTeX mode** beside an open `.txt` file's tab to use the same tools there.
+  Display equations and tables have gutter folds and right-click previews. **View in PDF** uses the
+  last compiled PDF for project macros and complex table formatting. Use **Insert → Insert Table**
+  to choose the number of data rows and columns and add an optional header.
+- **LaTeX editor settings** — under **Numenor Settings → Editor / LaTeX**, control heading, equation,
+  table, and note styling, equation and table folds and previews, and the Outline independently.
+  Comment headings such as `%%h1/g> Experiments` support sizes `h1` through `h5` and green, red,
+  blue, purple, and orange (`g`, `r`, `b`, `p`, `o`).
+- **AI & Models** — open **Numenor Settings → AI & Models** or click the AI indicator in the editor. AI
+  starts Off. Choose a managed Qwen3 model, Apple's system model, Ollama, an OpenAI-compatible endpoint
+  such as a llama.cpp server, or Gemini. Provider selection and remote connection tests are explicit.
+  Credentials are stored in macOS Keychain. Re-enter credentials from older Numenor releases here.
+- **Managed models** — on Apple Silicon with macOS 14+, **Download & Install** prepares the pinned
+  [llama.cpp runtime](https://github.com/ggml-org/llama.cpp/releases/tag/b6500) and verifies a Qwen3
+  GGUF model before installation. Files live in Application Support. The catalog lists download size.
+  The model uses additional memory while running, starts on demand at 2,048 tokens of context, and
+  unloads after two idle minutes. Interrupted downloads can be retried. Removing the active model
+  switches AI Off. Apple Foundation Models requires macOS 26+ and an available Apple Intelligence model.
+  Standalone Numenor uses the macOS Swift tools to prepare its Keychain and Apple Intelligence helper.
 - **Share a project with people** — **Share** in the editor's top bar: add each person by name and
   email, choose **Can edit** or **Can view**, and they get their own link (copied, or sent with
   **Email**; set up **Email invites** once in the Share dialog — Gmail, Outlook, iCloud or any SMTP server,
@@ -137,13 +154,9 @@ Set these as environment variables before `npm start` (all optional):
 
 | Variable | Meaning |
 |---|---|
-| `NUMENOR_LLM_ENDPOINT` | OpenAI-compatible chat completions URL (default OpenAI) |
-| `NUMENOR_LLM_API_KEY` | API key for that endpoint |
-| `NUMENOR_LLM_MODEL` | Model name (default `gpt-4o-mini`) |
 | `NUMENOR_DATA_DIR` | Where projects are stored (default `./data`) |
 | `PORT` | Server port (default `8787`) |
 | `NUMENOR_HOST` | Address to listen on (default `0.0.0.0`; `127.0.0.1` = this computer only) |
-| `NUMENOR_LLM_LOCKED` | `1` = use only the server's AI settings, ignore ones entered in the browser |
 | `NUMENOR_MINERU_API_BASE`, `NUMENOR_MINERU_TOKEN` | MinerU service for PDF → LaTeX template transfer |
 | `NUMENOR_TUNNEL` | Start a share link at launch: `auto`, `cloudflared`, `ngrok` or `localtunnel` (or use the Collab tab) |
 | `NUMENOR_COLLAB_TOKEN_SECRET` | Secret for signing invite links (default: a random one created per install) |

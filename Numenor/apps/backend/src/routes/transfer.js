@@ -3,7 +3,6 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { buildTransferGraph } from '../services/transferAgent/graph.js';
 import { buildMineruTransferGraph } from '../services/transferAgent/graphMineru.js';
-import { resolveLLMConfig } from '../services/llmService.js';
 import { resolveMineruConfig } from '../services/mineruService.js';
 import { readTemplateManifest } from '../services/templateService.js';
 import { DATA_DIR, TEMPLATE_DIR } from '../config/constants.js';
@@ -18,7 +17,7 @@ export function registerTransferRoutes(fastify) {
   /**
    * POST /api/transfer/start
    * Body: { sourceProjectId, sourceMainFile, targetTemplateId, targetMainFile,
-   *         engine?, layoutCheck?, llmConfig? }
+   *         engine?, layoutCheck? }
    * Creates a new project from the target template, then starts the transfer.
    * Returns: { jobId, newProjectId }
    */
@@ -28,7 +27,6 @@ export function registerTransferRoutes(fastify) {
       targetTemplateId, targetMainFile,
       engine = 'pdflatex',
       layoutCheck = false,
-      llmConfig,
     } = request.body || {};
 
     if (!sourceProjectId || !sourceMainFile || !targetTemplateId || !targetMainFile) {
@@ -79,7 +77,6 @@ export function registerTransferRoutes(fastify) {
       targetMainFile,
       engine,
       layoutCheck,
-      llmConfig: resolveLLMConfig(llmConfig),
       jobId,
     };
 
@@ -192,7 +189,7 @@ export function registerTransferRoutes(fastify) {
   /**
    * POST /api/transfer/start-mineru
    * Body: { sourceProjectId?, sourceMainFile?, targetTemplateId, targetMainFile,
-   *         engine?, layoutCheck?, llmConfig?, mineruConfig? }
+   *         engine?, layoutCheck?, mineruConfig? }
    * MinerU-based transfer: PDF → Markdown → LaTeX.
    * If sourceProjectId is provided, compiles source to PDF first.
    * If not, expects PDF to be uploaded via /api/transfer/upload-pdf.
@@ -204,7 +201,6 @@ export function registerTransferRoutes(fastify) {
       targetTemplateId, targetMainFile,
       engine = 'pdflatex',
       layoutCheck = false,
-      llmConfig,
       mineruConfig,
     } = request.body || {};
 
@@ -260,7 +256,6 @@ export function registerTransferRoutes(fastify) {
       targetMainFile,
       engine,
       layoutCheck,
-      llmConfig: resolveLLMConfig(llmConfig),
       mineruConfig: resolveMineruConfig(mineruConfig),
       transferMode: 'mineru',
       jobId,

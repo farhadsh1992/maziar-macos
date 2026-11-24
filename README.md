@@ -1964,14 +1964,12 @@ How Maziar runs it (`NumenorServer.swift`, `Views/NumenorView.swift`):
   folder inside Google Drive is kept in sync by Google Drive for desktop itself. Installs from the OpenPrism
   days (`…/Maziar/OpenPrism`) are moved over automatically (projects, backups, and the downloaded
   node_modules), before Drive sync or the server touch the new folder.
-- Maziar's settings go in through the environment: `NUMENOR_HOST=127.0.0.1` (this Mac only),
-  `NUMENOR_LLM_LOCKED=1` + `NUMENOR_LLM_*` (Maziar's AI provider/model/key from Settings → AI; Claude and
-  Gemini via their OpenAI-compatible endpoints), `NUMENOR_DATA_DIR`, `MAZIAR_SPELL_HELPER`.
-- `NumenorTheme.pageScript` (injected into the page) adds English-by-default, sets Numenor's own light or
-  dark theme from Maziar's appearance setting (`data-theme`; no colour inversion any more), the custom
-  start-page title and the spelling language (Settings → Appearance → Numenor), and hides Numenor's own
-  AI dialog. Opening a project gives it its own editor-sized window.
-- Stored setting names still say `openPrism` (`maziar.openPrism.*`, `maziar.ai.openPrismProvider`,
+- Maziar passes the project's folder, per-Mac state location, and the native spelling and AI helpers.
+  Numenor's own **Settings → AI & Models** starts with AI Off and manages providers and local weights
+  independently. The bundled AI helper handles Keychain and Apple Foundation Models.
+- `NumenorTheme.pageScript` sets the language default, Maziar's appearance, the start-page title, and
+  spelling language, and can open projects in separate editor windows.
+- Stored setting names still say `openPrism` (`maziar.openPrism.*`,
   `maziar.googleDrive.syncOpenPrism`, Drive files `op-<id>.zip`), on purpose: renaming them would reset
   settings and break syncing with a Mac on an older Maziar. The sidebar section's stored value is
   `openPrism` too, so its saved order and icon carry over.

@@ -34,18 +34,7 @@ final class NumenorServer: ObservableObject {
         case failed(String)
     }
 
-    /// The AI Numenor talks to — Maziar's own provider, model and key (Settings \u{2192} AI), handed to the
-    /// server through its environment. The server's environment is fixed when it starts, so changing this
-    /// while it runs restarts it.
-    struct AIConfig: Equatable {
-        let endpoint: String
-        let apiKey: String
-        let model: String
-        let label: String
-    }
-
     @Published private(set) var state: State = .notInstalled
-    @Published private(set) var aiConfig: AIConfig?
     /// Output of the setup steps and of the server itself (last ~30 000 characters).
     @Published private(set) var log = ""
 
@@ -176,12 +165,6 @@ final class NumenorServer: ObservableObject {
     }
 
     // MARK: - Public actions
-
-    func setAI(_ config: AIConfig?) {
-        guard config != aiConfig else { return }
-        aiConfig = config
-        if case .running = state { restart() }
-    }
 
     /// Starts the server if Numenor is set up and nothing is running or starting yet.
     func startIfNeeded() {
@@ -467,16 +450,10 @@ final class NumenorServer: ObservableObject {
             env["NUMENOR_HOST"] = "127.0.0.1"
             // After updating itself from GitHub, Numenor exits with code 75 and Maziar starts it again.
             env["NUMENOR_SUPERVISED"] = "1"
-            // Numenor then ignores any AI settings its own page sends and uses only the values below (or
-            // fails with "key not set" when Maziar has none).
-            // Spelling/grammar for the editor through macOS's checker (see Sources/MaziarSpell).
             if let helper = Self.spellHelperURL { env["MAZIAR_SPELL_HELPER"] = helper.path }
-            for key in env.keys where key.hasPrefix("OPENPRISM_") || key.hasPrefix("NUMENOR_LLM_") { env.removeValue(forKey: key) }
-            env["NUMENOR_LLM_LOCKED"] = "1"
-            if let ai = aiConfig {
-                env["NUMENOR_LLM_ENDPOINT"] = ai.endpoint
-                env["NUMENOR_LLM_API_KEY"] = ai.apiKey
-                env["NUMENOR_LLM_MODEL"] = ai.model
+            if let executable = Bundle.main.executableURL {
+                let helper = executable.deletingLastPathComponent().appendingPathComponent("NumenorAI")
+                if FileManager.default.isExecutableFile(atPath: helper.path) { env["NUMENOR_AI_HELPER"] = helper.path }
             }
             process.environment = env
 

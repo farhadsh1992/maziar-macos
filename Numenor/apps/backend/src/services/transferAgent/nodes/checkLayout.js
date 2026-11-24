@@ -1,6 +1,5 @@
-import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage } from '@langchain/core/messages';
-import { resolveLLMConfig, normalizeBaseURL } from '../../llmService.js';
+import { activeChatModel } from '../../llmService.js';
 import { extractJSON, validateSchema } from '../utils.js';
 
 /**
@@ -8,7 +7,6 @@ import { extractJSON, validateSchema } from '../utils.js';
  * for layout quality assessment.
  */
 export async function checkLayout(state) {
-  const { endpoint, apiKey, model } = resolveLLMConfig(state.llmConfig);
   const images = state.pageImages || [];
 
   if (!images.length) {
@@ -19,12 +17,7 @@ export async function checkLayout(state) {
     };
   }
 
-  const llm = new ChatOpenAI({
-    modelName: model,
-    openAIApiKey: apiKey,
-    configuration: { baseURL: normalizeBaseURL(endpoint) },
-    temperature: 0.2,
-  });
+  const llm = activeChatModel();
 
   const contentParts = [
     { type: 'text', text: buildLayoutPrompt() },

@@ -10,7 +10,6 @@ import {
   getProjectTree,
 } from '../api/client';
 import type {
-  LLMConfig,
   TemplateMeta,
   FileItem,
 } from '../api/client';
@@ -43,16 +42,7 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
   const [engine, setEngine] = useState('pdflatex');
   const [layoutCheck, setLayoutCheck] = useState(false);
 
-  // LLM config — read from shared localStorage (set via ProjectPage / EditorPage settings)
   const SETTINGS_KEY = 'numenor-settings-v1';
-  const readLLMFromStorage = (): { llmEndpoint: string; llmApiKey: string; llmModel: string } => {
-    try {
-      const raw = window.localStorage.getItem(SETTINGS_KEY);
-      if (!raw) return { llmEndpoint: '', llmApiKey: '', llmModel: '' };
-      const p = JSON.parse(raw);
-      return { llmEndpoint: p.llmEndpoint || '', llmApiKey: p.llmApiKey || '', llmModel: p.llmModel || '' };
-    } catch { return { llmEndpoint: '', llmApiKey: '', llmModel: '' }; }
-  };
 
   const readMineruConfigFromStorage = (): { mineruApiBase: string; mineruToken: string } => {
     try {
@@ -146,16 +136,6 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
   const selectedTemplateName = templates.find(tp => tp.id === targetTemplateId)?.label || '';
   const selectedTemplate = templates.find(tp => tp.id === targetTemplateId);
 
-  const buildLlmConfig = (): Partial<LLMConfig> | undefined => {
-    const { llmEndpoint, llmApiKey, llmModel } = readLLMFromStorage();
-    if (!llmEndpoint && !llmApiKey && !llmModel) return undefined;
-    return {
-      ...(llmEndpoint ? { endpoint: llmEndpoint } : {}),
-      ...(llmApiKey ? { apiKey: llmApiKey } : {}),
-      ...(llmModel ? { model: llmModel } : {}),
-    };
-  };
-
   const handleStart = useCallback(async () => {
     if (!targetTemplateId) return;
     const targetMainFile = selectedTemplate?.mainFile || 'main.tex';
@@ -182,7 +162,6 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
           targetMainFile,
           engine,
           layoutCheck,
-          llmConfig: buildLlmConfig(),
           mineruConfig,
         });
         setJobId(res.jobId);
@@ -205,7 +184,6 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
           targetMainFile,
           engine,
           layoutCheck,
-          llmConfig: buildLlmConfig(),
         });
         setJobId(res.jobId);
         setStatus('started');
@@ -469,7 +447,6 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
         </div>
       )}
 
-      {/* LLM Config — managed in header settings */}
 
       {/* Start button */}
       <button

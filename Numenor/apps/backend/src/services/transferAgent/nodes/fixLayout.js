@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
-import { ChatOpenAI } from '@langchain/openai';
-import { resolveLLMConfig, normalizeBaseURL } from '../../llmService.js';
+import { activeChatModel } from '../../llmService.js';
 import { safeJoin } from '../../../utils/pathUtils.js';
 import { writeFileWithSnapshot, stripCodeFences } from '../utils.js';
 
@@ -9,19 +8,13 @@ import { writeFileWithSnapshot, stripCodeFences } from '../utils.js';
  * adjusts LaTeX to fix layout problems.
  */
 export async function fixLayout(state) {
-  const { endpoint, apiKey, model } = resolveLLMConfig(state.llmConfig);
   const absMain = safeJoin(state.targetProjectRoot, state.targetMainFile);
   const currentTex = await fs.readFile(absMain, 'utf8');
 
   const issues = state.layoutCheckResult?.issues || [];
   const issuesText = JSON.stringify(issues, null, 2);
 
-  const llm = new ChatOpenAI({
-    modelName: model,
-    openAIApiKey: apiKey,
-    configuration: { baseURL: normalizeBaseURL(endpoint) },
-    temperature: 0.2,
-  });
+  const llm = activeChatModel();
 
   const prompt = `You are a LaTeX layout fixer.
 

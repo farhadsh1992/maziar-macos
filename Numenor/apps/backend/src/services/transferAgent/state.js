@@ -13,7 +13,6 @@ export const TransferState = Annotation.Root({
   maxCompileLoops: Annotation({ reducer: replace, default: () => 5 }),
   maxLayoutLoops: Annotation({ reducer: replace, default: () => 3 }),
   layoutCheck: Annotation({ reducer: replace, default: () => false }),
-  llmConfig: Annotation({ reducer: replace }),
   jobId: Annotation({ reducer: replace }),
 
   // --- Source analysis ---

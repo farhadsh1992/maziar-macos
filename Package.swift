@@ -16,6 +16,7 @@ let package = Package(
                 .copy("Resources/CVAutoFillLogo.png")
             ]
         ),
+        .executableTarget(name: "NumenorAI", path: "Numenor/scripts/native-ai"),
         // Spelling/grammar helper for the embedded OpenPrism editor (see Sources/MaziarSpell/main.swift).
         .executableTarget(
             name: "MaziarSpell",

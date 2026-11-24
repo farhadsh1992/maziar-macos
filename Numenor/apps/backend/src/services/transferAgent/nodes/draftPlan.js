@@ -1,5 +1,4 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { resolveLLMConfig, normalizeBaseURL } from '../../llmService.js';
+import { activeChatModel } from '../../llmService.js';
 import { invokeLLMForJSON } from '../utils.js';
 
 /**
@@ -7,14 +6,8 @@ import { invokeLLMForJSON } from '../utils.js';
  * mapping source sections to target template sections.
  */
 export async function draftPlan(state) {
-  const { endpoint, apiKey, model } = resolveLLMConfig(state.llmConfig);
 
-  const llm = new ChatOpenAI({
-    modelName: model,
-    openAIApiKey: apiKey,
-    configuration: { baseURL: normalizeBaseURL(endpoint) },
-    temperature: 0.2,
-  });
+  const llm = activeChatModel();
 
   const prompt = `You are a LaTeX template migration planner.
 

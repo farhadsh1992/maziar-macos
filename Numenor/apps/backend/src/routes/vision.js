@@ -2,7 +2,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
 import { ensureDir } from '../utils/fsUtils.js';
-import { resolveLLMConfig, callOpenAICompatible } from '../services/llmService.js';
+import { callOpenAICompatible } from '../services/llmService.js';
 import { getProjectRoot } from '../services/projectService.js';
 
 export function registerVisionRoutes(fastify) {
@@ -11,7 +11,6 @@ export function registerVisionRoutes(fastify) {
     let projectId = '';
     let mode = 'equation';
     let prompt = '';
-    let llmConfig = null;
     let imageBuffer = null;
     let imageName = 'upload.png';
     let imageType = 'image/png';
@@ -31,13 +30,6 @@ export function registerVisionRoutes(fastify) {
         if (part.fieldname === 'projectId') projectId = String(part.value || '');
         if (part.fieldname === 'mode') mode = String(part.value || mode);
         if (part.fieldname === 'prompt') prompt = String(part.value || '');
-        if (part.fieldname === 'llmConfig') {
-          try {
-            llmConfig = JSON.parse(String(part.value || '{}'));
-          } catch {
-            llmConfig = null;
-          }
-        }
       }
     }
 
@@ -58,7 +50,6 @@ export function registerVisionRoutes(fastify) {
       }
     }
 
-    const resolved = resolveLLMConfig(llmConfig);
     const imageBase64 = imageBuffer.toString('base64');
     const userInstruction = (() => {
       switch (mode) {
@@ -89,9 +80,6 @@ export function registerVisionRoutes(fastify) {
 
     const result = await callOpenAICompatible({
       messages,
-      model: resolved.model,
-      endpoint: resolved.endpoint,
-      apiKey: resolved.apiKey
     });
 
     if (!result.ok) {

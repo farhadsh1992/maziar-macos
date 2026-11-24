@@ -29,6 +29,8 @@ if [ -f ".build/$CONFIG/MaziarSpell" ]; then
   cp ".build/$CONFIG/MaziarSpell" "$APP_DIR/Contents/MacOS/MaziarSpell"
 fi
 
+cp ".build/$CONFIG/NumenorAI" "$APP_DIR/Contents/MacOS/NumenorAI"
+
 # Numenor's source (the second editor, also github.com/farhadsh1992/numenor). NumenorServer copies it into
 # Application Support, installs its packages and builds it on first use and whenever it changes.
 rsync -a --delete --exclude node_modules --exclude 'apps/frontend/dist' --exclude data --exclude .DS_Store \

@@ -165,17 +165,6 @@ final class AISettings: ObservableObject {
     @Published var codePageModel: String = "" {
         didSet { UserDefaults.standard.set(codePageModel, forKey: Self.codePageModelKey) }
     }
-    /// Which provider the Numenor editor's AI uses — nil means "same as the AI Assistant". The model is
-    /// that provider's model from Settings \u{2192} AI, and Numenor never asks for a key of its own.
-    @Published var numenorProvider: AIProviderKind? {
-        didSet {
-            if let numenorProvider {
-                UserDefaults.standard.set(numenorProvider.rawValue, forKey: Self.numenorProviderKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: Self.numenorProviderKey)
-            }
-        }
-    }
     /// $ per 1M tokens, used to estimate cost in Settings \u{2192} AI \u{2192} Usage & Cost.
     /// These are rough defaults, not authoritative pricing — editable per provider since actual
     /// rates vary by exact model/tier and change over time.
@@ -200,7 +189,6 @@ final class AISettings: ObservableObject {
     private static let deckModelKey = "maziar.ai.deckModel"
     private static let codePageProviderKey = "maziar.ai.codePageProvider"
     private static let codePageModelKey = "maziar.ai.codePageModel"
-    private static let numenorProviderKey = "maziar.ai.openPrismProvider"
     private static let inputPriceKey = "maziar.ai.inputPricePerMillion"
     private static let outputPriceKey = "maziar.ai.outputPricePerMillion"
 
@@ -308,7 +296,6 @@ final class AISettings: ObservableObject {
             codePageProvider = nil
         }
         codePageModel = UserDefaults.standard.string(forKey: Self.codePageModelKey) ?? ""
-        numenorProvider = UserDefaults.standard.string(forKey: Self.numenorProviderKey).flatMap(AIProviderKind.init(rawValue:))
 
         inputPricePerMillion = Self.loadPricing(key: Self.inputPriceKey, defaults: Self.defaultInputPricePerMillion)
         outputPricePerMillion = Self.loadPricing(key: Self.outputPriceKey, defaults: Self.defaultOutputPricePerMillion)
@@ -472,35 +459,5 @@ final class AISettings: ObservableObject {
         var dict: [String: String] = [:]
         for (provider, url) in baseURLs { dict[provider.rawValue] = url }
         UserDefaults.standard.set(dict, forKey: Self.baseURLsKey)
-    }
-}
-
-
-// MARK: - Numenor
-
-extension AISettings {
-    /// Which provider the Numenor editor should use right now.
-    var effectiveNumenorProvider: AIProviderKind { numenorProvider ?? activeProvider }
-
-    /// Providers that have an API key saved — the ones Numenor can actually be pointed at.
-    var numenorSelectableProviders: [AIProviderKind] {
-        AIProviderKind.allCases.filter { isConfigured($0) }
-    }
-
-    /// What the Numenor server needs to call the chosen provider, or nil when that provider has no key.
-    /// Numenor speaks the OpenAI chat-completions protocol, so providers that don't natively
-    /// (Claude, Gemini) go through their own OpenAI-compatible endpoints.
-    func numenorConfig() -> NumenorServer.AIConfig? {
-        let provider = effectiveNumenorProvider
-        guard let key = apiKey(for: provider), !key.isEmpty else { return nil }
-        let base = baseURL(for: provider).trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        let endpoint: String
-        if provider == .gemini, base.hasSuffix("/v1beta") {
-            endpoint = base + "/openai/chat/completions"
-        } else {
-            endpoint = base + "/chat/completions"
-        }
-        let modelName = model(for: provider)
-        return NumenorServer.AIConfig(endpoint: endpoint, apiKey: key, model: modelName, label: "\(provider.displayName) \u{B7} \(modelName)")
     }
 }

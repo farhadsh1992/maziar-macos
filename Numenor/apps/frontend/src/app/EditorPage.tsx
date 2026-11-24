@@ -1,3 +1,4 @@
+import AIModels, { AIIndicator, useAIStatus } from './AIModels';
 import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, MouseEvent, SetStateAction, RefObject, DragEvent } from 'react';
@@ -7,12 +8,18 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { basicSetup } from 'codemirror';
 import { latex, strongComments } from '../latex/lang';
+import {
+  defaultLatexOptions, latexConfiguration, latexOptions, latexStructure, openLatexPreview,
+  previewTarget, structuredFold, structuredLatexEditor, unfoldLatexBlocks, type LatexOptions
+} from '../latex/editorStructure';
+import { blockKind, parseLatexStructure, type LatexHeading } from '../latex/structure';
+import { tableSnippet } from '../latex/table';
 import { Compartment, EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, DecorationSet, WidgetType, keymap, gutter, GutterMarker } from '@codemirror/view';
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search';
 import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
 import { toggleComment, undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
-import { foldKeymap, foldService, indentOnInput, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { foldKeymap, foldService, indentOnInput, language, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags as hlTags } from '@lezer/highlight';
 import { GlobalWorkerOptions, getDocument, renderTextLayer } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min?url';
@@ -94,16 +101,9 @@ type InlineEdit =
 type CompileEngine = 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic';
 
 type AppSettings = {
-  llmEndpoint: string;
-  llmApiKey: string;
-  llmModel: string;
-  searchEndpoint: string;
-  searchApiKey: string;
-  searchModel: string;
-  visionEndpoint: string;
-  visionApiKey: string;
-  visionModel: string;
   compileEngine: CompileEngine;
+  latex: LatexOptions;
+  latexTextFiles: Record<string, true>;
 };
 
 const DEFAULT_TASKS = (t: (key: string) => string) => [
@@ -126,16 +126,9 @@ const RIGHT_VIEW_OPTIONS = (t: (key: string) => string) => [
 
 const SETTINGS_KEY = 'numenor-settings-v1';
 const DEFAULT_SETTINGS: AppSettings = {
-  llmEndpoint: 'https://api.openai.com/v1/chat/completions',
-  llmApiKey: '',
-  llmModel: 'gpt-4o-mini',
-  searchEndpoint: '',
-  searchApiKey: '',
-  searchModel: '',
-  visionEndpoint: '',
-  visionApiKey: '',
-  visionModel: '',
-  compileEngine: 'pdflatex'
+  compileEngine: 'pdflatex',
+  latex: defaultLatexOptions,
+  latexTextFiles: {}
 };
 
 const COLLAB_NAME_KEY = 'numenor-collab-name';
@@ -146,7 +139,10 @@ function loadSettings(): AppSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<AppSettings>;
+    const parsed = JSON.parse(raw) as Partial<AppSettings> & Record<string, unknown>;
+    for (const prefix of ['llm', 'search', 'vision']) {
+      for (const field of ['Endpoint', 'ApiKey', 'Model']) delete parsed[prefix + field];
+    }
     const engine = parsed.compileEngine;
     const VALID_ENGINES: CompileEngine[] = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
     const compileEngine: CompileEngine =
@@ -156,6 +152,8 @@ function loadSettings(): AppSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      latex: { ...defaultLatexOptions, ...parsed.latex },
+      latexTextFiles: parsed.latexTextFiles ?? {},
       compileEngine
     };
   } catch {
@@ -273,11 +271,15 @@ function stripLatexComment(text: string) {
   return result;
 }
 
+function foldLineText(state: EditorState, line: { from: number; to: number; text: string }) {
+  return state.field(latexStructure)?.source.slice(line.from, line.to) ?? stripLatexComment(line.text);
+}
+
 function findEnvFold(state: EditorState, startLineNumber: number, lineEnd: number, env: string) {
   let depth = 1;
   for (let lineNo = startLineNumber + 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
-    const clean = stripLatexComment(line.text);
+    const clean = foldLineText(state, line);
     let match: RegExpExecArray | null;
     ENV_RE.lastIndex = 0;
     while ((match = ENV_RE.exec(clean)) !== null) {
@@ -300,7 +302,7 @@ function findEnvFold(state: EditorState, startLineNumber: number, lineEnd: numbe
 function findSectionFold(state: EditorState, startLineNumber: number, lineEnd: number, level: number) {
   for (let lineNo = startLineNumber + 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
-    const clean = stripLatexComment(line.text);
+    const clean = foldLineText(state, line);
     const match = clean.match(SECTION_RE);
     if (!match) continue;
     const nextLevel = SECTION_LEVELS[match[1]] ?? 99;
@@ -327,17 +329,6 @@ function countRegex(text: string, re: RegExp) {
   return count;
 }
 
-function countUnescapedToken(text: string, token: string) {
-  let count = 0;
-  for (let i = 0; i <= text.length - token.length; i += 1) {
-    if (text.slice(i, i + token.length) !== token) continue;
-    if (i > 0 && text[i - 1] === '\\') continue;
-    count += 1;
-    i += token.length - 1;
-  }
-  return count;
-}
-
 function findTokenFold(
   state: EditorState,
   startLineNumber: number,
@@ -348,7 +339,7 @@ function findTokenFold(
   let depth = 1;
   for (let lineNo = startLineNumber + 1; lineNo <= state.doc.lines; lineNo += 1) {
     const line = state.doc.line(lineNo);
-    const clean = stripLatexComment(line.text);
+    const clean = foldLineText(state, line);
     depth += countRegex(clean, startRe);
     depth -= countRegex(clean, endRe);
     if (depth <= 0) {
@@ -361,29 +352,12 @@ function findTokenFold(
   return null;
 }
 
-function findDisplayMathFold(
-  state: EditorState,
-  startLineNumber: number,
-  lineEnd: number,
-  startToken: string,
-  endToken: string
-) {
-  for (let lineNo = startLineNumber + 1; lineNo <= state.doc.lines; lineNo += 1) {
-    const line = state.doc.line(lineNo);
-    const clean = stripLatexComment(line.text);
-    if (countUnescapedToken(clean, endToken) > 0) {
-      if (line.from > lineEnd) {
-        return { from: lineEnd, to: line.from };
-      }
-      return null;
-    }
-  }
-  return null;
-}
-
 function latexFoldService(state: EditorState, lineStart: number, lineEnd: number) {
+  if (!state.facet(language)) return null;
+  const preferred = structuredFold(state, lineStart, lineEnd);
+  if (preferred !== undefined) return preferred;
   const line = state.doc.lineAt(lineStart);
-  const clean = stripLatexComment(line.text);
+  const clean = foldLineText(state, line);
   if (!clean.trim()) return null;
   const envMatch = clean.match(/\\begin\{([^}]+)\}/);
   if (envMatch) {
@@ -399,14 +373,6 @@ function latexFoldService(state: EditorState, lineStart: number, lineEnd: number
   }
   if (IF_START_TEST.test(clean)) {
     return findTokenFold(state, line.number, lineEnd, IF_START_RE, IF_END_RE);
-  }
-  const hasDisplayDollar = countUnescapedToken(clean, '$$') % 2 === 1;
-  if (hasDisplayDollar) {
-    return findDisplayMathFold(state, line.number, lineEnd, '$$', '$$');
-  }
-  const hasDisplayBracket = clean.includes('\\[');
-  if (hasDisplayBracket && !clean.includes('\\]')) {
-    return findDisplayMathFold(state, line.number, lineEnd, '\\[', '\\]');
   }
   return null;
 }
@@ -446,13 +412,6 @@ type TreeNode = {
   path: string;
   type: 'file' | 'dir';
   children: TreeNode[];
-};
-
-type OutlineItem = {
-  title: string;
-  level: number;
-  pos: number;
-  line: number;
 };
 
 function buildTree(items: { path: string; type: string }[], orderMap: Record<string, string[]> = {}) {
@@ -531,30 +490,6 @@ function stripLineComment(line: string) {
   return line;
 }
 
-function parseOutline(text: string): OutlineItem[] {
-  const items: OutlineItem[] = [];
-  const lines = text.split(/\r?\n/);
-  let offset = 0;
-  lines.forEach((line, index) => {
-    const clean = stripLineComment(line);
-    const regex = /\\+(section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(clean))) {
-      const name = match[1];
-      const title = (match[2] || '').trim() || '(untitled)';
-      const level = name === 'section' ? 1 : name === 'subsection' ? 2 : 3;
-      items.push({
-        title,
-        level,
-        pos: offset + (match.index ?? 0),
-        line: index + 1
-      });
-    }
-    offset += line.length + 1;
-  });
-  return items;
-}
-
 function extractIncludeTargets(text: string) {
   const targets: string[] = [];
   const lines = text.split(/\r?\n/);
@@ -570,20 +505,14 @@ function extractIncludeTargets(text: string) {
   return targets;
 }
 
-function findNearestHeading(text: string, cursorPos: number) {
-  const before = text.slice(0, cursorPos);
-  const lines = before.split(/\r?\n/).reverse();
-  for (const line of lines) {
-    const clean = stripLineComment(line);
-    const match = clean.match(/\\+(section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/);
-    if (match) {
-      return {
-        title: (match[2] || '').trim() || '(untitled)',
-        level: match[1]
-      };
-    }
+function enclosingHeading(headings: readonly LatexHeading[], position: number) {
+  let lo = 0, hi = headings.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (headings[mid].pos <= position) lo = mid + 1;
+    else hi = mid;
   }
-  return null;
+  return headings[lo - 1] ?? null;
 }
 
 function findCurrentEnvironment(text: string) {
@@ -800,22 +729,27 @@ const SCOPE_COLORS = [
   'rgba(211, 84, 0, 0.5)',
 ];
 
-function computeEnvDepths(doc: { lines: number; line: (n: number) => { text: string } }): number[] {
+function computeEnvDepths(state: EditorState): number[] {
+  if (!state.facet(language)) return [];
+  const { doc } = state;
+  const structure = state.field(latexStructure);
+  const closedEquations = new Set(structure?.blocks.flatMap((block) =>
+    block.kind === 'equation' ? [block.from, block.bodyTo] : []) ?? []);
   const depths: number[] = [];
   let depth = 0;
   for (let i = 1; i <= doc.lines; i++) {
-    const clean = stripLatexComment(doc.line(i).text);
+    const line = doc.line(i);
+    const clean = foldLineText(state, line);
     ENV_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    const events: { pos: number; delta: number }[] = [];
-    while ((match = ENV_RE.exec(clean)) !== null) {
-      events.push({ pos: match.index, delta: match[1] === 'begin' ? 1 : -1 });
-    }
-    events.sort((a, b) => a.pos - b.pos);
     let lineDepth = depth;
-    for (const ev of events) {
-      if (ev.delta < 0) { depth--; lineDepth = Math.min(lineDepth, depth); }
-      else { depth++; }
+    for (let match; (match = ENV_RE.exec(clean));) {
+      // An unfinished equation should not add a scope stripe to the rest of the file.
+      if (structure && blockKind(match[2]) === 'equation' && !closedEquations.has(line.from + match.index)) continue;
+      if (match[1] === 'begin') depth++;
+      else {
+        depth--;
+        lineDepth = Math.min(lineDepth, depth);
+      }
     }
     depths.push(Math.max(0, lineDepth));
   }
@@ -823,11 +757,13 @@ function computeEnvDepths(doc: { lines: number; line: (n: number) => { text: str
 }
 
 const envDepthField = StateField.define<number[]>({
-  create(state) { return computeEnvDepths(state.doc); },
-  update(value, tr) {
-    if (tr.docChanged) return computeEnvDepths(tr.state.doc);
+  create: computeEnvDepths,
+  update(value, transaction) {
+    if (transaction.docChanged || transaction.startState.facet(language) !== transaction.state.facet(language)) {
+      return computeEnvDepths(transaction.state);
+    }
     return value;
-  },
+  }
 });
 
 class ScopeMarker extends GutterMarker {
@@ -847,6 +783,7 @@ class ScopeMarker extends GutterMarker {
 
 const scopeGutter = gutter({
   class: 'cm-scope-gutter',
+  lineMarkerChange: (update) => update.startState.field(envDepthField) !== update.state.field(envDepthField),
   lineMarker(view, line) {
     const depths = view.state.field(envDepthField);
     const lineNo = view.state.doc.lineAt(line.from).number;
@@ -1230,8 +1167,19 @@ export default function EditorPage() {
   const [autoInsertCite, setAutoInsertCite] = useState(true);
   const [autoInsertToMain, setAutoInsertToMain] = useState(false);
   const [citeTargetFile, setCiteTargetFile] = useState('');
-  const [outlineText, setOutlineText] = useState('');
-  const [currentHeading, setCurrentHeading] = useState<{ title: string; level: string } | null>(null);
+  const [outlineItems, setOutlineItems] = useState<LatexHeading[]>([]);
+  const [currentHeading, setCurrentHeading] = useState<LatexHeading | null>(null);
+  const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number; position: number; kind: 'equation' | 'table' } | null>(null);
+  const [tableInsertPath, setTableInsertPath] = useState('');
+  const isTxt = /\.txt$/i.test(activePath);
+  const languageKey = JSON.stringify([projectId, activePath]);
+  const latexMode = /\.(tex|ltx)$/i.test(activePath) || (isTxt && settings.latexTextFiles[languageKey] === true);
+  const toggleLatexMode = () => setSettings((previous) => {
+    const files = { ...previous.latexTextFiles };
+    if (files[languageKey]) delete files[languageKey];
+    else files[languageKey] = true;
+    return { ...previous, latexTextFiles: files };
+  });
   const [plotType, setPlotType] = useState<'bar' | 'line' | 'heatmap'>('bar');
   const [plotTitle, setPlotTitle] = useState('');
   const [plotFilename, setPlotFilename] = useState('');
@@ -1263,6 +1211,7 @@ export default function EditorPage() {
   const [share, setShare] = useState<ShareState | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const isGuest = Boolean(getCollabToken());
+  const { status: aiStatus, setStatus: setAIStatus } = useAIStatus(!isGuest);
   const [collabServer, setCollabServerState] = useState(() => getCollabServer() || (typeof window === 'undefined' ? '' : window.location.origin));
   const [collabName, setCollabName] = useState(() => loadCollabName() || 'Guest');
   const [collabToken] = useState(() => getCollabToken());
@@ -1296,6 +1245,9 @@ export default function EditorPage() {
   const meKeyRef = useRef('');
   const collabCompartment = useMemo(() => new Compartment(), []);
   const readOnlyCompartment = useMemo(() => new Compartment(), []);
+  const latexCompartment = useMemo(() => new Compartment(), []);
+  const previousLatexFile = useRef('');
+  const forwardSyncLineRef = useRef<(line: number) => void>(() => {});
   // Who's using this editor: the owner (on this computer) or an invited person (and their rights).
   const [me, setMe] = useState<Me | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -1318,18 +1270,7 @@ export default function EditorPage() {
   const [missingBusy, setMissingBusy] = useState('');
   const forwardSyncRef = useRef<() => void>(() => {});
 
-  const {
-    llmEndpoint,
-    llmApiKey,
-    llmModel,
-    searchEndpoint,
-    searchApiKey,
-    searchModel,
-    visionEndpoint,
-    visionApiKey,
-    visionModel,
-    compileEngine
-  } = settings;
+  const { compileEngine } = settings;
 
   useEffect(() => {
     persistSettings(settings);
@@ -1365,33 +1306,6 @@ export default function EditorPage() {
       collabActiveRef.current = false;
     }
   }, [collabEnabled]);
-
-  const llmConfig = useMemo(
-    () => ({
-      endpoint: llmEndpoint,
-      apiKey: llmApiKey || undefined,
-      model: llmModel
-    }),
-    [llmEndpoint, llmApiKey, llmModel]
-  );
-
-  const searchLlmConfig = useMemo(() => {
-    const hasOverride = Boolean(searchEndpoint || searchApiKey || searchModel);
-    return {
-      endpoint: (hasOverride ? searchEndpoint : llmEndpoint) || llmEndpoint,
-      apiKey: (hasOverride ? searchApiKey : llmApiKey) || undefined,
-      model: (hasOverride ? searchModel : llmModel) || llmModel
-    };
-  }, [llmEndpoint, llmApiKey, llmModel, searchEndpoint, searchApiKey, searchModel]);
-
-  const visionLlmConfig = useMemo(() => {
-    const hasOverride = Boolean(visionEndpoint || visionApiKey || visionModel);
-    return {
-      endpoint: (hasOverride ? visionEndpoint : llmEndpoint) || llmEndpoint,
-      apiKey: (hasOverride ? visionApiKey : llmApiKey) || undefined,
-      model: (hasOverride ? visionModel : llmModel) || llmModel
-    };
-  }, [llmEndpoint, llmApiKey, llmModel, visionEndpoint, visionApiKey, visionModel]);
 
   useEffect(() => {
     if (!projectId) {
@@ -1646,9 +1560,15 @@ export default function EditorPage() {
         saveEditorPositionRef.current();
         const sel = update.state.selection.main;
         setSelectionRange([sel.from, sel.to]);
-        const heading = findNearestHeading(update.state.doc.toString(), sel.head);
-        setCurrentHeading(heading);
       }
+      const structure = update.state.field(latexStructure);
+      if (structure !== update.startState.field(latexStructure)) {
+        setOutlineItems(structure?.headings ?? []);
+      }
+      if (update.selectionSet || structure !== update.startState.field(latexStructure)) {
+        setCurrentHeading(enclosingHeading(structure?.headings ?? [], update.state.selection.main.head));
+      }
+      if (update.docChanged) setPreviewMenu(null);
       if (!skipClear && inlineSuggestionRef.current && (update.docChanged || update.selectionSet)) {
         inlineSuggestionRef.current = '';
         inlineAnchorRef.current = null;
@@ -1738,11 +1658,29 @@ export default function EditorPage() {
       doc: '',
       extensions: [
         basicSetup,
-        latex(),
+        latexCompartment.of([]),
+        structuredLatexEditor,
         envDepthField,
         scopeGutter,
         indentOnInput(),
         foldService.of(latexFoldService),
+        EditorView.domEventHandlers({
+          contextmenu(event, view) {
+            if (event.target instanceof Element && event.target.closest('.cm-nm-preview, .cm-gutters')) return false;
+            const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
+              ?? view.state.selection.main.head;
+            const block = previewTarget(view.state, position);
+            if (!block) return false;
+            event.preventDefault();
+            setPreviewMenu({
+              x: Math.min(event.clientX, Math.max(0, window.innerWidth - 220)),
+              y: Math.min(event.clientY, Math.max(0, window.innerHeight - 54)),
+              position,
+              kind: block.kind
+            });
+            return true;
+          }
+        }),
         EditorView.lineWrapping,
         editorTheme,
         Prec.high(syntaxHighlighting(numenorHighlight)),
@@ -1781,6 +1719,28 @@ export default function EditorPage() {
       cmViewRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const sameFile = previousLatexFile.current === languageKey;
+    previousLatexFile.current = languageKey;
+    setPreviewMenu(null);
+    if (!sameFile) setTableInsertPath('');
+    view.dispatch({
+      effects: [
+        ...unfoldLatexBlocks(view.state, sameFile && latexMode ? settings.latex : undefined),
+        latexCompartment.reconfigure([
+          // Refresh the native fold gutter when the independently controlled fold rules change.
+          ...(latexMode || /\.(bib|sty|cls)$/i.test(activePath) ? [latex()] : []),
+          latexConfiguration.of({
+            enabled: latexMode, options: settings.latex, translate: t,
+            showPdf: (line) => forwardSyncLineRef.current(line)
+          })
+        ])
+      ]
+    });
+  }, [activePath, languageKey, latexCompartment, latexMode, settings.latex, t]);
 
   const openFile = async (filePath: string) => {
     setExternalChange((c) => (c && c.path !== filePath ? null : c));
@@ -1982,7 +1942,7 @@ export default function EditorPage() {
     const docText = view.state.doc.toString();
     const before = docText.slice(Math.max(0, pos - 4000), pos);
     const after = docText.slice(pos, pos + 400);
-    const heading = findNearestHeading(docText, pos);
+    const heading = enclosingHeading(view.state.field(latexStructure)?.headings ?? [], pos);
     const env = findCurrentEnvironment(docText.slice(0, pos));
     inlineAnchorRef.current = pos;
     setIsSuggesting(true);
@@ -1993,7 +1953,7 @@ export default function EditorPage() {
         prompt: [
           t('You are a LaTeX writing assistant.'),
           t('Continue after <CURSOR> with a coherent next block (1-2 paragraphs or a full environment).'),
-          heading ? t('Current section: {{title}} ({{level}}).', { title: heading.title, level: heading.level }) : '',
+          heading ? t('Current section: {{title}} ({{level}}).', { title: heading.title, level: heading.command }) : '',
           env ? t('You are inside environment: {{env}}.', { env }) : '',
           t('Preserve style and formatting.'),
           t('Return only the continuation text, no commentary.')
@@ -2004,7 +1964,6 @@ export default function EditorPage() {
         projectId,
         activePath,
         compileLog,
-        llmConfig
       });
       const suggestion = (res.suggestion || res.reply || '').trim();
       if (!suggestion) return;
@@ -2022,7 +1981,7 @@ export default function EditorPage() {
         setSuggestionPos(null);
       }
     }
-  }, [activePath, clearInlineSuggestion, compileLog, isSuggesting, llmConfig, projectId, updateSuggestionPosition, t]);
+  }, [activePath, clearInlineSuggestion, compileLog, isSuggesting, projectId, updateSuggestionPosition, t]);
 
   useEffect(() => {
     if (!inlineSuggestionText) {
@@ -2201,9 +2160,6 @@ export default function EditorPage() {
 
   const insertEquationSnippet = () => insertAtCursor(['\\begin{equation}', 'E = mc^2', '\\end{equation}'].join('\n'), { block: true });
 
-  const insertTableSnippet = () =>
-    insertAtCursor(['\\begin{table}[t]', '\\centering', '\\begin{tabular}{lcc}', '\\toprule', 'Method & A & B \\\\', '\\midrule', 'Ours & 0.0 & 0.0 \\\\', '\\bottomrule', '\\end{tabular}', '\\caption{Table caption.}', '\\label{tab:main}', '\\end{table}'].join('\n'), { block: true });
-
   const insertListingSnippet = () =>
     insertAtCursor(['\\begin{lstlisting}[language=Python]', '# code here', '\\end{lstlisting}'].join('\n'), { block: true });
 
@@ -2248,7 +2204,7 @@ export default function EditorPage() {
       } catch {
         continue;
       }
-      const outline = parseOutline(content).slice(0, 12);
+      const outline = parseLatexStructure(content).headings.slice(0, 12);
       const headings = outline.map((item) => `${'  '.repeat(item.level - 1)}- ${item.title}`);
       summaries.push(t('File: {{file}}\n{{headings}}', { file: current, headings: headings.join('\n') }));
       const baseDir = getParentPath(current);
@@ -2299,7 +2255,6 @@ export default function EditorPage() {
           projectId,
           activePath,
           compileLog,
-          llmConfig: searchLlmConfig,
           interaction: 'agent',
           history: []
         });
@@ -2352,7 +2307,7 @@ export default function EditorPage() {
     } finally {
       setArxivBusy(false);
     }
-  }, [arxivQuery, arxivMaxResults, useLlmSearch, projectId, activePath, compileLog, searchLlmConfig, t]);
+  }, [arxivQuery, arxivMaxResults, useLlmSearch, projectId, activePath, compileLog, t]);
 
   const handleArxivApply = useCallback(async () => {
     if (!projectId) return;
@@ -2450,7 +2405,6 @@ export default function EditorPage() {
             projectId,
             activePath: targetFile,
             compileLog,
-            llmConfig: searchLlmConfig,
             interaction: 'agent',
             history: []
           });
@@ -2478,7 +2432,7 @@ export default function EditorPage() {
     } finally {
       setArxivBusy(false);
     }
-  }, [activePath, arxivResults, arxivSelected, autoInsertCite, autoInsertToMain, bibTarget, projectId, createBibFile, ensureFileContent, setEditorDoc, arxivBibtexCache, compileLog, searchLlmConfig, mainFile, files, citeTargetFile, t]);
+  }, [activePath, arxivResults, arxivSelected, autoInsertCite, autoInsertToMain, bibTarget, projectId, createBibFile, ensureFileContent, setEditorDoc, arxivBibtexCache, compileLog, mainFile, files, citeTargetFile, t]);
 
   const handlePlotGenerate = async () => {
     if (!projectId) return;
@@ -2497,7 +2451,6 @@ export default function EditorPage() {
         prompt: plotPrompt.trim() || undefined,
         filename: plotFilename.trim() || undefined,
         retries: plotRetries,
-        llmConfig
       });
       if (!res.ok || !res.assetPath) {
         throw new Error(res.error || t('图表生成失败'));
@@ -2531,7 +2484,6 @@ export default function EditorPage() {
     try {
       appendLog(setWebsearchLog, t('拆分查询...'));
       const splitRes = await callLLM({
-        llmConfig: searchLlmConfig,
         messages: [
           { role: 'system', content: t('Split the query into 2-4 targeted search queries. Return JSON only: {"queries":["..."]}.') },
           { role: 'user', content: t('用户问题: {{query}}', { query }) }
@@ -2558,7 +2510,6 @@ export default function EditorPage() {
         queries.map(async (q, idx) => {
           appendLog(setWebsearchLog, t('检索中: {{query}}', { query: q }));
           const res = await callLLM({
-            llmConfig: searchLlmConfig,
             messages: [
               {
                 role: 'system',
@@ -2612,7 +2563,6 @@ export default function EditorPage() {
       }
       appendLog(setWebsearchLog, t('生成逐条总结...'));
       const summariesRes = await callLLM({
-        llmConfig: searchLlmConfig,
         messages: [
           {
             role: 'system',
@@ -2657,7 +2607,6 @@ export default function EditorPage() {
       appendLog(setWebsearchLog, t('生成综合总结...'));
       const citeKeys = deduped.map((item) => item.citeKey).filter(Boolean);
       const paragraphRes = await callLLM({
-        llmConfig: searchLlmConfig,
         messages: [
           {
             role: 'system',
@@ -2816,7 +2765,6 @@ export default function EditorPage() {
         file: visionFile,
         mode: visionMode,
         prompt: extraPrompt,
-        llmConfig: visionLlmConfig
       });
       if (!res.ok) {
         throw new Error(res.error || t('识别失败'));
@@ -3050,35 +2998,6 @@ export default function EditorPage() {
     ],
     [t]
   );
-
-  const outlineItems = useMemo(() => {
-    if (!outlineText || !mainFile || !mainFile.toLowerCase().endsWith('.tex')) return [];
-    return parseOutline(outlineText);
-  }, [outlineText, mainFile]);
-
-  useEffect(() => {
-    if (!mainFile) {
-      setOutlineText('');
-      return;
-    }
-    if (activePath === mainFile) {
-      setOutlineText(editorValue);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const content = await ensureFileContent(mainFile);
-        if (!cancelled) setOutlineText(content);
-      } catch {
-        if (!cancelled) setOutlineText('');
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [activePath, editorValue, ensureFileContent, mainFile]);
 
   useEffect(() => {
     if (!visionFile) {
@@ -3529,7 +3448,7 @@ export default function EditorPage() {
     if (view && line) revealLine(view, line, column);
   }, [projectFileSet, t]);
 
-  const forwardSync = useCallback(async () => {
+  const forwardSync = useCallback(async (sourceLine?: number) => {
     const view = cmViewRef.current;
     const file = activePathRef.current;
     if (!view || !file || !projectId) return;
@@ -3539,9 +3458,10 @@ export default function EditorPage() {
     }
     // The start of the selected text (or the cursor).
     const head = view.state.selection.main.from;
-    const line = view.state.doc.lineAt(head);
+    const line = sourceLine ?? view.state.doc.lineAt(head).number;
+    if (sourceLine && !pdfPoppedRef.current) setRightView('pdf');
     try {
-      const { boxes } = await synctexForward(projectId, file, line.number, 0);
+      const { boxes } = await synctexForward(projectId, file, line, 0);
       if (pdfPoppedRef.current && pdfWinRef.current && !pdfWinRef.current.closed) {
         pdfWinRef.current.postMessage({ type: 'nm-pdf:reveal', box: boxes[0] } satisfies PdfWindowMessage, window.location.origin);
         return;
@@ -3556,6 +3476,8 @@ export default function EditorPage() {
   forwardSyncRef.current = () => {
     forwardSync().catch(() => {});
   };
+
+  forwardSyncLineRef.current = (line) => { forwardSync(line).catch(() => {}); };
 
   const reverseSync = useCallback(async (page: number, x: number, y: number) => {
     if (!projectId) return;
@@ -4192,24 +4114,22 @@ export default function EditorPage() {
         effectiveTask = 'websearch';
       }
 
-      if (!isChat && effectiveTask !== 'websearch') {
+      if (!isChat && effectiveTask !== 'websearch' && !effectiveSelection) {
         const context = await buildProjectContext();
         if (context) {
           effectivePrompt = `${effectivePrompt}\n\n[Project Context]\n${context}`;
         }
       }
 
-      const effectiveLlmConfig = !isChat && effectiveTask === 'websearch' ? searchLlmConfig : llmConfig;
       const res = await runAgent({
         task: effectiveTask,
         prompt: effectivePrompt,
         selection: effectiveSelection,
-        content: effectiveContent,
+        content: effectiveSelection ? '' : effectiveContent,
         mode: isChat ? 'direct' : effectiveMode,
         projectId,
         activePath,
-        compileLog,
-        llmConfig: effectiveLlmConfig,
+        compileLog: effectiveSelection ? undefined : compileLog,
         interaction: isChat ? 'chat' : 'agent',
         history: nextHistory.slice(-8)
       });
@@ -4252,14 +4172,12 @@ export default function EditorPage() {
     try {
       const res = await runAgent({
         task: 'debug_compile',
-        prompt: t('基于编译日志诊断并修复错误，给出可应用的 diff。'),
-        selection: compileLog,
-        content: editorValue,
-        mode: 'tools',
+        prompt: 'Diagnose the LaTeX error and describe the smallest source change to fix it.',
+        mode: 'direct',
         projectId,
         activePath,
-        compileLog,
-        llmConfig,
+        compileLog: (diagnostics.filter((item) => item.severity === 'error')
+          .map((item) => `${item.file}:${item.line ?? '?'} ${item.message}`).join('\n') || compileLog.slice(-2500)).slice(0, 2500),
         interaction: 'agent',
         history: nextHistory.slice(-8)
       });
@@ -4486,6 +4404,7 @@ export default function EditorPage() {
             </button>
           )}
           {!viewOnly && <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>}
+          {!isGuest && <AIIndicator status={aiStatus} open={() => setSettingsOpen(true)} />}
           <button onClick={compile} className="btn nm-primary nm-compile" disabled={isCompiling}>
             {isCompiling ? t('编译中...') : t('编译 PDF')}
           </button>
@@ -4673,35 +4592,26 @@ export default function EditorPage() {
                   {inlineEdit && inlineEdit.kind !== 'rename' && inlineEdit.parent === '' && inlineInputRow(0)}
                   {renderTree(treeRoot.children)}
                 </div>
-                <div className="outline-panel">
-                  <div className="outline-header" onClick={() => setOutlineCollapsed(!outlineCollapsed)} style={{ cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ transform: outlineCollapsed ? 'rotate(-90deg)' : 'rotate(0)', transition: 'transform 0.2s ease' }}>
-                        <path d="M2 3L5 6L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      {t('Outline')}
-                    </div>
-                    <div className="muted">{mainFile || 'main.tex'}</div>
-                  </div>
-                  {!outlineCollapsed && (mainFile && mainFile.toLowerCase().endsWith('.tex') ? (
-                    outlineItems.length > 0 ? (
+                {settings.latex.outline && (
+                  <div className="outline-panel">
+                    <button type="button" className="outline-header nm-outline-toggle"
+                      aria-expanded={!outlineCollapsed} onClick={() => setOutlineCollapsed(!outlineCollapsed)}>
+                      <span><IconChevronDown size={11} /> {t('Outline')}</span>
+                      <span className="muted">{activePath.split('/').pop()}</span>
+                    </button>
+                    {!outlineCollapsed && (latexMode && outlineItems.length > 0 ? (
                       <div className="outline-list">
-                        {outlineItems.map((item, idx) => (
+                        {outlineItems.map((item) => (
                           <button
-                            key={`${item.pos}-${idx}`}
+                            key={item.pos}
+                            type="button"
+                            aria-current={currentHeading?.pos === item.pos ? 'location' : undefined}
                             className={`outline-item level-${item.level}`}
                             onClick={() => {
-                              const go = async () => {
-                                if (mainFile && activePath !== mainFile) {
-                                  await openFile(mainFile);
-                                }
-                                const view = cmViewRef.current;
-                                if (!view) return;
-                                const pos = Math.min(item.pos, view.state.doc.length);
-                                view.dispatch({ selection: { anchor: pos, head: pos }, scrollIntoView: true });
-                                view.focus();
-                              };
-                              go();
+                              const view = cmViewRef.current;
+                              if (!view) return;
+                              const line = view.state.doc.line(item.line);
+                              revealLine(view, item.line, item.pos - line.from);
                             }}
                           >
                             <span className="outline-title">{item.title}</span>
@@ -4710,12 +4620,12 @@ export default function EditorPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="muted outline-empty">{t('未发现 Section 标题。')}</div>
-                    )
-                  ) : (
-                    <div className="muted outline-empty">{t('打开 .tex 文件以显示 Outline。')}</div>
-                  ))}
-                </div>
+                      <div className="muted outline-empty">
+                        {t(latexMode ? '未发现 Section 标题。' : 'Open a LaTeX file to show its Outline.')}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             ) : activeSidebar === 'collab' ? (
               <>
@@ -5661,7 +5571,6 @@ export default function EditorPage() {
                               projectId,
                               activePath,
                               compileLog,
-                              llmConfig,
                               interaction: 'agent',
                               history: []
                             });
@@ -5738,7 +5647,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                             projectId,
                             activePath,
                             compileLog,
-                            llmConfig,
                             interaction: 'agent',
                             history: []
                           });
@@ -5771,7 +5679,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                             projectId,
                             activePath,
                             compileLog,
-                            llmConfig,
                             interaction: 'agent',
                             history: []
                           });
@@ -5794,7 +5701,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                             projectId,
                             activePath,
                             compileLog,
-                            llmConfig,
                             interaction: 'agent',
                             history: []
                           });
@@ -5839,6 +5745,12 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
               <span className="nm-file-tab-name">{activePath ? activePath.split('/').pop() : t('No file')}</span>
               {currentHeading && <span className="nm-file-tab-heading">· {currentHeading.title}</span>}
             </div>
+            {isTxt && (
+              <button type="button" className="nm-icon-btn nm-language-mode"
+                aria-pressed={latexMode} onClick={toggleLatexMode}>
+                {t('LaTeX mode')}
+              </button>
+            )}
           </div>
           <div className="editor-toolbar nm-insert-bar">
             <div className="nm-menu">
@@ -5893,7 +5805,8 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                   <div className="nm-menu-backdrop" onClick={() => setNmMenu('')} />
                   <div className="nm-menu-list left" role="menu" onClick={() => setNmMenu('')}>
                     <button className="nm-menu-item" onClick={insertFigureTemplate}>{t('Figure')}</button>
-                    <button className="nm-menu-item" onClick={insertTableSnippet}>{t('Table')}</button>
+                    <button className="nm-menu-item" disabled={!activePath || !isTextPath(activePath) || viewOnly}
+                      onClick={() => setTableInsertPath(activePath)}>{t('Insert Table')}</button>
                     <button className="nm-menu-item" onClick={insertListingSnippet}>{t('Listing')}</button>
                     <div className="nm-menu-sep" />
                     <button className="nm-menu-item" onClick={insertCiteSnippet}>{t('Cite')}</button>
@@ -6608,6 +6521,45 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
           </div>
         </div>
       )}
+      {previewMenu && (
+        <div className="ctx-menu-backdrop" onClick={() => setPreviewMenu(null)}
+          onContextMenu={(event) => { event.preventDefault(); setPreviewMenu(null); }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { setPreviewMenu(null); cmViewRef.current?.focus(); }
+          }}>
+          <div className="ctx-menu" style={{ left: previewMenu.x, top: previewMenu.y }}>
+            <button autoFocus type="button" className="ctx-menu-item" onClick={() => {
+              const view = cmViewRef.current;
+              if (view) { openLatexPreview(view, previewMenu.position); view.focus(); }
+              setPreviewMenu(null);
+            }}>{t(previewMenu.kind === 'equation' ? 'Preview Equation' : 'Preview Table')}</button>
+          </div>
+        </div>
+      )}
+      {tableInsertPath && tableInsertPath === activePath && !viewOnly && (
+        <div className="modal-backdrop" onClick={() => setTableInsertPath('')}>
+          <form className="modal nm-settings-modal" aria-label={t('Insert Table')}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => { if (event.key === 'Escape') setTableInsertPath(''); }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const fields = new FormData(event.currentTarget);
+              insertAtCursor(tableSnippet(Number(fields.get('rows')), Number(fields.get('columns')), fields.has('header')), { block: true });
+              setTableInsertPath('');
+            }}>
+            <div className="modal-header">{t('Insert Table')}</div>
+            <div className="modal-body">
+              <label className="field">{t('Data rows')}<input autoFocus className="input" name="rows" type="number" min="1" max="100" defaultValue="2" required /></label>
+              <label className="field">{t('Columns')}<input className="input" name="columns" type="number" min="1" max="30" defaultValue="3" required /></label>
+              <label className="nm-latex-switch"><input name="header" type="checkbox" defaultChecked />{t('Include a header row')}</label>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn ghost" onClick={() => setTableInsertPath('')}>{t('Cancel')}</button>
+              <button type="submit" className="btn">{t('Insert Table')}</button>
+            </div>
+          </form>
+        </div>
+      )}
       {settingsOpen && (
         <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
           <SettingsLocationLoader
@@ -6620,6 +6572,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
               <button className="icon-btn" onClick={() => setSettingsOpen(false)}>✕</button>
             </div>
             <div className="modal-body">
+              {!isGuest && <AIModels status={aiStatus} onUpdate={setAIStatus} />}
               {projectLocation && (
                 <div className="field nm-location">
                   <label>{t('Where this project is saved')}</label>
@@ -6689,6 +6642,19 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                   </div>
                 </div>
               )}
+              <fieldset className="nm-latex-settings">
+                <legend>{t('Editor')} / LaTeX</legend>
+                {(Object.keys(latexOptions) as (keyof LatexOptions)[]).map((key) => (
+                  <label className="nm-latex-switch" key={key}>
+                    <input type="checkbox" role="switch" checked={settings.latex[key]}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setSettings((previous) => ({ ...previous, latex: { ...previous.latex, [key]: checked } }));
+                      }} />
+                    {t(latexOptions[key])}
+                  </label>
+                ))}
+              </fieldset>
               <CompilerSetup />
               <div className="field">
                 <label>{t('Language')}</label>
@@ -6697,96 +6663,6 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
                   <option value="zh-CN">中文</option>
                 </select>
                 <div className="muted">{t('The language of Numenor’s menus and buttons.')}</div>
-              </div>
-              <div className="field">
-                <label>{t('LLM Endpoint')}</label>
-                <input
-                  className="input"
-                  value={llmEndpoint}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, llmEndpoint: e.target.value }))}
-                  placeholder="https://api.openai.com/v1/chat/completions"
-                />
-                <div className="muted">{t('支持 OpenAI 兼容的 base_url，例如 https://api.apiyi.com/v1')}</div>
-              </div>
-              <div className="field">
-                <label>{t('LLM Model')}</label>
-                <input
-                  className="input"
-                  value={llmModel}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, llmModel: e.target.value }))}
-                  placeholder="gpt-4o-mini"
-                />
-              </div>
-              <div className="field">
-                <label>{t('LLM API Key')}</label>
-                <input
-                  className="input"
-                  value={llmApiKey}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, llmApiKey: e.target.value }))}
-                  placeholder="sk-..."
-                  type="password"
-                />
-                {!llmApiKey && (
-                  <div className="muted">{t('未配置 API Key 时将使用后端环境变量。')}</div>
-                )}
-              </div>
-              <div className="field">
-                <label>{t('Search LLM Endpoint (可选)')}</label>
-                <input
-                  className="input"
-                  value={searchEndpoint}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, searchEndpoint: e.target.value }))}
-                  placeholder="https://api.apiyi.com/v1"
-                />
-                <div className="muted">{t('仅用于“检索/websearch”任务，留空则复用 LLM Endpoint。')}</div>
-              </div>
-              <div className="field">
-                <label>{t('Search LLM Model (可选)')}</label>
-                <input
-                  className="input"
-                  value={searchModel}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, searchModel: e.target.value }))}
-                  placeholder="claude-sonnet-4-5-20250929-all"
-                />
-              </div>
-              <div className="field">
-                <label>{t('Search LLM API Key (可选)')}</label>
-                <input
-                  className="input"
-                  value={searchApiKey}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, searchApiKey: e.target.value }))}
-                  placeholder="sk-..."
-                  type="password"
-                />
-              </div>
-              <div className="field">
-                <label>{t('VLM Endpoint (可选)')}</label>
-                <input
-                  className="input"
-                  value={visionEndpoint}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, visionEndpoint: e.target.value }))}
-                  placeholder="https://api.apiyi.com/v1"
-                />
-                <div className="muted">{t('仅用于图像识别，留空则复用 LLM Endpoint。')}</div>
-              </div>
-              <div className="field">
-                <label>{t('VLM Model (可选)')}</label>
-                <input
-                  className="input"
-                  value={visionModel}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, visionModel: e.target.value }))}
-                  placeholder="gpt-4o"
-                />
-              </div>
-              <div className="field">
-                <label>{t('VLM API Key (可选)')}</label>
-                <input
-                  className="input"
-                  value={visionApiKey}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, visionApiKey: e.target.value }))}
-                  placeholder="sk-..."
-                  type="password"
-                />
               </div>
             </div>
             <div className="modal-actions">

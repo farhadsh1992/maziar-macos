@@ -20,12 +20,6 @@ export interface FileOrderMap {
   [folder: string]: string[];
 }
 
-export interface LLMConfig {
-  endpoint: string;
-  apiKey: string;
-  model: string;
-}
-
 export interface TemplateMeta {
   id: string;
   label: string;
@@ -429,7 +423,6 @@ export function runAgent(payload: {
   projectId?: string;
   activePath?: string;
   compileLog?: string;
-  llmConfig?: Partial<LLMConfig>;
   interaction?: 'chat' | 'agent';
   history?: { role: 'user' | 'assistant'; content: string }[];
 }) {
@@ -500,7 +493,6 @@ export function plotFromTable(payload: {
   prompt?: string;
   filename?: string;
   retries?: number;
-  llmConfig?: Partial<LLMConfig>;
 }) {
   return request<{ ok: boolean; assetPath?: string; error?: string }>(
     '/api/plot/from-table',
@@ -514,7 +506,6 @@ export function plotFromTable(payload: {
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
   model?: string;
-  llmConfig?: Partial<LLMConfig>;
 }) {
   return request<{ ok: boolean; content?: string; error?: string }>('/api/llm', {
     method: 'POST',
@@ -583,7 +574,6 @@ export async function visionToLatex(payload: {
   file: File;
   mode: string;
   prompt?: string;
-  llmConfig?: Partial<LLMConfig>;
 }) {
   const form = new FormData();
   form.append('image', payload.file);
@@ -591,9 +581,6 @@ export async function visionToLatex(payload: {
   form.append('mode', payload.mode);
   if (payload.prompt) {
     form.append('prompt', payload.prompt);
-  }
-  if (payload.llmConfig) {
-    form.append('llmConfig', JSON.stringify(payload.llmConfig));
   }
   const res = await fetch('/api/vision/latex', {
     method: 'POST',
@@ -618,7 +605,6 @@ export interface TransferStartPayload {
   targetMainFile: string;
   engine?: string;
   layoutCheck?: boolean;
-  llmConfig?: Partial<LLMConfig>;
 }
 
 export interface TransferStepResult {
@@ -673,7 +659,6 @@ export interface MineruTransferStartPayload {
   targetMainFile: string;
   engine?: string;
   layoutCheck?: boolean;
-  llmConfig?: Partial<LLMConfig>;
   mineruConfig?: MineruConfig;
 }
 
@@ -982,4 +967,24 @@ export function revealProject(id: string) {
 /** Every file's [path, modified time (ms), size] — to notice changes made outside Numenor. */
 export function projectStat(id: string) {
   return request<{ ok: boolean; files: [string, number, number][] }>(`/api/projects/${encodeURIComponent(id)}/stat`);
+}
+
+export type AIProvider = 'off' | 'local' | 'apple' | 'ollama' | 'openai' | 'gemini';
+export type RemoteAIProvider = 'ollama' | 'openai' | 'gemini';
+export type AIModel = {
+  id: string; name: string; bytes: number; license: string; role: string; quantization: string; installed: boolean;
+};
+export type AIStatus = {
+  active: AIProvider; local: string; apple: string; generating: boolean; lastError: string;
+  remote: Partial<Record<RemoteAIProvider, { endpoint: string; model: string }>>;
+  catalog: AIModel[];
+  localStatus: {
+    compatible: boolean; runtime: string; error: string;
+    progress?: { id: string; phase: string; bytes: number; total: number; error?: string };
+  };
+};
+
+export function getAIStatus(signal?: AbortSignal) { return request<AIStatus>('/api/ai', { signal }); }
+export function aiAction<T = AIStatus>(action: string, fields: object = {}) {
+  return request<T>('/api/ai/action', { method: 'POST', body: JSON.stringify({ action, ...fields }) });
 }

@@ -1,3 +1,4 @@
+import { registerAIModelRoutes } from './routes/aiModels.js';
 // Must run before anything reads process.env.
 import './config/envCompat.js';
 import Fastify from 'fastify';
@@ -63,6 +64,14 @@ fastify.addHook('preHandler', async (req, reply) => {
   req.collabAuth = auth.payload || null;
 });
 
+registerAIModelRoutes(fastify);
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, async () => {
+    const deadline = setTimeout(() => process.exit(1), 4000).unref();
+    try { await fastify.close(); }
+    finally { clearTimeout(deadline); process.exit(0); }
+  });
+}
 registerHealthRoutes(fastify);
 registerArxivRoutes(fastify);
 registerProjectRoutes(fastify);

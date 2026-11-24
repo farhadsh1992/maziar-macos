@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
-import { ChatOpenAI } from '@langchain/openai';
-import { resolveLLMConfig, normalizeBaseURL } from '../../llmService.js';
+import { activeChatModel } from '../../llmService.js';
 import { safeJoin } from '../../../utils/pathUtils.js';
 import { writeFileWithSnapshot, stripCodeFences } from '../utils.js';
 
@@ -11,18 +10,12 @@ const MAX_LOG_TAIL = 8000;
  * fixes compilation errors, writes back the corrected file.
  */
 export async function fixCompile(state) {
-  const { endpoint, apiKey, model } = resolveLLMConfig(state.llmConfig);
   const absMain = safeJoin(state.targetProjectRoot, state.targetMainFile);
   const currentTex = await fs.readFile(absMain, 'utf8');
 
   const log = (state.compileResult?.log || '').slice(-MAX_LOG_TAIL);
 
-  const llm = new ChatOpenAI({
-    modelName: model,
-    openAIApiKey: apiKey,
-    configuration: { baseURL: normalizeBaseURL(endpoint) },
-    temperature: 0.2,
-  });
+  const llm = activeChatModel();
 
   const prompt = `You are a LaTeX compilation error fixer.
 
