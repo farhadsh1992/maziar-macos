@@ -49,3 +49,23 @@ export function remapWritingStatuses(meta, from, to) {
     ))
   };
 }
+
+export function validSourceComment(comment) {
+  return comment && typeof comment.id === 'string' && typeof comment.file === 'string'
+    && Number.isSafeInteger(comment.from) && comment.from >= 0
+    && Number.isSafeInteger(comment.line) && comment.line >= 1
+    && typeof comment.quote === 'string' && comment.quote.length > 0
+    && typeof comment.note === 'string';
+}
+
+export function remapSourceComments(meta, from, to) {
+  if (!Array.isArray(meta.sourceComments)) return meta;
+  const matches = (file) => file === from || file.startsWith(from + '/');
+  const comments = meta.sourceComments.filter(validSourceComment);
+  if (!comments.some((comment) => matches(comment.file))) return meta;
+  return {
+    ...meta,
+    sourceComments: comments.flatMap((comment) => !matches(comment.file) ? [comment]
+      : to ? [{ ...comment, file: to + comment.file.slice(from.length) }] : [])
+  };
+}

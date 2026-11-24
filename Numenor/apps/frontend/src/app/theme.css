@@ -2836,3 +2836,139 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 .nm-writing-option:has(input:checked) { background: var(--nm-gold-soft); }
 .nm-writing-option input { accent-color: var(--nm-gold-text); }
 .nm-writing-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.nm-statusbar .nm-comments-button {
+  position: relative;
+  flex: none;
+  border: 1px solid var(--nm-gold-line);
+  padding-inline: 7px;
+}
+
+.nm-comments-pass {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  overflow: visible;
+  pointer-events: none;
+}
+.nm-comments-pass rect {
+  fill: none;
+  stroke: var(--nm-gold-text);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 13 87;
+  animation: nm-comment-perimeter 1s linear both;
+  filter: drop-shadow(0 0 2px var(--nm-gold));
+}
+@keyframes nm-comment-perimeter {
+  0% { stroke-dashoffset: 13; opacity: 0; }
+  9% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { stroke-dashoffset: -87; opacity: 0; }
+}
+@keyframes nm-comment-brighten {
+  0%, 100% { opacity: 0; }
+  35% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nm-comments-pass rect { stroke-dasharray: none; animation: nm-comment-brighten .38s ease-out both; }
+}
+.nm-comments-popover {
+  position: fixed;
+  z-index: 510;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(43vh, calc(100vh - 62px));
+  overflow-y: auto;
+  padding: 11px;
+  border: 1px solid var(--nm-line-strong);
+  border-radius: 8px;
+  background: var(--nm-elevated);
+  box-shadow: var(--nm-shadow);
+  color: var(--nm-text);
+  font: 13px var(--nm-sans);
+}
+.nm-comments-head, .nm-comments-filters { display: flex; align-items: center; gap: 8px; }
+.nm-comments-head { justify-content: space-between; }
+.nm-comments-filters button[aria-pressed="true"] { background: var(--nm-gold-soft); }
+.nm-comments-list, .nm-comment-compose { display: grid; gap: 6px; }
+.nm-comment-compose blockquote {
+  margin: 0;
+  padding: 5px 7px;
+  border-inline-start: 2px solid var(--nm-gold-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nm-comment-row {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border: 1px solid var(--nm-line);
+  border-radius: 6px;
+  padding: 6px;
+  background: var(--nm-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.nm-comment-row small { color: var(--nm-muted); }
+.nm-comment-row:hover, .nm-comment-row[aria-current="true"] { background: var(--nm-gold-soft); }
+.cm-content .nm-comment-range { background: var(--nm-gold-soft); }
+.cm-content .nm-comment-selected {
+  background: color-mix(in srgb, var(--nm-gold-line) 32%, transparent);
+  box-shadow: inset 0 -1px var(--nm-gold-line);
+}
+.nm-comment-gutter-button {
+  border: 0;
+  padding: 0 2px;
+  background: transparent;
+  color: var(--nm-gold-text);
+  line-height: 1;
+  cursor: pointer;
+}
+@media (max-width: 680px) {
+  .nm-statusbar { gap: 5px; padding-inline: 6px; }
+  .nm-statusbar .nm-stat-btn, .nm-statusbar .nm-stat { font-size: 11px; }
+  .nm-statusbar .nm-stat-sep { display: none; }
+}
+@media (max-width: 460px) {
+  .nm-statusbar .nm-viewlog, .nm-statusbar .nm-stat-btn:has(> svg):not(.nm-comments-button) { display: none; }
+}
+.nm-outline-resizable {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: none;
+  height: min(var(--nm-outline-height), 68%);
+}
+.nm-outline-resizable.collapsed { height: auto; }
+.nm-outline-resizable .outline-list { flex: 1; max-height: none; min-height: 0; }
+.nm-outline-header { display: flex; align-items: center; gap: 4px; }
+.nm-outline-header .outline-header { flex: 1; min-width: 0; }
+.nm-outline-header .icon-btn { flex: none; }
+.nm-outline-resize {
+  position: absolute;
+  inset: -4px 0 auto;
+  height: 8px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.nm-outline-resize:hover, .nm-outline-resize:focus-visible { background: var(--nm-gold-soft); }
+.nm-outline-window {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  background: var(--nm-surface);
+  color: var(--nm-text);
+}
+.nm-outline-window h1 { margin: 0; font: 700 21px var(--nm-serif); }
+.nm-outline-window .outline-list { flex: 1; max-height: none; min-height: 0; }

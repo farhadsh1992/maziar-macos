@@ -57,8 +57,9 @@ but it runs perfectly well on its own.
 - **Editor** — LaTeX highlighting, folding, autocompletion, Cmd/Ctrl + / to comment lines, `%%%` notes
   shown in bold green, zoom with Cmd/Ctrl + scroll or Cmd/Ctrl + = / −.
 - **Writing status** — use the trailing button on a TXT file in Project Files to mark it To do, In progress, or Done. The optional note and date live in project metadata and follow in-project renames and moves.
+- **Source comments** — select text and choose **Add Comment** from the editor menu. The bottom-bar **Comments** button shows this file or the whole project, and note rows and gutter bubbles jump back to the passage. Comments live in project metadata.
 - **LaTeX structure** — the file sidebar's **Outline** follows the cursor through sections, subsections,
-  and subsubsections. Turn on **LaTeX mode** beside an open `.txt` file's tab to use the same tools there.
+  and subsubsections. Drag the divider above Outline to resize it, or open it in a floating window in Maziar. Turn on **LaTeX mode** beside an open `.txt` file's tab to use the same tools there.
   Display equations and tables have gutter folds and right-click previews. **View in PDF** uses the
   last compiled PDF for project macros and complex table formatting. Use **Insert → Insert Table**
   to choose the number of data rows and columns and add an optional header.
@@ -66,8 +67,8 @@ but it runs perfectly well on its own.
   table, and note styling, equation and table folds and previews, and the Outline independently.
   Comment headings such as `%%h1/g> Experiments` support sizes `h1` through `h5` and green, red,
   blue, purple, and orange (`g`, `r`, `b`, `p`, `o`).
-- **AI & Models** — open **Numenor Settings → AI & Models** or click the glowing star in the editor toolbar. AI
-  starts Off. Choose a managed Qwen3 model, Apple's system model, Ollama, an OpenAI-compatible endpoint
+- **AI & Models** — open **Numenor Settings → AI & Models** to configure a provider. Click the glowing star
+  in the editor toolbar to open **Chat**. AI starts Off. Choose a managed Qwen3 model, Apple's system model, Ollama, an OpenAI-compatible endpoint
   such as a llama.cpp server, or Gemini. Provider selection and remote connection tests are explicit.
   Credentials are stored in macOS Keychain. Re-enter credentials from older Numenor releases here.
 - **Managed models** — on Apple Silicon with macOS 14+, **Download & Install** prepares the pinned

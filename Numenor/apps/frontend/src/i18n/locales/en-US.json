@@ -604,5 +604,15 @@
   "Date": "Date",
   "Clear date": "Clear date",
   "Clear status": "Clear status",
-  "Save": "Save"
+  "Save": "Save",
+  "Open AI chat": "Open AI chat",
+  "Choose an AI model": "Choose an AI model",
+  "Comments": "Comments",
+  "Add Comment": "Add Comment",
+  "Comment note": "Comment note",
+  "This File": "This File",
+  "No comments here yet.": "No comments here yet.",
+  "Line {{line}}": "Line {{line}}",
+  "Resize Outline": "Resize Outline",
+  "Open Outline in a floating window": "Open Outline in a floating window"
 }

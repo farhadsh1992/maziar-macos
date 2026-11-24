@@ -602,5 +602,15 @@
   "Date": "日期",
   "Clear date": "清除日期",
   "Clear status": "清除状态",
-  "Save": "保存"
+  "Save": "保存",
+  "Open AI chat": "打开 AI 聊天",
+  "Choose an AI model": "选择 AI 模型",
+  "Comments": "评论",
+  "Add Comment": "添加评论",
+  "Comment note": "评论内容",
+  "This File": "当前文件",
+  "No comments here yet.": "暂无评论。",
+  "Line {{line}}": "第 {{line}} 行",
+  "Resize Outline": "调整大纲高度",
+  "Open Outline in a floating window": "在浮动窗口中打开大纲"
 }

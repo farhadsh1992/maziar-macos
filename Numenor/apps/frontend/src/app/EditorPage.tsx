@@ -1,3 +1,7 @@
+import SourceComments, { CommentBorder, CommentIcon } from './SourceComments';
+import { OutlineList, type OutlineSnapshot } from './OutlineWindow';
+import { displayComments, jumpToComment, resolveComment, sourceCommentsExtension } from '../latex/sourceComments';
+import { addSourceComment, type CommentAnchor, type SourceComment } from '../api/client';
 import WritingStatus from './WritingStatus';
 import { setFileWritingStatus, type FileItem } from '../api/client';
 import AIModels, { AIIndicator, useAIStatus } from './AIModels';
@@ -1052,6 +1056,7 @@ export default function EditorPage() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [agentMessages, setAgentMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [task, setTask] = useState(DEFAULT_TASKS(t)[0].value);
   const [mode, setMode] = useState<'direct' | 'tools'>('direct');
   const [translateScope, setTranslateScope] = useState<'selection' | 'file' | 'project'>('selection');
@@ -1140,6 +1145,27 @@ export default function EditorPage() {
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const [fileContextMenu, setFileContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [outlineCollapsed, setOutlineCollapsed] = useState(false);
+  const [outlineHeight, setOutlineHeight] = useState(() => {
+    try { return Math.max(80, Math.min(450, Number(localStorage.getItem('numenor-outline-height')) || 220)); }
+    catch { return 220; }
+  });
+  const outlineWindow = useRef<Window | null>(null);
+  const outlinePanel = useRef<HTMLDivElement>(null);
+  const [comments, setComments] = useState<SourceComment[]>([]);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentDraft, setCommentDraft] = useState<CommentAnchor>();
+  const [selectedComment, setSelectedComment] = useState<SourceComment>();
+  const [commentPass, setCommentPass] = useState<{ id: number; width: number; height: number }>();
+  const commentButton = useRef<HTMLButtonElement>(null);
+  const selectGutterComment = useRef<(ids: string[]) => void>(() => {});
+  const canComment = useRef(false);
+  const pendingCommentJump = useRef<string>();
+  const closeComments = useCallback(() => {
+    setCommentsOpen(false);
+    setCommentDraft(undefined);
+  }, []);
+  const fileComments = useMemo(() => comments.filter((comment) => comment.file === activePath), [comments, activePath]);
+
   // Maziar: editor zoom, remembered in this browser.
   const [editorFontSize, setEditorFontSize] = useState(() => {
     try {
@@ -1171,7 +1197,7 @@ export default function EditorPage() {
   const [citeTargetFile, setCiteTargetFile] = useState('');
   const [outlineItems, setOutlineItems] = useState<LatexHeading[]>([]);
   const [currentHeading, setCurrentHeading] = useState<LatexHeading | null>(null);
-  const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number; position: number; kind: 'equation' | 'table' } | null>(null);
+  const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number; position: number; kind?: 'equation' | 'table'; comment?: CommentAnchor } | null>(null);
   const [tableInsertPath, setTableInsertPath] = useState('');
   const isTxt = /\.txt$/i.test(activePath);
   const languageKey = JSON.stringify([projectId, activePath]);
@@ -1255,6 +1281,7 @@ export default function EditorPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const viewOnly = me?.kind === 'guest' && me.role === 'view';
+  canComment.current = !viewOnly;
   // PDF preview in its own window (see PdfWindowPage).
   const [pdfPopped, setPdfPopped] = useState(false);
   const pdfPoppedRef = useRef(false);
@@ -1514,6 +1541,7 @@ export default function EditorPage() {
     if (!projectId) return;
     const res = await getProjectTree(projectId);
     setTree(res.items);
+    setComments(res.sourceComments ?? []);
     setFileOrder(res.fileOrder || {});
     setMainFiles(res.mainFiles || []);
     setProjectMainFileState(res.mainFile || '');
@@ -1533,6 +1561,8 @@ export default function EditorPage() {
   useEffect(() => {
     if (!projectId) return;
     setFiles({});
+    setSelectedComment(undefined);
+    closeComments();
     setActivePath('');
     refreshTree(false).catch((err) => setStatus(t('加载文件树失败: {{error}}', { error: String(err) })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1662,6 +1692,7 @@ export default function EditorPage() {
         basicSetup,
         latexCompartment.of([]),
         structuredLatexEditor,
+        sourceCommentsExtension((ids) => selectGutterComment.current(ids)),
         envDepthField,
         scopeGutter,
         indentOnInput(),
@@ -1672,13 +1703,19 @@ export default function EditorPage() {
             const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
               ?? view.state.selection.main.head;
             const block = previewTarget(view.state, position);
-            if (!block) return false;
+            const selection = view.state.selection.main;
+            const quote = view.state.sliceDoc(selection.from, selection.to);
+            const file = activePathRef.current;
+            const comment = canComment.current && file && isTextPath(file) && quote.trim()
+              ? { file, quote, from: selection.from, line: view.state.doc.lineAt(selection.from).number } : undefined;
+            if (!block && !comment) return false;
             event.preventDefault();
             setPreviewMenu({
               x: Math.min(event.clientX, Math.max(0, window.innerWidth - 220)),
-              y: Math.min(event.clientY, Math.max(0, window.innerHeight - 54)),
+              y: Math.min(event.clientY, Math.max(0, window.innerHeight - (block && comment ? 90 : 54))),
               position,
-              kind: block.kind
+              kind: block?.kind,
+              comment
             });
             return true;
           }
@@ -1775,6 +1812,7 @@ export default function EditorPage() {
     }
     const data = await getFile(projectId, filePath);
     setFiles((prev) => ({ ...prev, [filePath]: data.content }));
+    if (activePathRef.current !== filePath) return data.content;
     const collabTextFile = collabEnabled && isTextPath(filePath);
     setEditorValue(collabTextFile ? '' : data.content);
     setIsDirty(false);
@@ -1788,6 +1826,92 @@ export default function EditorPage() {
 
   const openFileRef = useRef(openFile);
   openFileRef.current = openFile;
+  const selectSourceComment = async (comment: SourceComment, fromGutter = false) => {
+    const bounds = commentButton.current?.getBoundingClientRect();
+    if (bounds) setCommentPass((previous) => ({ id: (previous?.id ?? 0) + 1, width: bounds.width, height: bounds.height }));
+    if (fromGutter) {
+      setSpellPanelOpen(false);
+      setCommentDraft(undefined);
+      setCommentsOpen(true);
+    } else closeComments();
+    try {
+      if (activePathRef.current !== comment.file) await openFileRef.current(comment.file);
+      const view = cmViewRef.current;
+      if (!view || activePathRef.current !== comment.file) return;
+      setSelectedComment(comment);
+      displayComments(view, comments.filter((item) => item.file === comment.file), comment.id);
+      jumpToComment(view, comment);
+      const range = resolveComment(view.state.doc, comment);
+      if (collabEnabled && range.from === range.to) {
+        pendingCommentJump.current = comment.id;
+      } else pendingCommentJump.current = undefined;
+      if (!fromGutter) view.focus();
+    } catch (err) { setStatus(String(err)); }
+  };
+  selectGutterComment.current = (ids) => {
+    const id = ids[(selectedComment ? ids.indexOf(selectedComment.id) + 1 : 0) % ids.length];
+    const comment = comments.find((item) => item.id === id && item.file === activePathRef.current);
+    if (comment) void selectSourceComment(comment, true);
+  };
+  useEffect(() => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    displayComments(view, fileComments, selectedComment?.file === activePath ? selectedComment.id : undefined);
+  }, [activePath, fileComments, selectedComment]);
+  useEffect(() => {
+    const view = cmViewRef.current;
+    if (!view || !selectedComment || selectedComment.file !== activePath || pendingCommentJump.current !== selectedComment.id) return;
+    const range = resolveComment(view.state.doc, selectedComment);
+    if (range.from < range.to) {
+      pendingCommentJump.current = undefined;
+      jumpToComment(view, selectedComment);
+    }
+  }, [activePath, editorValue, selectedComment]);
+
+  const outlineSnapshot: OutlineSnapshot = { file: activePath, items: outlineItems, current: currentHeading?.pos, latex: latexMode };
+  const outlineSnapshotRef = useRef(outlineSnapshot);
+  outlineSnapshotRef.current = outlineSnapshot;
+  const jumpToHeading = (item: LatexHeading) => {
+    const view = cmViewRef.current;
+    if (!view || item.line > view.state.doc.lines) return;
+    const line = view.state.doc.line(item.line);
+    revealLine(view, item.line, item.pos - line.from);
+  };
+  const publishOutline = useCallback(() => {
+    if (!outlineWindow.current?.closed) {
+      outlineWindow.current?.postMessage({
+        type: 'nm-outline:update',
+        snapshot: { ...outlineSnapshotRef.current, theme: document.documentElement.dataset.theme }
+      }, window.location.origin);
+    }
+  }, []);
+  useEffect(() => { publishOutline(); }, [activePath, outlineItems, currentHeading, latexMode, publishOutline]);
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== outlineWindow.current) return;
+      if (event.data?.type === 'nm-outline:ready') publishOutline();
+      if (event.data?.type === 'nm-outline:jump' && event.data.file === outlineSnapshotRef.current.file) {
+        const item = outlineSnapshotRef.current.items.find(({ pos }) => pos === event.data.position);
+        if (item) jumpToHeading(item);
+      }
+    };
+    const observer = new MutationObserver(publishOutline);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    window.addEventListener('message', receive);
+    return () => {
+      window.removeEventListener('message', receive);
+      observer.disconnect();
+      outlineWindow.current?.close();
+      outlineWindow.current = null;
+    };
+  }, [projectId, publishOutline]);
+  const resizeOutline = (height: number) => {
+    setOutlineHeight(Math.max(80, Math.min(450, height)));
+  };
+  useEffect(() => {
+    try { localStorage.setItem('numenor-outline-height', String(outlineHeight)); } catch { /* optional */ }
+  }, [outlineHeight]);
+
   const refreshTreeRef = useRef(refreshTree);
   refreshTreeRef.current = refreshTree;
 
@@ -4424,7 +4548,12 @@ export default function EditorPage() {
             </button>
           )}
           {!viewOnly && <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>}
-          {!isGuest && <AIIndicator status={aiStatus} open={() => setSettingsOpen('ai')} />}
+          {!isGuest && <AIIndicator status={aiStatus} open={() => {
+            setSidebarOpen(true);
+            setActiveSidebar('agent');
+            setAssistantMode('chat');
+            window.requestAnimationFrame(() => chatInputRef.current?.focus());
+          }} />}
           <button onClick={compile} className="btn nm-primary nm-compile" disabled={isCompiling}>
             {isCompiling ? t('编译中...') : t('编译 PDF')}
           </button>
@@ -4613,37 +4742,39 @@ export default function EditorPage() {
                   {renderTree(treeRoot.children)}
                 </div>
                 {settings.latex.outline && (
-                  <div className="outline-panel">
-                    <button type="button" className="outline-header nm-outline-toggle"
-                      aria-expanded={!outlineCollapsed} onClick={() => setOutlineCollapsed(!outlineCollapsed)}>
-                      <span><IconChevronDown size={11} /> {t('Outline')}</span>
-                      <span className="muted">{activePath.split('/').pop()}</span>
-                    </button>
-                    {!outlineCollapsed && (latexMode && outlineItems.length > 0 ? (
-                      <div className="outline-list">
-                        {outlineItems.map((item) => (
-                          <button
-                            key={item.pos}
-                            type="button"
-                            aria-current={currentHeading?.pos === item.pos ? 'location' : undefined}
-                            className={`outline-item level-${item.level}`}
-                            onClick={() => {
-                              const view = cmViewRef.current;
-                              if (!view) return;
-                              const line = view.state.doc.line(item.line);
-                              revealLine(view, item.line, item.pos - line.from);
-                            }}
-                          >
-                            <span className="outline-title">{item.title}</span>
-                            <span className="outline-line">L{item.line}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="muted outline-empty">
-                        {t(latexMode ? '未发现 Section 标题。' : 'Open a LaTeX file to show its Outline.')}
-                      </div>
-                    ))}
+                  <div ref={outlinePanel} className={`outline-panel nm-outline-resizable${outlineCollapsed ? ' collapsed' : ''}`}
+                    style={{ '--nm-outline-height': `${outlineHeight}px` } as CSSProperties}>
+                    {!outlineCollapsed && <div className="nm-outline-resize" tabIndex={0} role="separator" aria-orientation="horizontal"
+                      aria-label={t('Resize Outline')} aria-valuemin={80} aria-valuemax={450} aria-valuenow={outlineHeight}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                        event.preventDefault();
+                        resizeOutline((outlinePanel.current?.offsetHeight ?? outlineHeight) + (event.key === 'ArrowUp' ? 16 : -16));
+                      }}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        const handle = event.currentTarget;
+                        const start = event.clientY;
+                        const height = outlinePanel.current?.offsetHeight ?? outlineHeight;
+                        handle.setPointerCapture(event.pointerId);
+                        const move = (pointer: PointerEvent) => resizeOutline(height + start - pointer.clientY);
+                        const stop = () => handle.removeEventListener('pointermove', move);
+                        handle.addEventListener('pointermove', move);
+                        handle.addEventListener('lostpointercapture', stop, { once: true });
+                      }} />}
+                    <div className="nm-outline-header">
+                      <button type="button" className="outline-header nm-outline-toggle"
+                        aria-expanded={!outlineCollapsed} onClick={() => setOutlineCollapsed(!outlineCollapsed)}>
+                        <span><IconChevronDown size={11} /> {t('Outline')}</span>
+                        <span className="muted">{activePath.split('/').pop()}</span>
+                      </button>
+                      <button type="button" className="icon-btn" title={t('Open Outline in a floating window')}
+                        aria-label={t('Open Outline in a floating window')} onClick={() => {
+                          if (outlineWindow.current && !outlineWindow.current.closed) { outlineWindow.current.focus(); return; }
+                          outlineWindow.current = window.open(`/outline-window/${encodeURIComponent(projectId || '')}`, '_blank', 'popup,width=380,height=460');
+                        }}><IconPopOut size={14} /></button>
+                    </div>
+                    {!outlineCollapsed && <OutlineList snapshot={outlineSnapshot} jump={jumpToHeading} />}
                   </div>
                 )}
               </>
@@ -4996,13 +5127,20 @@ export default function EditorPage() {
                   )}
                   <textarea
                     className="chat-input"
+                    ref={chatInputRef}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder={assistantMode === 'chat' ? t('例如：帮我解释这一段的实验设计。') : t('例如：润色这个段落，使其更符合 ACL 风格。')}
                   />
-                  <button onClick={sendPrompt} className="btn full">
-                    {assistantMode === 'chat' ? t('发送') : t('生成建议')}
-                  </button>
+                  {assistantMode === 'chat' && aiStatus?.active === 'off' ? (
+                    <button onClick={() => setSettingsOpen('ai')} className="btn full">
+                      {t('Choose an AI model')}
+                    </button>
+                  ) : (
+                    <button onClick={sendPrompt} className="btn full" disabled={assistantMode === 'chat' && aiStatus?.generating}>
+                      {assistantMode === 'chat' ? t('发送') : t('生成建议')}
+                    </button>
+                  )}
                   {selectionText && assistantMode === 'agent' && (
                     <div className="muted">{t('已选择 {{count}} 字符，将用于任务输入', { count: selectionText.length })}</div>
                   )}
@@ -6481,6 +6619,29 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
             </span>
           </>
         )}
+        <button ref={commentButton} type="button" className="nm-stat-btn nm-comments-button"
+          aria-haspopup="dialog" aria-expanded={commentsOpen} onClick={() => {
+            setSpellPanelOpen(false);
+            if (commentsOpen) closeComments();
+            else { setCommentDraft(undefined); setCommentsOpen(true); }
+          }}>
+          <CommentIcon />{t('Comments')}
+          {commentPass && <CommentBorder key={commentPass.id} width={commentPass.width} height={commentPass.height} />}
+        </button>
+        {commentsOpen && <SourceComments anchor={commentButton}
+          comments={comments.map((comment) => {
+            const view = cmViewRef.current;
+            if (!view || comment.file !== activePath) return comment;
+            return { ...comment, line: view.state.doc.lineAt(resolveComment(view.state.doc, comment).from).number };
+          })}
+          draft={commentDraft} file={activePath} selected={selectedComment?.id} close={closeComments}
+          select={(comment) => { void selectSourceComment(comment); }}
+          save={async (anchor, note) => {
+            const { comment } = await addSourceComment(projectId!, anchor, note);
+            setComments((current) => [...current, comment]);
+            setCommentDraft(undefined);
+            commentButton.current?.focus();
+          }} />}
         <span className="nm-stat-msg" title={status}>{status}</span>
         <button className="nm-icon-btn nm-viewlog" onClick={() => setRightView('log')}>
           <IconLog size={15} /> {t('View log')}
@@ -6548,11 +6709,23 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
             if (event.key === 'Escape') { setPreviewMenu(null); cmViewRef.current?.focus(); }
           }}>
           <div className="ctx-menu" style={{ left: previewMenu.x, top: previewMenu.y }}>
-            <button autoFocus type="button" className="ctx-menu-item" onClick={() => {
+            {previewMenu.comment && <button autoFocus type="button" className="ctx-menu-item" onClick={() => {
+              const draft = previewMenu.comment;
+              if (!draft) return;
+              setCommentDraft(draft);
+              const view = cmViewRef.current;
+              if (view && draft.from <= view.state.doc.length) {
+                view.dispatch({ effects: EditorView.scrollIntoView(draft.from, { y: 'center' }) });
+              }
+              setSpellPanelOpen(false);
+              setCommentsOpen(true);
+              setPreviewMenu(null);
+            }}>{t('Add Comment')}</button>}
+            {previewMenu.kind && <button autoFocus={!previewMenu.comment} type="button" className="ctx-menu-item" onClick={() => {
               const view = cmViewRef.current;
               if (view) { openLatexPreview(view, previewMenu.position); view.focus(); }
               setPreviewMenu(null);
-            }}>{t(previewMenu.kind === 'equation' ? 'Preview Equation' : 'Preview Table')}</button>
+            }}>{t(previewMenu.kind === 'equation' ? 'Preview Equation' : 'Preview Table')}</button>}
           </div>
         </div>
       )}

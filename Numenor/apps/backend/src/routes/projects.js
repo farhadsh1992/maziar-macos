@@ -1,4 +1,4 @@
-import { updateProjectMetadata, writingStatus, remapWritingStatuses } from '../services/projectMetadata.js';
+import { updateProjectMetadata, writingStatus, remapWritingStatuses, remapSourceComments, validSourceComment } from '../services/projectMetadata.js';
 import { projectChanged } from '../services/projectEvents.js';
 import path from 'path';
 import { promises as fs, createWriteStream } from 'fs';
@@ -367,11 +367,13 @@ export function registerProjectRoutes(fastify) {
     const items = await listFilesRecursive(projectRoot);
     let fileOrder = {};
     let statuses = {};
+    let sourceComments = [];
     let mainFile = '';
     try {
       const meta = await readJson(path.join(projectRoot, 'project.json'));
       fileOrder = meta?.fileOrder || {};
       statuses = meta?.writingStatuses || {};
+      if (Array.isArray(meta?.sourceComments)) sourceComments = meta.sourceComments.filter(validSourceComment);
       mainFile = typeof meta?.mainFile === 'string' ? meta.mainFile : '';
     } catch {
       fileOrder = {};
@@ -381,7 +383,7 @@ export function registerProjectRoutes(fastify) {
       const saved = writingStatus(statuses[item.path]);
       if (saved) item.writingStatus = saved;
     }
-    return { items, fileOrder, mainFile, mainFiles: await mainFileCandidates(projectRoot, items) };
+    return { items, fileOrder, sourceComments, mainFile, mainFiles: await mainFileCandidates(projectRoot, items) };
   });
 
   // A cheap fingerprint of every file (modified time + size), polled by the open editor so changes made
@@ -439,6 +441,30 @@ export function registerProjectRoutes(fastify) {
 
   // The file to compile, saved in project.json so everyone working on the project (and every computer)
   // compiles the same one — e.g. main.txt in a project brought over from Overleaf.
+  fastify.post('/api/projects/:id/comments', async (req, reply) => {
+    const { file, from, line, quote, note } = req.body || {};
+    if (typeof file !== 'string' || !isTextFile(file) ||
+        !Number.isSafeInteger(from) || from < 0 || !Number.isSafeInteger(line) || line < 1 ||
+        typeof quote !== 'string' || !quote.trim() ||
+        typeof note !== 'string' || !note.trim() || note.length > 4000) {
+      return reply.code(400).send({ ok: false, error: 'Choose a source passage and enter a comment.' });
+    }
+    const root = await getProjectRoot(req.params.id);
+    const abs = safeJoin(root, file);
+    const comment = {
+      id: crypto.randomUUID(), file: path.relative(root, abs).split(path.sep).join('/'),
+      from, line, quote, note: note.trim()
+    };
+    let exists = false;
+    await updateProjectMetadata(root, async (meta) => {
+      exists = Boolean((await fs.lstat(abs).catch(() => null))?.isFile());
+      return exists ? { ...meta, sourceComments: [...(Array.isArray(meta.sourceComments) ? meta.sourceComments : []), comment] } : meta;
+    });
+    if (!exists) return reply.code(404).send({ ok: false, error: 'The file no longer exists.' });
+    projectChanged(root);
+    return { ok: true, comment };
+  });
+
   fastify.put('/api/projects/:id/writing-status', async (req, reply) => {
     const { path: file, tag } = req.body || {};
     const saved = tag === null ? null : writingStatus(tag);
@@ -672,7 +698,7 @@ export function registerProjectRoutes(fastify) {
           return meta;
         }
       }
-      const next = remapWritingStatuses(meta, keyFrom, keyTo);
+      const next = remapSourceComments(remapWritingStatuses(meta, keyFrom, keyTo), keyFrom, keyTo);
       await ensureDir(path.dirname(absTo));
       await fs.rename(absFrom, absTo);
       return next;
@@ -693,7 +719,7 @@ export function registerProjectRoutes(fastify) {
       await updateProjectMetadata(projectRoot, async (meta) => {
         const stat = await fs.stat(abs);
         await fs.rm(abs, { recursive: stat.isDirectory() });
-        return remapWritingStatuses(meta, key);
+        return remapSourceComments(remapWritingStatuses(meta, key), key);
       });
     } catch (err) {
       if (err.code === 'ENOENT') {

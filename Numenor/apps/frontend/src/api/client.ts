@@ -192,8 +192,17 @@ export function setFileWritingStatus(id: string, path: string, tag: FileWritingS
   });
 }
 
+export type SourceComment = { id: string; file: string; from: number; line: number; quote: string; note: string };
+export type CommentAnchor = Omit<SourceComment, 'id' | 'note'>;
+
+export function addSourceComment(id: string, anchor: CommentAnchor, note: string) {
+  return request<{ ok: true; comment: SourceComment }>(`/api/projects/${id}/comments`, {
+    method: 'POST', body: JSON.stringify({ ...anchor, note })
+  });
+}
+
 export function getProjectTree(id: string) {
-  return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; mainFiles?: string[] }>(`/api/projects/${id}/tree`);
+  return request<{ items: FileItem[]; sourceComments?: SourceComment[]; fileOrder?: FileOrderMap; mainFile?: string; mainFiles?: string[] }>(`/api/projects/${id}/tree`);
 }
 
 /** Saves which file the project compiles (kept in project.json, so it's the same for everyone). */

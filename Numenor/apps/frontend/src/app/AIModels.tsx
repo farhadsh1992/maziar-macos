@@ -43,10 +43,10 @@ export function AIIndicator({ status, open }: { status?: AIStatus; open: () => v
   const active = status?.active;
   const remote = active === 'openai' || active === 'gemini' || active === 'ollama';
   const offDevice = remote && !isLoopback(status?.remote[active]?.endpoint ?? '');
-  const title = [t('AI & Models'), label, offDevice ? t('Off-device') : '', status?.lastError].filter(Boolean).join(' · ');
+  const title = [t('Open AI chat'), label, offDevice ? t('Off-device') : '', status?.lastError].filter(Boolean).join(' · ');
   return (
     <div className="nm-ai-indicator">
-      <button type="button" className="nm-icon-btn nm-ai-star" onClick={open} title={title} aria-label={t('AI & Models')}>
+      <button type="button" className="nm-icon-btn nm-ai-star" onClick={open} title={title} aria-label={t('Open AI chat')}>
         <span aria-hidden="true">✦</span>
       </button>
       {status?.generating && (

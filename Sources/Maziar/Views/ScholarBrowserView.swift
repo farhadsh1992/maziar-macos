@@ -271,6 +271,12 @@ struct ScholarBrowserView: NSViewRepresentable {
             // proper windows too.
             let path = navigationAction.request.url?.path ?? ""
             let isPdfWindow = path.hasPrefix("/pdf-window/")
+            let url = navigationAction.request.url
+            let currentURL = webView.url
+            let isOutlineWindow = path.hasPrefix("/outline-window/")
+                && ["localhost", "127.0.0.1"].contains(url?.host ?? "")
+                && url?.host == currentURL?.host && url?.port == currentURL?.port
+                && url?.scheme == currentURL?.scheme && currentURL?.path.hasPrefix("/editor/") == true
             let isEditorWindow = path.hasPrefix("/editor/") || path.hasPrefix("/history/") || path == "/collab"
             let width = windowFeatures.width?.doubleValue ?? (isEditorWindow ? 1280 : isPdfWindow ? 920 : 520)
             let height = windowFeatures.height?.doubleValue ?? (isEditorWindow ? 820 : isPdfWindow ? 1000 : 680)
@@ -279,13 +285,19 @@ struct ScholarBrowserView: NSViewRepresentable {
             popupWebView.uiDelegate = self
             popupWebView.customUserAgent = embeddedBrowserUserAgent
 
-            let window = NSWindow(
-                contentRect: popupWebView.frame,
-                styleMask: [.titled, .closable, .resizable, .miniaturizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = isPdfWindow ? "PDF Preview" : isEditorWindow ? "Numenor" : "Sign In"
+            let style: NSWindow.StyleMask = [.titled, .closable, .resizable, .miniaturizable]
+            let window: NSWindow
+            if isOutlineWindow {
+                let panel = NSPanel(contentRect: popupWebView.frame, styleMask: style, backing: .buffered, defer: false)
+                panel.isFloatingPanel = true
+                panel.level = .floating
+                panel.hidesOnDeactivate = false
+                panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                window = panel
+            } else {
+                window = NSWindow(contentRect: popupWebView.frame, styleMask: style, backing: .buffered, defer: false)
+            }
+            window.title = isOutlineWindow ? "Outline" : isPdfWindow ? "PDF Preview" : isEditorWindow ? "Numenor" : "Sign In"
             window.contentView = popupWebView
             window.delegate = self
             // `NSWindow`'s default `isReleasedWhenClosed = true` makes AppKit itself release the
