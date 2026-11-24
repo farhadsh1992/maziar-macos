@@ -110,7 +110,7 @@ type CompileEngine = 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic
 type AppSettings = {
   compileEngine: CompileEngine;
   latex: LatexOptions;
-  latexTextFiles: Record<string, true>;
+  latexTextFiles: Record<string, boolean>;
 };
 
 const DEFAULT_TASKS = (t: (key: string) => string) => [
@@ -1206,11 +1206,12 @@ export default function EditorPage() {
   const [tableInsertPath, setTableInsertPath] = useState('');
   const isTxt = /\.txt$/i.test(activePath);
   const languageKey = JSON.stringify([projectId, activePath]);
-  const latexMode = /\.(tex|ltx)$/i.test(activePath) || (isTxt && settings.latexTextFiles[languageKey] === true);
+  const latexMode = /\.(tex|ltx|txt)$/i.test(activePath);
+  const latexHighlights = !isTxt || settings.latexTextFiles[languageKey] !== false;
   const toggleLatexMode = () => setSettings((previous) => {
     const files = { ...previous.latexTextFiles };
-    if (files[languageKey]) delete files[languageKey];
-    else files[languageKey] = true;
+    if (files[languageKey] === false) delete files[languageKey];
+    else files[languageKey] = false;
     return { ...previous, latexTextFiles: files };
   });
   const [plotType, setPlotType] = useState<'bar' | 'line' | 'heatmap'>('bar');
@@ -1778,13 +1779,17 @@ export default function EditorPage() {
           // Refresh the native fold gutter when the independently controlled fold rules change.
           ...(latexMode || /\.(bib|sty|cls)$/i.test(activePath) ? [latex()] : []),
           latexConfiguration.of({
-            enabled: latexMode, options: settings.latex, translate: t,
+            enabled: latexMode,
+            options: latexHighlights ? settings.latex : {
+              ...settings.latex, headings: false, equations: false, tables: false, notes: false
+            },
+            translate: t,
             showPdf: (line) => forwardSyncLineRef.current(line)
           })
         ])
       ]
     });
-  }, [activePath, languageKey, latexCompartment, latexMode, settings.latex, t]);
+  }, [activePath, languageKey, latexCompartment, latexMode, latexHighlights, settings.latex, t]);
 
   const openFile = async (filePath: string) => {
     setExternalChange((c) => (c && c.path !== filePath ? null : c));
@@ -5988,7 +5993,7 @@ Be thorough. Read ALL .tex files before reporting. Group findings by category. I
             </div>
             {isTxt && (
               <button type="button" className="nm-icon-btn nm-language-mode"
-                aria-pressed={latexMode} onClick={toggleLatexMode}>
+                aria-pressed={latexHighlights} onClick={toggleLatexMode}>
                 {t('LaTeX mode')}
               </button>
             )}

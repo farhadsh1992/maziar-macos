@@ -59,7 +59,7 @@ but it runs perfectly well on its own.
 - **Writing status** — use the trailing button on a TXT file in Project Files to mark it To do, In progress, or Done. The optional note and date live in project metadata and follow in-project renames and moves.
 - **Source comments** — select text and choose **Add Comment** from the editor menu. The bottom-bar **Comments** button shows this file or the whole project, and note rows and gutter bubbles jump back to the passage. Comments live in project metadata.
 - **LaTeX structure** — the file sidebar's **Outline** follows the cursor through sections, subsections,
-  and subsubsections. Drag the divider above Outline to resize it, or open it in a floating window in Maziar. Turn on **LaTeX mode** beside an open `.txt` file's tab to use the same tools there.
+  and subsubsections. Drag the divider above Outline to resize it, or open it in a floating window in Maziar. TXT files use LaTeX syntax colors and tools by default. The **LaTeX mode** button beside a TXT tab toggles extra heading, note, equation, and table highlighting.
   Display equations and tables have gutter folds and right-click previews. **View in PDF** uses the
   last compiled PDF for project macros and complex table formatting. Use **Insert → Insert Table**
   to choose the number of data rows and columns and add an optional header.
