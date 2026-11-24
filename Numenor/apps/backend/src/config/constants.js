@@ -38,10 +38,6 @@ function loadCollabSecret() {
 }
 export const COLLAB_TOKEN_SECRET = loadCollabSecret();
 export const COLLAB_TOKEN_TTL = Number(process.env.NUMENOR_COLLAB_TOKEN_TTL || 24 * 60 * 60);
-const requireTokenEnv = process.env.NUMENOR_COLLAB_REQUIRE_TOKEN;
-export const COLLAB_REQUIRE_TOKEN = requireTokenEnv
-  ? !['0', 'false', 'no'].includes(String(requireTokenEnv).toLowerCase())
-  : true;
 export const COLLAB_FLUSH_DEBOUNCE_MS = Number(process.env.NUMENOR_COLLAB_FLUSH_DEBOUNCE_MS || 800);
 export const TUNNEL_MODE = process.env.NUMENOR_TUNNEL || 'false';
 

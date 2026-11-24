@@ -372,5 +372,8 @@
   "Use draft in a new project": "Usar o rascunho num novo projeto",
   "Ask a question or describe a new project.": "Faça uma pergunta ou descreva um novo projeto.",
   "AI draft will be saved as main.tex.": "O rascunho gerado pela IA será guardado como main.tex.",
-  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "Esta ação atualiza apenas o Numenor e mantém os projetos e as definições. Para atualizar toda a aplicação Maziar, use o atualizador do Maziar."
+  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "Esta ação atualiza apenas o Numenor e mantém os projetos e as definições. Para atualizar toda a aplicação Maziar, use o atualizador do Maziar.",
+  "Allow live collaboration": "Permitir colaboração em tempo real",
+  "When collaboration is off, invited people can still view the shared project with their access code. Turning it on allows people with edit access to edit together.": "Com a colaboração desativada, as pessoas convidadas continuam a poder ver o projeto partilhado com o respetivo código de acesso. Ative a colaboração para permitir que as pessoas com acesso de edição trabalhem em conjunto.",
+  "Collaboration is off. Invitees can view this project. Manage collaboration from the project menu in the Projects Workspace.": "A colaboração está desativada. As pessoas convidadas podem ver este projeto. Gerencie a colaboração no menu do projeto na área de trabalho de projetos."
 }

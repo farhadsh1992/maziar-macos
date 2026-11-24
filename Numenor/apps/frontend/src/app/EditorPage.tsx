@@ -45,12 +45,11 @@ import {
 import ShareDialog from './ShareDialog';
 import SyncDialog from './SyncDialog';
 import type { PdfWindowMessage } from './PdfWindowPage';
-import { synctexForward, synctexReverse, spellStatus, spellLanguages, shareStatus, startShare, stopShare, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, projectStat, refreshFolder, type ProjectLocation, type MissingFile, type ShareState, type Me, type PresencePerson } from '../api/client';
+import { synctexForward, synctexReverse, spellStatus, spellLanguages, blobUrl, whoAmI, presence, setProjectMainFile, getProjectLocation, revealProject, projectStat, refreshFolder, type ProjectLocation, type MissingFile, type Me, type PresencePerson } from '../api/client';
 import {
   arxivBibtex,
   arxivSearch,
   createFolder as createFolderApi,
-  createCollabInvite,
   compileProject,
   getAllFiles,
   getCollabServer,
@@ -68,8 +67,7 @@ import {
   uploadFiles,
   visionToLatex,
   writeFile,
-  flushCollabFile,
-  setCollabServer
+  flushCollabFile
 } from '../api/client';
 import type { ArxivPaper } from '../api/client';
 import { createTwoFilesPatch, diffLines } from 'diff';
@@ -1132,7 +1130,7 @@ export default function EditorPage() {
   const [rightView, setRightView] = useState<'pdf' | 'figures' | 'diff' | 'log' | 'toc' | 'review'>('pdf');
   const [selectedFigure, setSelectedFigure] = useState<string>('');
   const [diffFocus, setDiffFocus] = useState<PendingChange | null>(null);
-  const [activeSidebar, setActiveSidebar] = useState<'files' | 'agent' | 'vision' | 'search' | 'websearch' | 'plot' | 'review' | 'collab'>('files');
+  const [activeSidebar, setActiveSidebar] = useState<'files' | 'agent' | 'vision' | 'search' | 'websearch' | 'plot' | 'review'>('files');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [columnSizes, setColumnSizes] = useState({ sidebar: 260, editor: 640, right: 420 });
   const [editorSplit, setEditorSplit] = useState(0.7);
@@ -1237,19 +1235,13 @@ export default function EditorPage() {
   const [reviewReportBusy, setReviewReportBusy] = useState(false);
   const [diagnoseBusy, setDiagnoseBusy] = useState(false);
   const [websearchSelectedAll, setWebsearchSelectedAll] = useState(false);
-  const [collabEnabled, setCollabEnabled] = useState(() => Boolean(getCollabToken()));
-  const [collabStatus, setCollabStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
-  const [collabInviteBusy, setCollabInviteBusy] = useState(false);
-  const [collabInviteLink, setCollabInviteLink] = useState('');
-  // Maziar/Numenor sharing: the public link invited collaborators come in through (owner only).
-  const [share, setShare] = useState<ShareState | null>(null);
-  const [shareBusy, setShareBusy] = useState(false);
+  const [collaboration, setCollaboration] = useState({ projectId: '', enabled: false });
   const isGuest = Boolean(getCollabToken());
+  const guestInviteToken = isGuest ? getCollabInviteToken() : null;
   const { status: aiStatus, setStatus: setAIStatus } = useAIStatus(!isGuest);
-  const [collabServer, setCollabServerState] = useState(() => getCollabServer() || (typeof window === 'undefined' ? '' : window.location.origin));
+  const [collabServer] = useState(() => getCollabServer() || (typeof window === 'undefined' ? '' : window.location.origin));
   const [collabName, setCollabName] = useState(() => loadCollabName() || 'Guest');
   const [collabToken] = useState(() => getCollabToken());
-  const [collabPeers, setCollabPeers] = useState<{ id: number; name: string; color: string }[]>([]);
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const editorAreaRef = useRef<HTMLDivElement | null>(null);
   const cmViewRef = useRef<EditorView | null>(null);
@@ -1286,7 +1278,9 @@ export default function EditorPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
-  const viewOnly = me?.kind === 'guest' && me.role === 'view';
+  const collaborationOn = collaboration.projectId === projectId && collaboration.enabled;
+  const collabEnabled = collaborationOn && (collabActiveRef.current || !isDirty);
+  const viewOnly = isGuest && (!collaborationOn || me?.role !== 'edit');
   canComment.current = !viewOnly;
   // PDF preview in its own window (see PdfWindowPage).
   const [pdfPopped, setPdfPopped] = useState(false);
@@ -1310,12 +1304,6 @@ export default function EditorPage() {
   useEffect(() => {
     persistSettings(settings);
   }, [settings]);
-
-  useEffect(() => {
-    if (collabServer) {
-      setCollabServer(collabServer);
-    }
-  }, [collabServer]);
 
   useEffect(() => {
     persistCollabName(collabName);
@@ -1375,8 +1363,6 @@ export default function EditorPage() {
       }
       collabDocRef.current = null;
       view.dispatch({ effects: collabCompartment.reconfigure([]) });
-      setCollabStatus('disconnected');
-      setCollabPeers([]);
       return;
     }
     if (!isTextPath(activePath)) {
@@ -1387,8 +1373,6 @@ export default function EditorPage() {
       }
       collabDocRef.current = null;
       view.dispatch({ effects: collabCompartment.reconfigure([]) });
-      setCollabStatus('disconnected');
-      setCollabPeers([]);
       setStatus(t('协作暂不支持该文件类型。'));
       return;
     }
@@ -1416,7 +1400,6 @@ export default function EditorPage() {
       filePath: activePath,
       doc: ydoc,
       awareness,
-      onStatus: setCollabStatus,
       onError: (error) => setStatus(t('协作连接失败: {{error}}', { error }))
     });
     collabProviderRef.current = provider;
@@ -1425,123 +1408,15 @@ export default function EditorPage() {
     collabActiveRef.current = true;
     provider.connect();
 
-    const updatePeers = () => {
-      const peers: { id: number; name: string; color: string }[] = [];
-      awareness.getStates().forEach((state, id) => {
-        const user = (state as { user?: { name?: string; color?: string } }).user;
-        if (!user) return;
-        peers.push({
-          id,
-          name: user.name || `User-${id}`,
-          color: user.color || '#b44a2f'
-        });
-      });
-      setCollabPeers(peers);
-    };
-    awareness.on('update', updatePeers);
-    updatePeers();
-
     return () => {
       collabActiveRef.current = false;
-      awareness.off('update', updatePeers);
       provider.disconnect();
       collabProviderRef.current = null;
       collabDocRef.current = null;
       ydoc.destroy();
       view.dispatch({ effects: collabCompartment.reconfigure([]) });
-      setCollabPeers([]);
     };
   }, [activePath, collabCompartment, collabEnabled, collabName, collabServer, collabToken, projectId, t]);
-
-  const handleCreateInvite = useCallback(async () => {
-    if (!projectId) return;
-    setCollabInviteBusy(true);
-    try {
-      const res = await createCollabInvite(projectId);
-      if (!res.ok || !res.token) {
-        throw new Error(t('邀请生成失败'));
-      }
-      // When sharing is on, invites point at the public link; otherwise at the address typed above.
-      const baseInput = (share?.active && share.url) || normalizeServerUrl(collabServer) || (typeof window === 'undefined' ? '' : window.location.origin);
-      const base = baseInput.replace(/\/$/, '');
-      const link = `${base}/collab?token=${encodeURIComponent(res.token)}`;
-      setCollabInviteLink(link);
-      if (!collabEnabled) {
-        setCollabEnabled(true);
-      }
-      setStatus(t('邀请链接已生成'));
-    } catch (err) {
-      setStatus(t('生成邀请失败: {{error}}', { error: String(err) }));
-    } finally {
-      setCollabInviteBusy(false);
-    }
-  }, [collabServer, projectId, share, t]);
-
-  // ---------- Maziar: one-click sharing ----------
-  useEffect(() => {
-    if (isGuest || activeSidebar !== 'collab') return;
-    let stop = false;
-    const poll = () => shareStatus().then((s) => { if (!stop) setShare(s); }).catch(() => { if (!stop) setShare(null); });
-    poll();
-    const timer = window.setInterval(poll, 5000);
-    return () => {
-      stop = true;
-      window.clearInterval(timer);
-    };
-  }, [activeSidebar, isGuest]);
-
-  /** Starts the public link if needed, creates an invite for this project and copies it. */
-  const shareThisProject = useCallback(async () => {
-    if (!projectId) return;
-    setShareBusy(true);
-    try {
-      let current = await shareStatus();
-      if (!current.active) {
-        setStatus(t('Starting a share link… (can take up to 30 seconds)'));
-        current = await startShare();
-      }
-      setShare(current);
-      const res = await createCollabInvite(projectId);
-      if (!res.ok || !res.token) throw new Error(t('邀请生成失败'));
-      const link = `${current.url.replace(/\/$/, '')}/collab?token=${encodeURIComponent(res.token)}`;
-      setCollabInviteLink(link);
-      if (!collabEnabled && activePath && isTextPath(activePath)) setCollabEnabled(true);
-      try {
-        await navigator.clipboard.writeText(link);
-        setStatus(t('Invite link copied — send it to the people you want to edit this project.'));
-      } catch {
-        setStatus(t('Invite link ready — copy it from the Collab tab.'));
-      }
-    } catch (err) {
-      setStatus(t('Couldn’t share: {{error}}', { error: (err as Error).message }));
-      shareStatus().then(setShare).catch(() => {});
-    } finally {
-      setShareBusy(false);
-    }
-  }, [projectId, collabEnabled, activePath, t]);
-
-  const stopSharingNow = useCallback(async () => {
-    setShareBusy(true);
-    try {
-      setShare(await stopShare());
-      setCollabInviteLink('');
-      setStatus(t('Sharing stopped — invite links no longer work.'));
-    } catch (err) {
-      setStatus(String((err as Error).message || err));
-    } finally {
-      setShareBusy(false);
-    }
-  }, [t]);
-
-  const copyInviteLink = useCallback(async () => {
-    if (!collabInviteLink) return;
-    try {
-      await navigator.clipboard.writeText(collabInviteLink);
-      setStatus(t('邀请链接已复制'));
-    } catch (err) {
-      setStatus(t('复制失败: {{error}}', { error: String(err) }));
-    }
-  }, [collabInviteLink, t]);
 
   const refreshTree = async (keepActive = true) => {
     if (!projectId) return;
@@ -3900,6 +3775,9 @@ export default function EditorPage() {
     const tick = () => presence(projectId, activePathRef.current || '')
       .then((res) => {
         if (stop) return;
+        setCollaboration((previous) => previous.projectId === projectId && previous.enabled === res.collaborationEnabled
+          ? previous : { projectId, enabled: res.collaborationEnabled });
+        setMe((previous) => previous && previous.role !== res.role ? { ...previous, role: res.role } : previous);
         setPresenceYou(res.you);
         setPeople((prev) => (JSON.stringify(prev.map((p) => [p.key, p.file, p.role])) === JSON.stringify(res.people.map((p) => [p.key, p.file, p.role])) ? prev : res.people));
       })
@@ -3987,11 +3865,6 @@ export default function EditorPage() {
     }, 300);
   };
   useEffect(() => () => { if (followTimerRef.current) window.clearInterval(followTimerRef.current); }, []);
-  // Someone else is in: join live editing so both see each other's cursor and changes as they type.
-  useEffect(() => {
-    if (others.length > 0 && !collabEnabled && activePath && isTextPath(activePath)) setCollabEnabled(true);
-  }, [others.length, collabEnabled, activePath]);
-
   // ---------- who am I (owner, or invited with edit/view rights) ----------
   const [accessRemoved, setAccessRemoved] = useState(false);
   useEffect(() => {
@@ -4617,9 +4490,19 @@ export default function EditorPage() {
               <IconCloud size={16} /> <span className="nm-hide-narrow">{t('Copies')}</span>
             </button>
           )}
-          {me?.kind !== 'guest' && (
+          {!isGuest && (
             <button className="nm-icon-btn nm-topbar-btn nm-share-btn" onClick={() => setShareOpen(true)} disabled={!projectId} title={t('Share this project with other people')}>
               <IconShare size={16} /> <span className="nm-hide-narrow">{t('Share')}</span>
+            </button>
+          )}
+          {guestInviteToken && (
+            <button type="button" className="nm-icon-btn nm-topbar-btn" title={t('Copy link for my Numenor')}
+              aria-label={t('Copy link for my Numenor')} onClick={() => {
+                const link = `${window.location.origin}/collab?token=${encodeURIComponent(guestInviteToken)}`;
+                navigator.clipboard.writeText(link).then(() => setStatus(t('Link copied.')))
+                  .catch(() => window.prompt(t('Copy this link:'), link));
+              }}>
+              <IconCopy size={16} />
             </button>
           )}
           {!viewOnly && <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>}
@@ -4657,14 +4540,6 @@ export default function EditorPage() {
                 >
                   <span className="tab-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
                   <span className="tab-text">{t('Files')}</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeSidebar === 'collab' ? 'active' : ''}`}
-                  onClick={() => setActiveSidebar('collab')}
-                  title={t('协作')}
-                >
-                  <span className="tab-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"/><path d="M7 21v-2a4 4 0 0 1 3-3.87"/><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/></svg></span>
-                  <span className="tab-text">{t('协作')}</span>
                 </button>
                 <button
                   className={`tab-btn ${activeSidebar === 'agent' ? 'active' : ''}`}
@@ -4856,125 +4731,6 @@ export default function EditorPage() {
                     {!outlineCollapsed && <OutlineList snapshot={outlineSnapshot} jump={jumpToHeading} />}
                   </div>
                 )}
-              </>
-            ) : activeSidebar === 'collab' ? (
-              <>
-                <div className="panel-header">
-                  <div>{t('协作')}</div>
-                  <div className="panel-actions">
-                    <div className="collab-status">
-                      <span>{collabStatus === 'connected' ? t('已连接') : collabStatus === 'connecting' ? t('连接中...') : t('未连接')}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="collab-panel">
-                  {isGuest ? (
-                    <div className="share-box guest">
-                      <div className="share-title">{t('You were invited to this project')}{me?.kind === 'guest' ? ` — ${me.role === 'view' ? t('view only') : t('can edit')}` : ''}</div>
-                      <div className="muted share-text">{me?.role === 'view' ? t('You can read the project and the PDF; changes by others appear live.') : t('Your edits appear for everyone working on it, live. Connect below if you are not connected yet.')}</div>
-                      <div className="muted share-text">{t('Using Numenor on your own Mac or PC? Copy this link and add it there under Projects → Add shared link, with your access code — you then only enter the code once.')}</div>
-                      <div className="collab-row">
-                        <button className="ios-btn secondary" onClick={() => {
-                          const link = `${window.location.origin}/collab?token=${encodeURIComponent(getCollabInviteToken() || collabToken)}`;
-                          navigator.clipboard.writeText(link).then(() => setStatus(t('Link copied.'))).catch(() => window.prompt(t('Copy this link:'), link));
-                        }}><IconCopy size={14} /> {t('Copy link for my Numenor')}</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={`share-box ${share?.active ? 'on' : ''}`}>
-                      <div className="share-head">
-                        <span className={`share-dot ${share?.active ? 'on' : share?.starting || shareBusy ? 'starting' : ''}`} />
-                        <span className="share-title">
-                          {share?.active
-                            ? t('Sharing is on')
-                            : share?.starting || shareBusy
-                              ? t('Starting…')
-                              : t('Share this project with other people')}
-                        </span>
-                        {share?.active && <span className="share-provider">{share.provider}</span>}
-                      </div>
-                      <div className="muted share-text">
-                        {t('Each person you invite gets their own link to this project — only this one — and can edit or just view it, live, while Numenor is running on this computer. You can remove anyone’s access at any time. AI features stay yours.')}
-                      </div>
-                      {share?.note && <div className="share-note">{share.note}</div>}
-                      {share?.error && !share.active && <div className="share-error">{share.error}</div>}
-                      <div className="collab-row">
-                        <button className="ios-btn primary" onClick={() => setShareOpen(true)} disabled={!projectId}>
-                          {t('Share with people…')}
-                        </button>
-                        {share?.active && (
-                          <button className="ios-btn secondary" onClick={() => stopSharingNow()} disabled={shareBusy}>
-                            {t('Stop sharing')}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  <div className="collab-row">
-                    <input
-                      className="input"
-                      value={collabServer}
-                      onChange={(e) => setCollabServerState(e.target.value)}
-                      placeholder={t('协作服务器地址')}
-                    />
-                  </div>
-                  <div className="collab-row">
-                    <input
-                      className="input"
-                      value={collabName}
-                      onChange={(e) => setCollabName(e.target.value)}
-                      placeholder={t('显示名称')}
-                    />
-                    <button
-                      className="ios-btn secondary"
-                      onClick={() => setCollabEnabled((prev) => !prev)}
-                      disabled={!activePath || !isTextPath(activePath)}
-                    >
-                      {collabEnabled ? t('断开') : t('连接')}
-                    </button>
-                  </div>
-                  <div className="collab-row">
-                    <button
-                      className="ios-btn primary"
-                      onClick={() => handleCreateInvite()}
-                      disabled={collabInviteBusy || !projectId}
-                    >
-                      {collabInviteBusy ? t('生成中...') : t('生成邀请链接')}
-                    </button>
-                    <button
-                      className="ios-btn secondary"
-                      onClick={() => copyInviteLink()}
-                      disabled={!collabInviteLink}
-                    >
-                      {t('复制')}
-                    </button>
-                  </div>
-                  <div className="collab-row">
-                    <input
-                      className="input"
-                      readOnly
-                      value={collabInviteLink || ''}
-                      placeholder={t('尚未生成邀请链接')}
-                    />
-                  </div>
-                  <div className="collab-row">
-                    <div className="muted">
-                      {activePath ? t('当前文件: {{path}}', { path: activePath }) : t('未选择文件')}
-                    </div>
-                  </div>
-                  <div className="collab-users">
-                    {collabPeers.length === 0 ? (
-                      <div className="muted">{t('暂无协作者在线')}</div>
-                    ) : (
-                      collabPeers.map((peer) => (
-                        <div key={peer.id} className="collab-user">
-                          <span className="dot" style={{ background: peer.color }} />
-                          <span>{peer.name}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
               </>
             ) : activeSidebar === 'agent' ? (
               <>

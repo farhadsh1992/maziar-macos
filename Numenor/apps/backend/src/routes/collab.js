@@ -4,10 +4,10 @@ import { getProjectRoot } from '../services/projectService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { isTextFile } from '../utils/texUtils.js';
 import crypto from 'crypto';
-import { issueToken, verifyToken, decodeToken, verifyInviteToken, issueSessionToken, SESSION_HOURS } from '../services/collab/tokenService.js';
-import { createInvite, isRevoked, getActiveInvite, normalizeCode } from '../services/inviteService.js';
+import { verifyToken, decodeToken, verifyInviteToken, issueSessionToken, SESSION_HOURS } from '../services/collab/tokenService.js';
+import { isRevoked, getActiveInvite, normalizeCode, collaborationEnabled, setCollaborationEnabled, listInvites } from '../services/inviteService.js';
 import { OWNER_NAME } from '../config/constants.js';
-import { getOrCreateDoc, setupConnection, flushDocNow, getDocDiagnostics } from '../services/collab/docStore.js';
+import { getOrCreateDoc, setupConnection, flushDocNow, getDocDiagnostics, disconnectInvite } from '../services/collab/docStore.js';
 import { isLocalRequest } from '../utils/authUtils.js';
 
 const failures = new Map(); // inviteId → times of recent wrong codes
@@ -24,13 +24,25 @@ async function projectNameOf(projectId) {
 }
 
 export function registerCollabRoutes(fastify) {
-  // Old one-click invite: now creates a named "Link" invite (shows up under People with access).
-  fastify.post('/api/projects/:id/collab/invite', async (req, reply) => {
+  fastify.get('/api/projects/:id/collaboration', async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ ok: false });
+    await getProjectRoot(req.params.id);
+    return { ok: true, enabled: collaborationEnabled(req.params.id) };
+  });
+
+  fastify.put('/api/projects/:id/collaboration', async (req, reply) => {
     if (!isLocalRequest(req)) return reply.code(403).send({ ok: false });
     const { id } = req.params;
+    if (typeof req.body?.enabled !== 'boolean') {
+      return reply.code(400).send({ ok: false, error: 'Expected an enabled flag.' });
+    }
     await getProjectRoot(id);
-    const invite = createInvite({ projectId: id, name: req.body?.name || 'Invite link', role: 'edit' });
-    return { ok: true, token: issueToken({ projectId: id, inviteId: invite.id }), invite };
+    const { enabled } = req.body;
+    setCollaborationEnabled(id, enabled);
+    if (!enabled) {
+      for (const invite of listInvites(id)) disconnectInvite(invite.id);
+    }
+    return { ok: true, enabled };
   });
 
   // What a link or pass is for. A pass (after the access code) gets everything; a bare invite link only
@@ -153,9 +165,17 @@ export function registerCollabRoutes(fastify) {
     }
     const metaPath = path.join(projectRoot, 'project.json');
     const key = `${effectiveProjectId}:${filePath}`;
+    if (!collaborationEnabled(effectiveProjectId)) {
+      conn.socket.close(1008, 'Collaboration is off');
+      return;
+    }
     const doc = await getOrCreateDoc({ key, absPath, metaPath, filePath });
+    if (!collaborationEnabled(effectiveProjectId)) {
+      conn.socket.close(1008, 'Collaboration is off');
+      return;
+    }
     setupConnection(doc, conn.socket, payload
-      ? { author: { name: payload.name || 'Guest', kind: 'guest' }, inviteId: payload.inviteId, readOnly: payload.role === 'view' }
+      ? { author: { name: payload.name || 'Guest', kind: 'guest' }, inviteId: payload.inviteId, readOnly: payload.role === 'view', canWrite: () => verifyToken(tokenValue)?.role === 'edit' }
       : { author: { name: OWNER_NAME, kind: 'owner' } });
   });
 }

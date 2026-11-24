@@ -9,6 +9,7 @@ import { STATE_DIR } from '../config/constants.js';
 const FILE = path.join(STATE_DIR, 'invites.json');
 let cache = null;
 let cacheMtime = 0;
+let collaborationProjects = new Set();
 
 // The 8-character access code each person types (once in their Numenor, each visit in a browser) on top of
 // their link. No I, L, O, 0 or 1, so it can be read out or copied by hand without mix-ups.
@@ -29,6 +30,7 @@ function load() {
     if (cache && mtime === cacheMtime) return cache;
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
     cache = Array.isArray(raw.invites) ? raw.invites : [];
+    collaborationProjects = new Set(Array.isArray(raw.collaborationProjects) ? raw.collaborationProjects : []);
     cacheMtime = mtime;
     // Invites made before access codes existed get one now (their links then need it too).
     if (cache.some((i) => !i.code && !i.revokedAt)) save(cache.map((i) => (i.code || i.revokedAt ? i : { ...i, code: newAccessCode() })));
@@ -38,12 +40,13 @@ function load() {
   return cache;
 }
 
-function save(list) {
+function save(list, projects = collaborationProjects) {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   const tmp = `${FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ invites: list }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify({ invites: list, collaborationProjects: [...projects] }, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, FILE);
   cache = list;
+  collaborationProjects = projects;
   try { cacheMtime = fs.statSync(FILE).mtimeMs; } catch { /* ignore */ }
 }
 
@@ -126,4 +129,21 @@ export function touchInvite(id) {
       save(load().map((i) => (seen.has(i.id) ? { ...i, lastSeenAt: seen.get(i.id) } : i)));
     } catch { /* ignore */ }
   }, 30_000);
+}
+
+export function collaborationEnabled(projectId) {
+  load();
+  return collaborationProjects.has(projectId);
+}
+
+export function setCollaborationEnabled(projectId, enabled) {
+  const invites = load();
+  const projects = new Set(collaborationProjects);
+  if (enabled) projects.add(projectId);
+  else projects.delete(projectId);
+  save(invites, projects);
+}
+
+export function effectiveInviteRole(invite) {
+  return collaborationEnabled(invite.projectId) ? invite.role : 'view';
 }

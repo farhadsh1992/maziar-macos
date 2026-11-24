@@ -627,5 +627,9 @@
   "Use draft in a new project": "Use draft in a new project",
   "Ask a question or describe a new project.": "Ask a question or describe a new project.",
   "AI draft will be saved as main.tex.": "AI draft will be saved as main.tex.",
-  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater."
+  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.",
+  "Collaboration": "Collaboration",
+  "Allow live collaboration": "Allow live collaboration",
+  "When collaboration is off, invited people can still view the shared project with their access code. Turning it on allows people with edit access to edit together.": "When collaboration is off, invited people can still view the shared project with their access code. Turning it on allows people with edit access to edit together.",
+  "Collaboration is off. Invitees can view this project. Manage collaboration from the project menu in the Projects Workspace.": "Collaboration is off. Invitees can view this project. Manage collaboration from the project menu in the Projects Workspace."
 }

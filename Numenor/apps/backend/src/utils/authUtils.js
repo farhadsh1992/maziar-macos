@@ -1,6 +1,5 @@
 import { verifyToken } from '../services/collab/tokenService.js';
 import { touchInvite } from '../services/inviteService.js';
-import { COLLAB_REQUIRE_TOKEN } from '../config/constants.js';
 
 export function isLocalAddress(ip) {
   if (!ip) return false;
@@ -64,7 +63,7 @@ export function remoteRequestAllowed(req, payload) {
     if (decodeURIComponent(id) !== payload.projectId) return false;
     if (rest === '' && method !== 'GET') return false; // no trashing/deleting the project itself
     if (/^\/(permanent|copy|move|trash|archive|unarchive|restore|tags|rename-project|collab\/invite)$/.test(rest)) return false;
-    if (rest.startsWith('/invites')) return false; // who has access is the owner's business
+    if (rest === '/collaboration' || rest.startsWith('/invites')) return false; // who has access is the owner's business
     // View-only people can read everything (and compile, which only writes the build folder) but change nothing.
     if (payload.role === 'view' && method !== 'GET') return false;
     return true;
@@ -83,10 +82,6 @@ export function requireAuthIfRemote(req) {
   const token = getBearerToken(req) || getQueryToken(req);
   const payload = verifyToken(token);
   if (!payload) {
-    // NUMENOR_COLLAB_REQUIRE_TOKEN=0 restores open access on a trusted network (never through a share link).
-    if (!COLLAB_REQUIRE_TOKEN && !req.headers?.['x-forwarded-for'] && !req.headers?.['cf-connecting-ip']) {
-      return { ok: true, payload: null, local: false };
-    }
     return { ok: false, payload: null, local: false };
   }
   touchInvite(payload.inviteId);

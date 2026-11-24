@@ -1,7 +1,7 @@
 // People a project is shared with (owner only — on the computer running Numenor).
 import { isLocalRequest } from '../utils/authUtils.js';
 import { getProjectRoot } from '../services/projectService.js';
-import { listInvites, createInvite, revokeInvite, updateInvite, markInviteEmailed } from '../services/inviteService.js';
+import { listInvites, createInvite, revokeInvite, updateInvite, markInviteEmailed, effectiveInviteRole } from '../services/inviteService.js';
 import { shareStatus } from '../services/shareService.js';
 import { inviteEmail, sendMail } from '../services/mailService.js';
 import { issueToken } from '../services/collab/tokenService.js';
@@ -54,7 +54,7 @@ export function registerInviteRoutes(fastify) {
     const token = issueToken({ projectId: invite.projectId, inviteId: invite.id });
     const link = `${share.url.replace(/\/$/, '')}/collab?token=${encodeURIComponent(token)}`;
     const projectName = String(req.body?.projectName || '').trim().slice(0, 200) || 'a project';
-    const message = inviteEmail({ name: invite.name, owner: OWNER_NAME, projectName, role: invite.role, link, code: invite.code });
+    const message = inviteEmail({ name: invite.name, owner: OWNER_NAME, projectName, role: effectiveInviteRole(invite), link, code: invite.code });
     const result = await sendMail({ to: invite.email, ...message });
     if (result.error) return reply.code(502).send({ ok: false, error: result.error });
     return { ok: true, invite: withToken(markInviteEmailed(req.params.id, invite.id)) };

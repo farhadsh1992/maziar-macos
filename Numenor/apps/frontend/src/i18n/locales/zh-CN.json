@@ -625,5 +625,9 @@
   "Use draft in a new project": "将草稿用于新项目",
   "Ask a question or describe a new project.": "提问或描述一个新项目。",
   "AI draft will be saved as main.tex.": "AI 草稿将保存为 main.tex。",
-  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "此操作仅更新 Numenor，并保留项目和设置。要更新整个 Maziar 应用，请使用 Maziar 自带的更新功能。"
+  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "此操作仅更新 Numenor，并保留项目和设置。要更新整个 Maziar 应用，请使用 Maziar 自带的更新功能。",
+  "Collaboration": "协作",
+  "Allow live collaboration": "允许实时协作",
+  "When collaboration is off, invited people can still view the shared project with their access code. Turning it on allows people with edit access to edit together.": "关闭协作后，受邀者仍可使用访问码查看共享项目。开启协作后，拥有编辑权限的受邀者可以共同编辑。",
+  "Collaboration is off. Invitees can view this project. Manage collaboration from the project menu in the Projects Workspace.": "协作已关闭。受邀者仍可查看此项目。请在项目工作区的项目菜单中管理协作。"
 }

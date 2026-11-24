@@ -402,10 +402,14 @@ export function spellLearn(word: string) {
   return maziarRequest<{ ok: true }>('/api/spell/learn', { method: 'POST', body: JSON.stringify({ word }) });
 }
 
-export function createCollabInvite(id: string) {
-  return request<{ ok: boolean; token: string }>(`/api/projects/${id}/collab/invite`, {
-    method: 'POST',
-    body: JSON.stringify({})
+export function getCollaboration(projectId: string) {
+  return maziarRequest<{ ok: true; enabled: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/collaboration`);
+}
+
+export function setCollaboration(projectId: string, enabled: boolean) {
+  return maziarRequest<{ ok: true; enabled: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/collaboration`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled })
   });
 }
 
@@ -840,7 +844,7 @@ export type PresencePerson = { key: string; name: string; kind: 'owner' | 'guest
 export function presence(projectId: string, file: string, leave = false) {
   const qs = new URLSearchParams({ file });
   if (leave) qs.set('leave', '1');
-  return maziarRequest<{ ok: true; you: string; people: PresencePerson[] }>(`/api/projects/${encodeURIComponent(projectId)}/presence?${qs}`);
+  return maziarRequest<{ ok: true; you: string; people: PresencePerson[]; collaborationEnabled: boolean; role: Me['role'] }>(`/api/projects/${encodeURIComponent(projectId)}/presence?${qs}`);
 }
 
 export function whoAmI() {

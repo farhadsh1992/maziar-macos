@@ -87,7 +87,7 @@ function registerDocHandlers(doc) {
     encoding.writeVarUint(encoder, MESSAGE_SYNC);
     syncProtocol.writeUpdate(encoder, update);
     broadcast(doc, encoding.toUint8Array(encoder), origin);
-    scheduleFlush(doc);
+    if (origin !== 'disk') scheduleFlush(doc);
   });
 
   doc.awareness.on('update', ({ added, updated, removed }, origin) => {
@@ -104,7 +104,10 @@ function registerDocHandlers(doc) {
 
 export async function getOrCreateDoc({ key, absPath, metaPath, filePath = '' }) {
   let doc = docs.get(key);
-  if (doc) return doc;
+  if (doc) {
+    if (doc.conns.size === 0 && !doc.flushTimer) await reloadDocFromDisk(key);
+    return doc;
+  }
   const ydoc = new Y.Doc();
   const awareness = new Awareness(ydoc);
   const text = ydoc.getText('content');
@@ -136,7 +139,7 @@ export async function getOrCreateDoc({ key, absPath, metaPath, filePath = '' }) 
   return doc;
 }
 
-/** who: { author: { name, kind }, inviteId?, readOnly? } */
+/** who: { author: { name, kind }, inviteId?, readOnly?, canWrite? } */
 export function setupConnection(doc, socket, who = {}) {
   const conn = { socket, awarenessClientIds: new Set(), author: who.author || null, inviteId: who.inviteId || null, readOnly: Boolean(who.readOnly) };
   doc.conns.add(conn);
@@ -167,7 +170,7 @@ export function setupConnection(doc, socket, who = {}) {
     const messageType = decoding.readVarUint(decoder);
     if (messageType === MESSAGE_SYNC) {
       // View-only people may ask for the document (step 1) but their changes (step 2 / updates) are dropped.
-      if (conn.readOnly) {
+      if (conn.readOnly || (who.canWrite && !who.canWrite())) {
         const peek = decoding.createDecoder(buffer);
         decoding.readVarUint(peek);
         if (decoding.readVarUint(peek) !== syncProtocol.messageYjsSyncStep1) return;

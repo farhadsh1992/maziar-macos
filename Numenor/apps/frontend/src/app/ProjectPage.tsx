@@ -24,7 +24,9 @@ import {
   refreshFolder,
   moveProject,
   projectDownloadUrl,
-  addSharedWithMe
+  addSharedWithMe,
+  getCollaboration,
+  setCollaboration
 } from '../api/client';
 import type { ProjectMeta, TemplateMeta, TemplateCategory, ProjectFolder } from '../api/client';
 import TransferPanel from './TransferPanel';
@@ -120,6 +122,19 @@ export default function ProjectPage() {
   });
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
+  const [collaborationProject, setCollaborationProject] = useState<ProjectMeta | null>(null);
+  const [collaborationOn, setCollaborationOn] = useState<boolean | null>(null);
+  const [collaborationBusy, setCollaborationBusy] = useState(false);
+  const [collaborationError, setCollaborationError] = useState('');
+  useEffect(() => {
+    if (!collaborationProject) return;
+    let closed = false;
+    getCollaboration(collaborationProject.id)
+      .then(({ enabled }) => { if (!closed) setCollaborationOn(enabled); })
+      .catch((error: Error) => { if (!closed) setCollaborationError(error.message); });
+    return () => { closed = true; };
+  }, [collaborationProject]);
+
   const [status, setStatus] = useState('');
   const [filter, setFilter] = useState('');
 
@@ -1118,6 +1133,11 @@ export default function ProjectPage() {
                                     ? <button className="nm-menu-item" role="menuitem" onClick={() => handleArchive(project.id, false)}>{t('取消归档')}</button>
                                     : <button className="nm-menu-item" role="menuitem" onClick={() => handleArchive(project.id, true)}>{t('归档')}</button>}
                                   <div className="nm-menu-sep" />
+                                  <button className="nm-menu-item" role="menuitem" onClick={() => {
+                                    setCollaborationOn(null);
+                                    setCollaborationError('');
+                                    setCollaborationProject(project);
+                                  }}>{t('Collaboration')}</button>
                                   <button className="nm-menu-item" role="menuitem" onClick={() => setMoveTarget(project)}>{t('Move to folder…')}</button>
                                   <button className="nm-menu-item" role="menuitem" onClick={() => downloadZip(project)}>{t('Download .zip')}</button>
                                   <div className="nm-menu-sep" />
@@ -1160,6 +1180,41 @@ export default function ProjectPage() {
           }
         }}
       />
+
+      {collaborationProject && (
+        <div className="modal-backdrop" onClick={() => !collaborationBusy && setCollaborationProject(null)}>
+          <div className="modal" role="dialog" aria-label={t('Collaboration')} onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => { if (event.key === 'Escape' && !collaborationBusy) setCollaborationProject(null); }}>
+            <div className="modal-header">
+              <div>{t('Collaboration')} · {collaborationProject.name}</div>
+            </div>
+            <div className="modal-body">
+              <p>{t('When collaboration is off, invited people can still view the shared project with their access code. Turning it on allows people with edit access to edit together.')}</p>
+              <label className="row">
+                <input type="checkbox" role="switch" checked={collaborationOn === true}
+                  disabled={collaborationOn === null || collaborationBusy}
+                  onChange={async (event) => {
+                    setCollaborationBusy(true);
+                    setCollaborationError('');
+                    try {
+                      const { enabled } = await setCollaboration(collaborationProject.id, event.target.checked);
+                      setCollaborationOn(enabled);
+                    } catch (error) {
+                      setCollaborationError((error as Error).message);
+                    } finally {
+                      setCollaborationBusy(false);
+                    }
+                  }} />
+                {t('Allow live collaboration')}
+              </label>
+              {collaborationError && <div className="share-error" role="alert">{collaborationError}</div>}
+            </div>
+            <div className="modal-actions">
+              <button autoFocus className="btn" disabled={collaborationBusy} onClick={() => setCollaborationProject(null)}>{t('Close')}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {sharedLinkOpen && (
         <div className="modal-backdrop" onClick={() => !sharedLinkBusy && setSharedLinkOpen(false)}>

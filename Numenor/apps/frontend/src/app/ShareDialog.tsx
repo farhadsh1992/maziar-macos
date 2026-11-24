@@ -7,6 +7,7 @@ import {
   createInvite,
   emailInvite,
   getMailSettings,
+  getCollaboration,
   inviteLink,
   listInvites,
   prettyCode,
@@ -56,7 +57,8 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
   const [owner, setOwner] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'edit' | 'view'>('edit');
+  const [role, setRole] = useState<'edit' | 'view'>('view');
+  const [collaborationOn, setCollaborationOn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [justAdded, setJustAdded] = useState<string>('');
@@ -75,7 +77,8 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
 
   const refresh = useCallback(async () => {
     try {
-      const [s, list] = await Promise.all([shareStatus(), listInvites(projectId)]);
+      const [s, list, collaboration] = await Promise.all([shareStatus(), listInvites(projectId), getCollaboration(projectId)]);
+      setCollaborationOn(collaboration.enabled);
       setShare(s);
       setInvites(list.invites);
     } catch (err) {
@@ -110,7 +113,7 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
         t('{{owner}} shared the Numenor project “{{project}}” with you — you can {{rights}}.', {
           owner: who,
           project: projectName,
-          rights: inv.role === 'view' ? t('view it') : t('view and edit it')
+          rights: !collaborationOn || inv.role === 'view' ? t('view it') : t('view and edit it')
         }),
         '',
         t('Open it in your browser:'),
@@ -358,6 +361,7 @@ export default function ShareDialog({ projectId, projectName, onClose, onStatus 
           <button className="nm-icon-btn borderless" onClick={onClose} aria-label={t('Close')}><IconClose size={16} /></button>
         </div>
         <div className="modal-body nm-share-body">
+          {collaborationOn === false && <p className="muted">{t('Collaboration is off. Invitees can view this project. Manage collaboration from the project menu in the Projects Workspace.')}</p>}
           <div className="nm-share-form">
             <input className="input" placeholder={t('Name')} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && invite()} />
             <input className="input" type="email" placeholder={mail?.configured ? t('Email (they get the link by email)') : t('Email (optional)')} value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && invite()} />

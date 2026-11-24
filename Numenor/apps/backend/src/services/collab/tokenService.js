@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { COLLAB_TOKEN_SECRET } from '../../config/constants.js';
-import { getActiveInvite } from '../inviteService.js';
+import { getActiveInvite, effectiveInviteRole } from '../inviteService.js';
 
 // v2 tokens name one invite (one person). They don't expire on their own; removing the person's access
 // (revoking the invite) is what ends them. v1 tokens (one anonymous link per project) are no longer accepted.
@@ -55,7 +55,7 @@ export function verifyInviteToken(token) {
   if (!decoded) return null;
   const invite = getActiveInvite(decoded.inviteId);
   if (!invite || invite.projectId !== decoded.projectId) return null;
-  return { projectId: decoded.projectId, inviteId: invite.id, role: invite.role, name: invite.name };
+  return { projectId: decoded.projectId, inviteId: invite.id, role: effectiveInviteRole(invite), name: invite.name };
 }
 
 // A pass: what the link + the right access code are exchanged for (POST /api/collab/unlock). It is what
@@ -87,5 +87,5 @@ export function verifyToken(token) {
   if (payload.v !== 1 || !payload.pid || !payload.iid || !(payload.exp > Date.now())) return null;
   const invite = getActiveInvite(payload.iid);
   if (!invite || invite.projectId !== payload.pid || !invite.code || codePrint(invite.code) !== payload.cp) return null;
-  return { projectId: payload.pid, inviteId: invite.id, role: invite.role, name: invite.name };
+  return { projectId: payload.pid, inviteId: invite.id, role: effectiveInviteRole(invite), name: invite.name };
 }
