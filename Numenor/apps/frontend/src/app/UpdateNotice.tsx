@@ -170,7 +170,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
               </div>
             )}
             <div className="muted nm-update-help">
-              {t('Updating downloads the newest Numenor from GitHub, rebuilds it and restarts — about a minute. Your projects and settings are not touched.')}
+              {t('This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.')}
             </div>
             <div className="nm-update-foot">
               <button className="btn ghost" onClick={() => runCheck(true)} disabled={checking || Boolean(busy)}>{checking ? t('Checking…') : t('Check again')}</button>

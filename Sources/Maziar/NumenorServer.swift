@@ -385,6 +385,15 @@ final class NumenorServer: ObservableObject {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+    private static func numenorVersion(in directory: URL) -> [Int]? {
+        let manifest = directory.appendingPathComponent("package.json")
+        guard let data = try? Data(contentsOf: manifest),
+              let package = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let version = package["version"] as? String else { return nil }
+        let parts = version.split(separator: ".").compactMap { Int($0) }
+        return parts.count == 3 ? parts : nil
+    }
+
     /// Brings the set-up copy in line with the bundled source. A no-op (apart from hashing ~3 MB) when
     /// nothing changed; otherwise copies, runs `npm install` if the lockfile changed, and rebuilds.
     private func setUpIfNeeded(force: Bool) async throws {
@@ -393,6 +402,10 @@ final class NumenorServer: ObservableObject {
         }
         let current = (try? String(contentsOf: sourceMarker, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
         if !force, current == wanted, isInstalled { return }
+        if isInstalled, let bundled = Self.numenorVersion(in: source),
+           let installed = Self.numenorVersion(in: appDirectory), bundled.lexicographicallyPrecedes(installed) {
+            return
+        }
 
         state = .working("Checking for Node.js\u{2026}")
         try await requireTool("node", help: "Node.js 18 or newer is required. Install it from nodejs.org (or `brew install node`), then try again.")
@@ -403,7 +416,7 @@ final class NumenorServer: ObservableObject {
         state = .working("Copying Numenor\u{2026}")
         // --delete removes files dropped from Numenor; dependencies, the build output and markers stay.
         try await shell(
-            "/usr/bin/rsync -a --delete --exclude node_modules --exclude apps/frontend/dist --exclude '.maziar-*' --exclude .DS_Store "
+            "/usr/bin/rsync -a --delete --exclude node_modules --exclude apps/frontend/dist --exclude '.maziar-*' --exclude '.numenor-*' --exclude data --exclude .DS_Store "
                 + "\(shellQuote(source.path + "/")) \(shellQuote(appDirectory.path + "/"))",
             cwd: nil)
 

@@ -4,19 +4,15 @@ import UserNotifications
 
 /// Checks GitHub for a newer version of Maziar and can update the app in place.
 ///
-/// Maziar is built from source (`build_app.sh`), not shipped as a downloadable binary, so "update"
-/// means: pull the repository checkout this app was built from, rebuild it, and relaunch. The build
-/// script stamps the running app with the commit it came from and the checkout's path
-/// (`MaziarGitCommit`/`MaziarRepoPath` in Info.plist); an update is available when `origin/main` has
-/// commits the stamped one doesn't. A copy of the app with no checkout behind it can still *check*
-/// (via GitHub's API) but can't update itself.
+/// Builds the upstream revision in an isolated directory before replacing the managed update bundle.
+/// The original source checkout is used to fetch commits when present.
 @MainActor
 final class AppUpdater: ObservableObject {
     static let shared = AppUpdater()
 
     /// The human-readable release name shown in About, Settings and the About panel. Bump this (and
-    /// the numeric `3.1.0` in `build_app.sh`) when cutting a new release.
-    static let versionLabel = "Beta 3.1.0"
+    /// the numeric `3.1.1` in `build_app.sh`) when cutting a new release.
+    static let versionLabel = "Beta 3.1.1"
 
     private static let repoSlug = "farhadsh1992/maziar-macos"
     private static let autoCheckKey = "maziar.updater.autoCheck"
@@ -49,7 +45,8 @@ final class AppUpdater: ObservableObject {
         return path
     }()
 
-    var canSelfUpdate: Bool { repoPath != nil && builtCommit != nil }
+    private var updateScript: URL? { Bundle.main.url(forResource: "update-maziar", withExtension: "sh") }
+    var canSelfUpdate: Bool { updateScript != nil && builtCommit != nil }
     var shortVersion: String { builtCommit.map { String($0.prefix(7)) } ?? "unknown" }
 
     private init() {
@@ -112,7 +109,7 @@ final class AppUpdater: ObservableObject {
             if let repoPath {
                 let fetch = await Self.run("/usr/bin/git", ["-C", repoPath, "fetch", "--quiet", "origin", "main"])
                 guard fetch.status == 0 else { throw UpdateError.message("git fetch failed: \(fetch.output)") }
-                remote = (await Self.run("/usr/bin/git", ["-C", repoPath, "rev-parse", "origin/main"])).output.trimmed
+                remote = (await Self.run("/usr/bin/git", ["-C", repoPath, "rev-parse", "FETCH_HEAD"])).output.trimmed
                 guard let built = builtCommit else { throw UpdateError.message("This copy of Maziar doesn't know which version it is. Rebuild it once with build_app.sh and it will.") }
                 // Up to date if GitHub's tip is what we're running, or is already part of our history.
                 var isCurrent = remote == built
@@ -180,11 +177,11 @@ final class AppUpdater: ObservableObject {
         guard availableCommit != nil else { return }
         let alert = NSAlert()
         alert.messageText = "A new version of Maziar is available"
-        // "You have Beta 3.1.0 (abc1234)" so it's clear what you'd be replacing.
+        // "You have Beta 3.1.1 (abc1234)" so it's clear what you'd be replacing.
         let list = changes.prefix(8).map { "\u{2022} \($0)" }.joined(separator: "\n")
         var text = "You have \(Self.versionLabel) (\(shortVersion)).\n\n" + (list.isEmpty ? "There are newer changes on GitHub." : "What's new:\n\(list)")
         if !canSelfUpdate {
-            text += "\n\nThis copy isn't linked to a source checkout, so it can't update itself — on this Mac run `git pull && ./build_app.sh release` in the project folder."
+            text += "\n\nThis copy needs a fresh build before in-app updating is available."
         }
         alert.informativeText = text
         if canSelfUpdate { alert.addButton(withTitle: "Update Now") }
@@ -196,25 +193,21 @@ final class AppUpdater: ObservableObject {
 
     // MARK: - Update
 
-    /// Pulls the checkout this app was built from, rebuilds it, and relaunches into the new build.
+    /// Builds the update separately and relaunches into the managed bundle.
     func update() async {
-        guard let repoPath, !isUpdating else { return }
+        guard let updateScript, !isUpdating else { return }
         isUpdating = true
         errorMessage = nil
         defer { isUpdating = false; progress = nil }
         do {
-            progress = "Downloading the update from GitHub…"
-            let pull = await Self.run("/usr/bin/git", ["-C", repoPath, "pull", "--ff-only", "origin", "main"])
-            guard pull.status == 0 else {
-                throw UpdateError.message("Couldn't pull the update (local changes in the checkout may conflict):\n\(pull.output.lastLines(8))")
-            }
-            progress = "Building the new version — this takes about a minute…"
-            let build = await Self.run("/bin/bash", ["\(repoPath)/build_app.sh", "release"], directory: repoPath)
-            guard build.status == 0 else {
-                throw UpdateError.message("The build failed (is Xcode or the Command Line Tools installed?):\n\(build.output.lastLines(10))")
+            progress = "Downloading and building Maziar…"
+            let build = await Self.run("/bin/bash", [updateScript.path, repoPath ?? ""])
+            guard build.status == 0,
+                  let newApp = build.output.split(separator: "\n").last.map(String.init),
+                  FileManager.default.fileExists(atPath: newApp) else {
+                throw UpdateError.message("Couldn't build or install the update:\n\(build.output.lastLines(12))")
             }
             progress = "Restarting Maziar…"
-            let newApp = "\(repoPath)/dist/Maziar.app"
             let relaunch = Process()
             relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
             relaunch.arguments = ["-c", "sleep 1.5; open \"$1\"", "sh", newApp]

@@ -30,6 +30,7 @@ if [ -f ".build/$CONFIG/MaziarSpell" ]; then
 fi
 
 cp ".build/$CONFIG/NumenorAI" "$APP_DIR/Contents/MacOS/NumenorAI"
+cp scripts/update-maziar.sh "$APP_DIR/Contents/Resources/update-maziar.sh"
 
 # Numenor's source (the second editor, also github.com/farhadsh1992/numenor). NumenorServer copies it into
 # Application Support, installs its packages and builds it on first use and whenever it changes.
@@ -47,8 +48,8 @@ fi
 
 # Stamped into Info.plist so the running app can tell which commit it was built from (to compare
 # against GitHub for the in-app updater) and which checkout to pull/rebuild when updating itself.
-GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-REPO_PATH="$(pwd)"
+GIT_COMMIT="${MAZIAR_BUILD_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+REPO_PATH="$(printf '%s' "${MAZIAR_BUILD_CHECKOUT-$(pwd)}" | sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
@@ -63,9 +64,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_ID</string>
     <key>CFBundleVersion</key>
-    <string>3.1.0</string>
+    <string>3.1.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>3.1.0</string>
+    <string>3.1.1</string>
     <key>MaziarGitCommit</key>
     <string>$GIT_COMMIT</string>
     <key>MaziarRepoPath</key>

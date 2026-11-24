@@ -13,9 +13,29 @@ rebuttal rounds until it's ready for the conference.
 
 Built with SwiftUI + Swift Package Manager (no Xcode project needed).
 
-**Current version: Beta 3.1.0.** The version lives in two places, bumped together per release:
+**Current version: Beta 3.1.1.** The version lives in two places, bumped together per release:
 `AppUpdater.versionLabel` (shown in About/Settings) and the numeric `CFBundleVersion` /
 `CFBundleShortVersionString` in `build_app.sh`.
+
+## Updating Maziar
+
+Maziar’s in-app updater builds the latest GitHub revision in an isolated directory and launches the new
+bundle from `~/Library/Application Support/Maziar/Updates/Maziar.app`. It leaves tracked edits and
+untracked files in your source checkout in place.
+
+If an older Maziar updater reports a checkout conflict, quit the running app. From the Maziar source
+checkout, fetch the updater and run the one-time recovery command:
+
+```bash
+git fetch origin main &&
+  recovery="$(mktemp /tmp/maziar-update.XXXXXX)" &&
+  git show FETCH_HEAD:scripts/update-maziar.sh > "$recovery" &&
+  /bin/bash "$recovery" "$PWD" --open
+```
+
+Use **Update Numenor** inside Numenor for an editor-only update. This works in Maziar and in a standalone
+Numenor installation. A full Maziar update also includes its bundled Numenor, and an already installed
+newer Numenor is kept.
 
 ## Features
 

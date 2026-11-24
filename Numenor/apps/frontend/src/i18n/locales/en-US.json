@@ -626,5 +626,6 @@
   "Draft a LaTeX project": "Draft a LaTeX project",
   "Use draft in a new project": "Use draft in a new project",
   "Ask a question or describe a new project.": "Ask a question or describe a new project.",
-  "AI draft will be saved as main.tex.": "AI draft will be saved as main.tex."
+  "AI draft will be saved as main.tex.": "AI draft will be saved as main.tex.",
+  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater."
 }

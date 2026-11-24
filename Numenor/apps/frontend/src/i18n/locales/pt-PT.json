@@ -371,5 +371,6 @@
   "Draft a LaTeX project": "Criar um rascunho LaTeX",
   "Use draft in a new project": "Usar o rascunho num novo projeto",
   "Ask a question or describe a new project.": "Faça uma pergunta ou descreva um novo projeto.",
-  "AI draft will be saved as main.tex.": "O rascunho gerado pela IA será guardado como main.tex."
+  "AI draft will be saved as main.tex.": "O rascunho gerado pela IA será guardado como main.tex.",
+  "This updates Numenor only. Your projects and settings are kept. To update the full Maziar app, use Maziar’s own updater.": "Esta ação atualiza apenas o Numenor e mantém os projetos e as definições. Para atualizar toda a aplicação Maziar, use o atualizador do Maziar."
 }
