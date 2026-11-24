@@ -11,8 +11,8 @@ final class AppUpdater: ObservableObject {
     static let shared = AppUpdater()
 
     /// The human-readable release name shown in About, Settings and the About panel. Bump this (and
-    /// the numeric `3.1.1` in `build_app.sh`) when cutting a new release.
-    static let versionLabel = "Beta 3.1.1"
+    /// the numeric `3.1.2` in `build_app.sh`) when cutting a new release.
+    static let versionLabel = "Beta 3.1.2"
 
     private static let repoSlug = "farhadsh1992/maziar-macos"
     private static let autoCheckKey = "maziar.updater.autoCheck"
@@ -177,7 +177,7 @@ final class AppUpdater: ObservableObject {
         guard availableCommit != nil else { return }
         let alert = NSAlert()
         alert.messageText = "A new version of Maziar is available"
-        // "You have Beta 3.1.1 (abc1234)" so it's clear what you'd be replacing.
+        // "You have Beta 3.1.2 (abc1234)" so it's clear what you'd be replacing.
         let list = changes.prefix(8).map { "\u{2022} \($0)" }.joined(separator: "\n")
         var text = "You have \(Self.versionLabel) (\(shortVersion)).\n\n" + (list.isEmpty ? "There are newer changes on GitHub." : "What's new:\n\(list)")
         if !canSelfUpdate {
@@ -201,7 +201,7 @@ final class AppUpdater: ObservableObject {
         defer { isUpdating = false; progress = nil }
         do {
             progress = "Downloading and building Maziar…"
-            let build = await Self.run("/bin/bash", [updateScript.path, repoPath ?? ""])
+            let build = await Self.run("/bin/bash", [updateScript.path, repoPath ?? "", "", Bundle.main.bundleURL.path])
             guard build.status == 0,
                   let newApp = build.output.split(separator: "\n").last.map(String.init),
                   FileManager.default.fileExists(atPath: newApp) else {
@@ -210,7 +210,7 @@ final class AppUpdater: ObservableObject {
             progress = "Restarting Maziar…"
             let relaunch = Process()
             relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
-            relaunch.arguments = ["-c", "sleep 1.5; open \"$1\"", "sh", newApp]
+            relaunch.arguments = ["-c", "sleep 1.5; open -n \"$1\"", "sh", newApp]
             try relaunch.run()
             NSApp.terminate(nil)
         } catch {
