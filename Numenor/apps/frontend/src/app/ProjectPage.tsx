@@ -1,5 +1,4 @@
-import WorkspaceChat from './WorkspaceChat';
-import { AIIndicator, useAIStatus } from './AIModels';
+import { AIIndicator } from './AIModels';
 import { interfaceLanguages, interfaceLanguageLabel } from '../i18n';
 import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -133,10 +132,43 @@ export default function ProjectPage() {
   const [tagsExpanded, setTagsExpanded] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [workspaceChatOpen, setWorkspaceChatOpen] = useState(false);
+  const workspaceChatWindow = useRef<Window | null>(null);
   const [createSource, setCreateSource] = useState<string>();
   const [creating, setCreating] = useState(false);
-  const { status: workspaceAI, setStatus: setWorkspaceAI } = useAIStatus(workspaceChatOpen);
+  useEffect(() => {
+    const syncTheme = () => {
+      if (workspaceChatWindow.current?.closed) return;
+      workspaceChatWindow.current?.postMessage({
+        type: 'nm-workspace-ai:theme', theme: document.documentElement.dataset.theme
+      }, window.location.origin);
+    };
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== workspaceChatWindow.current) return;
+      if (event.data?.type === 'nm-workspace-ai:ready') syncTheme();
+      if (event.data?.type === 'nm-workspace-ai:create') {
+        const source = event.data.source;
+        if (source !== undefined && typeof source !== 'string') return;
+        setCreateSource(source);
+        setCreateOpen(true);
+        workspaceChatWindow.current?.close();
+        window.focus();
+      }
+    };
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    window.addEventListener('message', receive);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('message', receive);
+      workspaceChatWindow.current?.close();
+    };
+  }, []);
+  const openWorkspaceChat = () => {
+    const popup = workspaceChatWindow.current;
+    if (popup && !popup.closed) { popup.focus(); return; }
+    workspaceChatWindow.current = window.open('/workspace-ai', '_blank', 'popup,width=580,height=680');
+    if (!workspaceChatWindow.current) setStatus(t('Allow pop-ups to open Workspace AI.'));
+  };
   const [sharedLinkOpen, setSharedLinkOpen] = useState(false);
   const [sharedLink, setSharedLink] = useState('');
   const [sharedCode, setSharedCode] = useState('');
@@ -734,7 +766,7 @@ export default function ProjectPage() {
             {viewFilter === 'trash' && viewCounts.trash > 0 && (
               <button className="btn ghost" onClick={handleEmptyTrash}>{t('清空回收站')}</button>
             )}
-            <AIIndicator status={workspaceAI} open={() => setWorkspaceChatOpen(true)} label={t('Workspace AI')} />
+            <AIIndicator open={openWorkspaceChat} label={t('Workspace AI')} />
             <div className="ios-select-wrapper">
               <button className="ios-select-trigger" onClick={() => setLangDropdownOpen(!langDropdownOpen)}>
                 <span>{interfaceLanguageLabel(i18n.language)}</span>
@@ -1170,13 +1202,6 @@ export default function ProjectPage() {
           </div>
         </div>
       )}
-
-      <WorkspaceChat visible={workspaceChatOpen} status={workspaceAI} onStatus={setWorkspaceAI}
-        close={() => setWorkspaceChatOpen(false)} create={(source) => {
-          setWorkspaceChatOpen(false);
-          setCreateSource(source);
-          setCreateOpen(true);
-        }} />
 
       {createOpen && (
         <div className="modal-backdrop" onClick={() => { setCreateOpen(false); setCreateSource(undefined); }}>

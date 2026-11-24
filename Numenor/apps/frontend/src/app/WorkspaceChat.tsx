@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
-import { aiAction, runAgent, type AIStatus } from '../api/client';
-import AIModels from './AIModels';
+import { aiAction, runAgent } from '../api/client';
+import AIModels, { useAIStatus } from './AIModels';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -11,10 +11,9 @@ function latexDraft(reply: string) {
   return /^\\documentclass\b/.test(source) && /\\end\{document\}\s*$/.test(source) ? source + '\n' : '';
 }
 
-export default function WorkspaceChat({ visible, status, onStatus, close, create }: {
-  visible: boolean; status?: AIStatus; onStatus: (status: AIStatus) => void;
-  close: () => void; create: (source?: string) => void;
-}) {
+export default function WorkspaceChat() {
+  const { status, setStatus } = useAIStatus(true);
+  const transcript = useRef<HTMLDivElement>(null);
   const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -22,17 +21,32 @@ export default function WorkspaceChat({ visible, status, onStatus, close, create
   const [settings, setSettings] = useState(false);
   const [mode, setMode] = useState<'chat' | 'draft'>('chat');
 
-  if (!visible) return null;
+  useEffect(() => {
+    document.title = t('Workspace AI');
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window.opener || event.data?.type !== 'nm-workspace-ai:theme') return;
+      const { theme } = event.data;
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      else delete document.documentElement.dataset.theme;
+    };
+    window.addEventListener('message', receive);
+    window.opener?.postMessage({ type: 'nm-workspace-ai:ready' }, window.location.origin);
+    return () => window.removeEventListener('message', receive);
+  }, [t]);
+  useEffect(() => {
+    const panel = transcript.current;
+    if (panel) panel.scrollTop = panel.scrollHeight;
+  }, [messages]);
+  const create = (source?: string) =>
+    window.opener?.postMessage({ type: 'nm-workspace-ai:create', source }, window.location.origin);
   return (
-    <div className="modal-backdrop" onClick={close} onKeyDown={(event) => { if (event.key === 'Escape') close(); }}>
-      <div className="modal nm-workspace-chat" role="dialog" aria-label={t('Workspace AI')}
-        onClick={(event) => event.stopPropagation()}>
+    <main className="nm-chat-window nm-workspace-chat" aria-label={t('Workspace AI')}>
         <header className="modal-header">
           <strong>{t(settings ? 'AI & Models' : 'Workspace AI')}</strong>
-          <button type="button" className="icon-btn" aria-label={t('Close')} onClick={close}>×</button>
+          <button type="button" className="icon-btn" aria-label={t('Close')} onClick={() => window.close()}>×</button>
         </header>
         {settings ? <>
-          <div className="modal-body"><AIModels status={status} onUpdate={onStatus} /></div>
+          <div className="modal-body"><AIModels status={status} onUpdate={setStatus} /></div>
           <div className="modal-actions"><button type="button" className="btn" onClick={() => setSettings(false)}>{t('Back to Chat')}</button></div>
         </> : <>
           <div className="nm-workspace-chat-mode">
@@ -40,11 +54,11 @@ export default function WorkspaceChat({ visible, status, onStatus, close, create
             <button type="button" className="nm-stat-btn" aria-pressed={mode === 'draft'} onClick={() => setMode('draft')}>{t('Draft a LaTeX project')}</button>
             <button type="button" className="nm-stat-btn" onClick={() => setSettings(true)}>{t('AI & Models')}</button>
           </div>
-          <div className="chat-messages" aria-live="polite">
+          <div ref={transcript} className="chat-messages" aria-live="polite" tabIndex={0}>
             {messages.map((message, index) => {
               const source = message.role === 'assistant' ? latexDraft(message.content) : '';
               return <div className={`chat-msg ${message.role}`} key={index}>
-                <div className="content">{message.role === 'assistant'
+                <div className={`content${message.role === 'assistant' ? ' markdown-body' : ''}`}>{message.role === 'assistant'
                   ? <ReactMarkdown>{message.content}</ReactMarkdown> : message.content}</div>
                 {source && <button type="button" className="btn ghost" onClick={() => create(source)}>{t('Use draft in a new project')}</button>}
               </div>;
@@ -79,7 +93,6 @@ export default function WorkspaceChat({ visible, status, onStatus, close, create
             </div>
           </form>
         </>}
-      </div>
-    </div>
+    </main>
   );
 }
