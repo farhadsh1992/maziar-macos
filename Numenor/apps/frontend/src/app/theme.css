@@ -2609,7 +2609,10 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
   box-shadow: inset 2px 0 var(--nm-latex-table);
 }
 
-.cm-nm-note { font-weight: 600; }
+.cm-nm-note { font-weight: 600; color: var(--nm-text); }
+
+/* Syntax highlighting can wrap the title in a separate comment-colored span. */
+.editor-host .cm-nm-note * { color: inherit; }
 .cm-nm-note-1 { font-size: 1.42em; font-weight: 750; }
 .cm-nm-note-2 { font-size: 1.3em; font-weight: 700; }
 .cm-nm-note-3 { font-size: 1.19em; }
@@ -2972,3 +2975,15 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 }
 .nm-outline-window h1 { margin: 0; font: 700 21px var(--nm-serif); }
 .nm-outline-window .outline-list { flex: 1; max-height: none; min-height: 0; }
+
+.nm-chat-window {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  background: var(--nm-pane);
+  color: var(--nm-text);
+}
+.nm-chat-window .panel-header { flex: none; }
+.nm-chat-window .chat-messages { flex: 1; min-height: 0; overflow: auto; }
+.nm-chat-window .chat-controls { flex: none; }

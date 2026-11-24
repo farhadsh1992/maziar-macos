@@ -1,3 +1,4 @@
+import type { ChatSnapshot } from './ChatWindow';
 import SourceComments, { CommentBorder, CommentIcon } from './SourceComments';
 import { OutlineList, type OutlineSnapshot } from './OutlineWindow';
 import { displayComments, jumpToComment, resolveComment, sourceCommentsExtension } from '../latex/sourceComments';
@@ -1056,6 +1057,10 @@ export default function EditorPage() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [agentMessages, setAgentMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
+  const [chatPrompt, setChatPrompt] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const chatSendPending = useRef(false);
+  const chatPopup = useRef<Window | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [task, setTask] = useState(DEFAULT_TASKS(t)[0].value);
   const [mode, setMode] = useState<'direct' | 'tools'>('direct');
@@ -4211,8 +4216,10 @@ export default function EditorPage() {
     };
   }, []);
 
-  const sendPrompt = async () => {
-    const isChat = assistantMode === 'chat';
+  const sendPrompt = async (detachedPrompt?: string) => {
+    const isChat = detachedPrompt !== undefined || assistantMode === 'chat';
+    const message = isChat ? detachedPrompt ?? chatPrompt : prompt;
+    if (isChat && (!message.trim() || chatSendPending.current || aiStatus?.active === 'off' || aiStatus?.generating)) return;
     if (!activePath && !isChat) return;
     if (isChat === false && task === 'translate') {
       if (translateScope === 'selection' && !selectionText) {
@@ -4220,13 +4227,17 @@ export default function EditorPage() {
         return;
       }
     }
-    const userMsg: Message = { role: 'user', content: prompt || t('(empty)') };
+    if (isChat) {
+      chatSendPending.current = true;
+      setChatSending(true);
+    }
+    const userMsg: Message = { role: 'user', content: message || t('(empty)') };
     const setHistory = isChat ? setChatMessages : setAgentMessages;
     const history = isChat ? chatMessages : agentMessages;
     const nextHistory = [...history, userMsg];
     setHistory(nextHistory);
     try {
-      let effectivePrompt = prompt;
+      let effectivePrompt = message;
       let effectiveSelection = selectionText;
       let effectiveContent = editorValue;
       let effectiveMode = mode;
@@ -4278,8 +4289,9 @@ export default function EditorPage() {
         history: nextHistory.slice(-8)
       });
       const replyText = res.reply || t('已生成建议。');
-      setHistory((prev) => [...prev, { role: 'assistant', content: '' }]);
-      window.setTimeout(() => startTypewriter(setHistory, replyText), 0);
+      const detached = isChat && chatPopup.current && !chatPopup.current.closed;
+      setHistory((prev) => [...prev, { role: 'assistant', content: detached ? replyText : '' }]);
+      if (!detached) window.setTimeout(() => startTypewriter(setHistory, replyText), 0);
 
       if (!isChat && res.patches && res.patches.length > 0) {
         const nextPending = res.patches.map((patch) => ({
@@ -4300,6 +4312,70 @@ export default function EditorPage() {
       }
     } catch (err) {
       setHistory((prev) => [...prev, { role: 'assistant', content: t('请求失败: {{error}}', { error: String(err) }) }]);
+    } finally {
+      if (isChat) {
+        chatSendPending.current = false;
+        setChatSending(false);
+      }
+    }
+  };
+
+  const sendDetachedChat = useRef(sendPrompt);
+  sendDetachedChat.current = sendPrompt;
+  const chatSnapshot = useRef<ChatSnapshot>();
+  chatSnapshot.current = {
+    messages: chatMessages,
+    draft: chatPrompt,
+    off: aiStatus?.active === 'off',
+    busy: chatSending || Boolean(aiStatus?.generating),
+    generating: Boolean(aiStatus?.generating)
+  };
+  const syncDetachedChat = useCallback(() => {
+    if (chatPopup.current?.closed) return;
+    chatPopup.current?.postMessage({
+      type: 'nm-chat:update',
+      snapshot: { ...chatSnapshot.current, theme: document.documentElement.dataset.theme }
+    }, window.location.origin);
+  }, []);
+  useEffect(() => { syncDetachedChat(); }, [chatMessages, chatPrompt, chatSending, aiStatus, syncDetachedChat]);
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== chatPopup.current) return;
+      const { type, text } = event.data ?? {};
+      if (type === 'nm-chat:ready') syncDetachedChat();
+      if (type === 'nm-chat:draft' && typeof text === 'string') setChatPrompt(text);
+      if (type === 'nm-chat:send' && typeof text === 'string') void sendDetachedChat.current(text);
+      if (type === 'nm-chat:settings') {
+        window.focus();
+        setSettingsOpen('ai');
+      }
+      if (type === 'nm-chat:dock') {
+        chatPopup.current?.close();
+        chatPopup.current = null;
+        setSidebarOpen(true);
+        setActiveSidebar('agent');
+        setAssistantMode('chat');
+        window.focus();
+        window.requestAnimationFrame(() => chatInputRef.current?.focus());
+      }
+    };
+    const theme = new MutationObserver(syncDetachedChat);
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    window.addEventListener('message', receive);
+    return () => {
+      window.removeEventListener('message', receive);
+      theme.disconnect();
+      chatPopup.current?.close();
+      chatPopup.current = null;
+    };
+  }, [projectId, syncDetachedChat]);
+
+  const detachChat = () => {
+    if (chatPopup.current && !chatPopup.current.closed) { chatPopup.current.focus(); return; }
+    chatPopup.current = window.open(`/chat-window/${encodeURIComponent(projectId || '')}`, '_blank', 'popup,width=500,height=680');
+    if (chatPopup.current) {
+      setAssistantMode('agent');
+      setActiveSidebar('files');
     }
   };
 
@@ -4549,6 +4625,7 @@ export default function EditorPage() {
           )}
           {!viewOnly && <button onClick={saveActiveFile} className="btn nm-save" title={t('Save (Cmd/Ctrl + S)')}>{t('保存')}</button>}
           {!isGuest && <AIIndicator status={aiStatus} open={() => {
+            if (chatPopup.current && !chatPopup.current.closed) { chatPopup.current.focus(); return; }
             setSidebarOpen(true);
             setActiveSidebar('agent');
             setAssistantMode('chat');
@@ -4902,10 +4979,16 @@ export default function EditorPage() {
                 <div className="panel-header">
                   <div>{assistantMode === 'chat' ? t('Chat') : t('Agent')}</div>
                   <div className="panel-actions">
+                    {assistantMode === 'chat' && !isGuest && <button className="icon-btn" type="button"
+                      aria-label={t('Open Chat in a separate window')} title={t('Open Chat in a separate window')}
+                      onClick={detachChat}><IconPopOut size={15} /></button>}
                     <div className="mode-toggle">
                       <button
                         className={`mode-btn ${assistantMode === 'chat' ? 'active' : ''}`}
-                        onClick={() => setAssistantMode('chat')}
+                        onClick={() => {
+                          if (chatPopup.current && !chatPopup.current.closed) chatPopup.current.focus();
+                          else setAssistantMode('chat');
+                        }}
                       >
                         {t('Chat')}
                       </button>
@@ -5128,8 +5211,8 @@ export default function EditorPage() {
                   <textarea
                     className="chat-input"
                     ref={chatInputRef}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
+                    value={assistantMode === 'chat' ? chatPrompt : prompt}
+                    onChange={(e) => (assistantMode === 'chat' ? setChatPrompt : setPrompt)(e.target.value)}
                     placeholder={assistantMode === 'chat' ? t('例如：帮我解释这一段的实验设计。') : t('例如：润色这个段落，使其更符合 ACL 风格。')}
                   />
                   {assistantMode === 'chat' && aiStatus?.active === 'off' ? (
@@ -5137,7 +5220,7 @@ export default function EditorPage() {
                       {t('Choose an AI model')}
                     </button>
                   ) : (
-                    <button onClick={sendPrompt} className="btn full" disabled={assistantMode === 'chat' && aiStatus?.generating}>
+                    <button onClick={() => { void sendPrompt(); }} className="btn full" disabled={assistantMode === 'chat' && (chatSending || aiStatus?.generating || !chatPrompt.trim())}>
                       {assistantMode === 'chat' ? t('发送') : t('生成建议')}
                     </button>
                   )}

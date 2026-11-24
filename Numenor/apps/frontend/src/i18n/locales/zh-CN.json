@@ -612,5 +612,8 @@
   "No comments here yet.": "暂无评论。",
   "Line {{line}}": "第 {{line}} 行",
   "Resize Outline": "调整大纲高度",
-  "Open Outline in a floating window": "在浮动窗口中打开大纲"
+  "Open Outline in a floating window": "在浮动窗口中打开大纲",
+  "Open Chat in a separate window": "在独立窗口中打开聊天",
+  "Return Chat to editor": "将聊天移回编辑器",
+  "Chat message": "聊天消息"
 }

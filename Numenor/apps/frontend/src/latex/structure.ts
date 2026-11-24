@@ -50,10 +50,10 @@ function tokenize(text: string) {
       literal = environment[2];
       continue;
     } else if (value.startsWith('%')) {
-      const marker = value.match(/^%%h([1-5])\/([grbpo])> +(?=\S)/);
+      const marker = value.match(/^%%h([1-5])\/([grbpo]?)>[ \t]*(?=\S)/);
       const lineStart = text.lastIndexOf('\n', token.index - 1) + 1;
       if (marker && !text.slice(lineStart, token.index).trim()) {
-        notes.push({ from: token.index + marker[0].length, to: end, level: marker[1], color: marker[2] });
+        notes.push({ from: token.index + marker[0].length, to: end, level: marker[1], color: marker[2] || 'default' });
       }
       chunks.push(text.slice(copiedTo, token.index));
       copiedTo = token.index;

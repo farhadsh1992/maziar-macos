@@ -614,5 +614,8 @@
   "No comments here yet.": "No comments here yet.",
   "Line {{line}}": "Line {{line}}",
   "Resize Outline": "Resize Outline",
-  "Open Outline in a floating window": "Open Outline in a floating window"
+  "Open Outline in a floating window": "Open Outline in a floating window",
+  "Open Chat in a separate window": "Open Chat in a separate window",
+  "Return Chat to editor": "Return Chat to editor",
+  "Chat message": "Chat message"
 }

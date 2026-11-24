@@ -66,7 +66,7 @@ but it runs perfectly well on its own.
 - **LaTeX editor settings** — under **Numenor Settings → Editor / LaTeX**, control heading, equation,
   table, and note styling, equation and table folds and previews, and the Outline independently.
   Comment headings such as `%%h1/g> Experiments` support sizes `h1` through `h5` and green, red,
-  blue, purple, and orange (`g`, `r`, `b`, `p`, `o`).
+  blue, purple, and orange (`g`, `r`, `b`, `p`, `o`). Use `%%h2/>` for the normal editor text color.
 - **AI & Models** — open **Numenor Settings → AI & Models** to configure a provider. Click the glowing star
   in the editor toolbar to open **Chat**. AI starts Off. Choose a managed Qwen3 model, Apple's system model, Ollama, an OpenAI-compatible endpoint
   such as a llama.cpp server, or Gemini. Provider selection and remote connection tests are explicit.

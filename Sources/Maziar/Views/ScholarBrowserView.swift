@@ -80,6 +80,21 @@ struct ScholarBrowserView: NSViewRepresentable {
         /// window returned from `createWebViewWith` would be deallocated the instant this method
         /// returns, before the popup ever had a chance to actually appear.
         private var popupWindows: [ObjectIdentifier: NSWindow] = [:]
+        private static let outlineOnTopKey = "maziar.numenor.outlineAlwaysOnTop"
+
+        private func setOutlineLevel(_ panel: NSPanel, alwaysOnTop: Bool) {
+            panel.isFloatingPanel = alwaysOnTop
+            panel.level = alwaysOnTop ? .floating : .normal
+            panel.collectionBehavior = alwaysOnTop ? [.canJoinAllSpaces, .fullScreenAuxiliary] : [.fullScreenAuxiliary]
+        }
+
+        @objc private func toggleOutlineOnTop(_ sender: NSButton) {
+            guard let panel = sender.window as? NSPanel else { return }
+            let enabled = sender.state == .on
+            UserDefaults.standard.set(enabled, forKey: Self.outlineOnTopKey)
+            setOutlineLevel(panel, alwaysOnTop: enabled)
+            if enabled { panel.orderFrontRegardless() }
+        }
 
         /// Retains the KVO observation tokens below for as long as this `Coordinator` lives —
         /// letting them fall out of scope would silently stop the observation.
@@ -273,10 +288,11 @@ struct ScholarBrowserView: NSViewRepresentable {
             let isPdfWindow = path.hasPrefix("/pdf-window/")
             let url = navigationAction.request.url
             let currentURL = webView.url
-            let isOutlineWindow = path.hasPrefix("/outline-window/")
-                && ["localhost", "127.0.0.1"].contains(url?.host ?? "")
+            let isNumenorPopup = ["localhost", "127.0.0.1"].contains(url?.host ?? "")
                 && url?.host == currentURL?.host && url?.port == currentURL?.port
                 && url?.scheme == currentURL?.scheme && currentURL?.path.hasPrefix("/editor/") == true
+            let isOutlineWindow = isNumenorPopup && path.hasPrefix("/outline-window/")
+            let isChatWindow = isNumenorPopup && path.hasPrefix("/chat-window/")
             let isEditorWindow = path.hasPrefix("/editor/") || path.hasPrefix("/history/") || path == "/collab"
             let width = windowFeatures.width?.doubleValue ?? (isEditorWindow ? 1280 : isPdfWindow ? 920 : 520)
             let height = windowFeatures.height?.doubleValue ?? (isEditorWindow ? 820 : isPdfWindow ? 1000 : 680)
@@ -289,15 +305,24 @@ struct ScholarBrowserView: NSViewRepresentable {
             let window: NSWindow
             if isOutlineWindow {
                 let panel = NSPanel(contentRect: popupWebView.frame, styleMask: style, backing: .buffered, defer: false)
-                panel.isFloatingPanel = true
-                panel.level = .floating
                 panel.hidesOnDeactivate = false
-                panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                let defaults = UserDefaults.standard
+                let pinned = defaults.object(forKey: Self.outlineOnTopKey) as? Bool ?? true
+                setOutlineLevel(panel, alwaysOnTop: pinned)
+
+                let checkbox = NSButton(checkboxWithTitle: "Always on Top", target: self, action: #selector(toggleOutlineOnTop(_:)))
+                checkbox.state = pinned ? .on : .off
+                checkbox.toolTip = "Keep Outline above regular windows"
+                checkbox.sizeToFit()
+                let accessory = NSTitlebarAccessoryViewController()
+                accessory.layoutAttribute = .right
+                accessory.view = checkbox
+                panel.addTitlebarAccessoryViewController(accessory)
                 window = panel
             } else {
                 window = NSWindow(contentRect: popupWebView.frame, styleMask: style, backing: .buffered, defer: false)
             }
-            window.title = isOutlineWindow ? "Outline" : isPdfWindow ? "PDF Preview" : isEditorWindow ? "Numenor" : "Sign In"
+            window.title = isOutlineWindow ? "Outline" : isChatWindow ? "Chat" : isPdfWindow ? "PDF Preview" : isEditorWindow ? "Numenor" : "Sign In"
             window.contentView = popupWebView
             window.delegate = self
             // `NSWindow`'s default `isReleasedWhenClosed = true` makes AppKit itself release the
