@@ -1,8 +1,21 @@
+import { nextProjectStep, projectAgentRequest } from '../services/projectAgent.js';
+import { isLocalRequest } from '../utils/authUtils.js';
 import { callOpenAICompatible } from '../services/llmService.js';
 import { runToolAgent } from '../services/agentService.js';
 import { getLang, t } from '../i18n/index.js';
 
 export function registerAgentRoutes(fastify) {
+  fastify.post('/api/agent/project-step', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.code(403).send({ error: 'Only the project owner can use Agent tools.' });
+    const parsed = projectAgentRequest.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Invalid project Agent request.' });
+    try {
+      return { step: await nextProjectStep(parsed.data) };
+    } catch (error) {
+      return reply.code(422).send({ error: `Agent could not produce a valid tool action: ${error.message}` });
+    }
+  });
+
   fastify.post('/api/agent/run', async (req) => {
     const lang = getLang(req);
     const {

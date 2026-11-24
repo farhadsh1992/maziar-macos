@@ -210,15 +210,15 @@ export function setProjectMainFile(id: string, filePath: string) {
   return request<{ ok: boolean; mainFile: string }>(`/api/projects/${id}/main-file`, { method: 'PUT', body: JSON.stringify({ path: filePath }) });
 }
 
-export function getFile(id: string, filePath: string) {
-  const qs = new URLSearchParams({ path: filePath }).toString();
+export function getFile(id: string, filePath: string, agent = false) {
+  const qs = new URLSearchParams({ path: filePath, ...(agent ? { agent: '1' } : {}) }).toString();
   return request<{ content: string }>(`/api/projects/${id}/file?${qs}`);
 }
 
-export function writeFile(id: string, filePath: string, content: string) {
+export function writeFile(id: string, filePath: string, content: string, options?: { createOnly?: boolean; expected?: string }) {
   return request<{ ok: boolean }>(`/api/projects/${id}/file`, {
     method: 'PUT',
-    body: JSON.stringify({ path: filePath, content })
+    body: JSON.stringify({ path: filePath, content, ...options })
   });
 }
 
@@ -228,10 +228,10 @@ export function getAllFiles(id: string) {
   );
 }
 
-export function createFolder(id: string, folderPath: string) {
+export function createFolder(id: string, folderPath: string, agent = false) {
   return request<{ ok: boolean }>(`/api/projects/${id}/folder`, {
     method: 'POST',
-    body: JSON.stringify({ path: folderPath })
+    body: JSON.stringify({ path: folderPath, agent })
   });
 }
 
@@ -276,7 +276,7 @@ export function updateFileOrder(id: string, folder: string, order: string[]) {
   });
 }
 
-export async function uploadFiles(projectId: string, files: File[], basePath?: string) {
+export async function uploadFiles(projectId: string, files: File[], basePath?: string, createOnly = false) {
   const form = new FormData();
   files.forEach((file) => {
     const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
@@ -285,7 +285,7 @@ export async function uploadFiles(projectId: string, files: File[], basePath?: s
     form.append('relpath', finalPath);
     form.append('files', file, finalPath);
   });
-  const res = await fetch(`/api/projects/${projectId}/upload`, {
+  const res = await fetch(`/api/projects/${projectId}/upload${createOnly ? '?createOnly=1' : ''}`, {
     method: 'POST',
     body: form,
     headers: {
@@ -438,6 +438,29 @@ export function getCollabStatus(id: string, filePath: string) {
   return request<{ ok: boolean; diagnostics: { conns: number; lastError: string | null } | null }>(
     `/api/projects/${id}/collab/status?${qs}`
   );
+}
+
+export type ProjectAgentStep =
+  | { tool: 'list_files' | 'compile_project' }
+  | { tool: 'read_file'; path: string; offset?: number }
+  | { tool: 'create_folder'; path: string }
+  | { tool: 'create_project'; name?: string; template?: string }
+  | { tool: 'create_file'; path: string; content: string }
+  | { tool: 'edit_file'; path: string; find: string; replace: string }
+  | { tool: 'import_figure'; folder?: string }
+  | { tool: 'finish'; reply: string };
+
+export function projectAgentStep(payload: {
+  prompt: string;
+  activePath: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+  results: { tool: string; result: string }[];
+}, signal: AbortSignal) {
+  return request<{ step: ProjectAgentStep }>('/api/agent/project-step', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    signal
+  });
 }
 
 export function runAgent(payload: {

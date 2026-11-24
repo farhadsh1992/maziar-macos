@@ -216,7 +216,7 @@ export async function providerCompletion(payload, externalSignal) {
     lastError = '';
     const request = { ...payload, model, stream: false };
     if (provider === 'local') {
-      request.max_tokens = Math.min(Number(request.max_tokens) || 512, 512);
+      request.max_tokens = Math.min(Number(request.max_tokens) || 512, 2048);
       if (model !== 'qwen3-4b-instruct') request.chat_template_kwargs = { enable_thinking: false };
     }
     return await upstream(`${endpoint}/chat/completions`, key, {

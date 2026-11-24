@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import { DATA_DIR, TEMPLATE_DIR, OWNER_NAME } from '../config/constants.js';
 import { recordEdit, recordEvent, authorOf } from '../services/historyService.js';
 import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../utils/fsUtils.js';
-import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
+import { safeJoin, sanitizeUploadPath, projectAgentPath } from '../utils/pathUtils.js';
 import { isTextFile, extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
 import { readTemplateManifest, copyTemplateIntoProject } from '../services/templateService.js';
 import { getProjectRoot, getProjectCopies, getProjectFolders, resolveTargetFolder, expandHome } from '../services/projectService.js';
@@ -526,10 +526,10 @@ export function registerProjectRoutes(fastify) {
 
   fastify.get('/api/projects/:id/file', async (req) => {
     const { id } = req.params;
-    const { path: filePath } = req.query;
+    const { path: filePath, agent } = req.query;
     if (!filePath) return { content: '' };
     const projectRoot = await getProjectRoot(id);
-    const abs = safeJoin(projectRoot, filePath);
+    const abs = agent === '1' ? await projectAgentPath(projectRoot, filePath) : safeJoin(projectRoot, filePath);
     const content = await fs.readFile(abs, 'utf8');
     return { content };
   });
@@ -563,6 +563,7 @@ export function registerProjectRoutes(fastify) {
     // `figures/plots/a.png` used to land in the project root. The client now sends the intended
     // relative path in a `relpath` field right before each file; plain uploads still fall back to
     // the filename.
+    const createOnly = req.query?.createOnly === '1';
     let pendingRelPath = '';
     let current = '';
     try {
@@ -578,9 +579,19 @@ export function registerProjectRoutes(fastify) {
           part.file.resume();
           continue;
         }
-        const abs = safeJoin(projectRoot, relPath);
+        const abs = createOnly ? await projectAgentPath(projectRoot, relPath) : safeJoin(projectRoot, relPath);
         await ensureDir(path.dirname(abs));
-        await pipeline(part.file, createWriteStream(abs));
+        if (createOnly) {
+          const handle = await fs.open(abs, 'wx');
+          try {
+            await pipeline(part.file, handle.createWriteStream());
+          } catch (error) {
+            await fs.rm(abs, { force: true });
+            throw error;
+          }
+        } else {
+          await pipeline(part.file, createWriteStream(abs));
+        }
         if (part.file.truncated) {
           await fs.rm(abs, { force: true });
           throw new Error('file is larger than the 200 MB upload limit');
@@ -595,16 +606,25 @@ export function registerProjectRoutes(fastify) {
     return { ok: true, files: saved };
   });
 
-  fastify.put('/api/projects/:id/file', async (req) => {
+  fastify.put('/api/projects/:id/file', async (req, reply) => {
     const { id } = req.params;
-    const { path: filePath, content } = req.body || {};
+    const { path: filePath, content, createOnly, expected } = req.body || {};
     if (!filePath) return { ok: false };
     const projectRoot = await getProjectRoot(id);
-    const abs = safeJoin(projectRoot, filePath);
+    const agent = createOnly === true || typeof expected === 'string';
+    const abs = agent ? await projectAgentPath(projectRoot, filePath) : safeJoin(projectRoot, filePath);
     await ensureDir(path.dirname(abs));
     let before = null;
     try { before = await fs.readFile(abs, 'utf8'); } catch { /* new file */ }
-    await fs.writeFile(abs, content ?? '', 'utf8');
+    if (typeof expected === 'string' && expected !== before) {
+      return reply.code(409).send({ ok: false, error: 'This file changed after the edit was prepared.' });
+    }
+    try {
+      await fs.writeFile(abs, content ?? '', { encoding: 'utf8', flag: createOnly === true ? 'wx' : 'w' });
+    } catch (error) {
+      if (error.code !== 'EEXIST' || createOnly !== true) throw error;
+      return reply.code(409).send({ ok: false, error: 'A file already exists at this path.' });
+    }
     if (isTextFile(filePath)) recordEdit(projectRoot, filePath, before, content ?? '', authorOf(req, OWNER_NAME));
     try {
       await updateProjectMetadata(projectRoot, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
@@ -676,10 +696,10 @@ export function registerProjectRoutes(fastify) {
 
   fastify.post('/api/projects/:id/folder', async (req) => {
     const { id } = req.params;
-    const { path: folderPath } = req.body || {};
+    const { path: folderPath, agent } = req.body || {};
     if (!folderPath) return { ok: false };
     const projectRoot = await getProjectRoot(id);
-    const abs = safeJoin(projectRoot, folderPath);
+    const abs = agent === true ? await projectAgentPath(projectRoot, folderPath) : safeJoin(projectRoot, folderPath);
     await ensureDir(abs);
     recordEvent(projectRoot, 'folder', folderPath, authorOf(req, OWNER_NAME));
     return { ok: true };

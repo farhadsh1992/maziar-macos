@@ -238,7 +238,7 @@ export async function localEndpoint(id, signal) {
     `;
     const child = spawn('/bin/sh', ['-c', watchParent, 'numenor-llama', String(process.pid), runtimeBin,
       '--model', modelPath(id), '--host', '127.0.0.1', '--port', String(port),
-      '--ctx-size', '2048', '--parallel', '1', '--alias', id, '--jinja', '--reasoning-format', 'deepseek'
+      '--ctx-size', '8192', '--parallel', '1', '--alias', id, '--jinja', '--reasoning-format', 'deepseek'
     ], {
       env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, LLAMA_API_KEY: key },
       cwd: runtimeDir, detached: true, stdio: 'ignore'

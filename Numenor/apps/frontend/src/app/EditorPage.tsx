@@ -10,7 +10,7 @@ import AIModels, { AIIndicator, useAIStatus } from './AIModels';
 import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, MouseEvent, SetStateAction, RefObject, DragEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -51,7 +51,6 @@ import {
   arxivSearch,
   createFolder as createFolderApi,
   compileProject,
-  getAllFiles,
   getCollabServer,
   getFile,
   getProjectTree,
@@ -62,6 +61,7 @@ import {
   deleteFile,
   updateFileOrder,
   runAgent,
+  projectAgentStep,
   plotFromTable,
   callLLM,
   uploadFiles,
@@ -82,6 +82,7 @@ GlobalWorkerOptions.workerSrc = pdfWorker;
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  files?: string[];
 }
 
 interface WebsearchItem {
@@ -98,6 +99,7 @@ interface PendingChange {
   original: string;
   proposed: string;
   diff: string;
+  diskOriginal?: string;
 }
 
 type InlineEdit =
@@ -1029,6 +1031,7 @@ function resolveSpellLanguage(fromMaziar?: string) {
 
 export default function EditorPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, i18n } = useTranslation();
   const { projectId: routeProjectId } = useParams();
   const projectId = routeProjectId || '';
@@ -1054,15 +1057,47 @@ export default function EditorPage() {
   const [suggestionPos, setSuggestionPos] = useState<{ left: number; top: number } | null>(null);
   const [assistantMode, setAssistantMode] = useState<'chat' | 'agent'>('agent');
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
-  const [agentMessages, setAgentMessages] = useState<Message[]>([]);
+  const [agentMessages, setAgentMessages] = useState<Message[]>(() => location.state?.agentMessages ?? []);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const agentRun = useRef<AbortController | null>(null);
+  const agentReview = useRef<{ filePath: string; finish: (error?: string) => void }>();
+  const agentFigure = useRef<File>();
+  const [agentFigureName, setAgentFigureName] = useState('');
+  const agentFileInput = useRef<HTMLInputElement>(null);
+  const agentPicker = useRef<(file?: File) => void>();
+  const [waitingForFigure, setWaitingForFigure] = useState(false);
+  const acceptAgentFigure = (file?: File) => {
+    if (agentPicker.current) {
+      const picked = agentPicker.current;
+      agentPicker.current = undefined;
+      setWaitingForFigure(false);
+      picked(file);
+    } else if (file && isFigureFile(file.name)) {
+      agentFigure.current = file;
+      setAgentFigureName(file.name);
+    }
+  };
+  useEffect(() => {
+    const input = agentFileInput.current;
+    const cancel = () => acceptAgentFigure();
+    input?.addEventListener('cancel', cancel);
+    return () => input?.removeEventListener('cancel', cancel);
+  }, []);
+  useEffect(() => () => {
+    agentRun.current?.abort();
+    agentReview.current?.finish('Editor closed.');
+    agentReview.current = undefined;
+    agentPicker.current?.();
+    agentPicker.current = undefined;
+  }, [projectId]);
   const [prompt, setPrompt] = useState('');
   const [chatPrompt, setChatPrompt] = useState('');
   const [chatSending, setChatSending] = useState(false);
   const chatSendPending = useRef(false);
   const chatPopup = useRef<Window | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
-  const [task, setTask] = useState(DEFAULT_TASKS(t)[0].value);
-  const [mode, setMode] = useState<'direct' | 'tools'>('direct');
+  const [task, setTask] = useState('custom');
+  const [mode, setMode] = useState<'direct' | 'tools'>('tools');
   const [translateScope, setTranslateScope] = useState<'selection' | 'file' | 'project'>('selection');
   const [translateTarget, setTranslateTarget] = useState('English');
   const [taskDropdownOpen, setTaskDropdownOpen] = useState(false);
@@ -1081,6 +1116,13 @@ export default function EditorPage() {
   const [plotTypeDropdownOpen, setPlotTypeDropdownOpen] = useState(false);
   const [figureDropdownOpen, setFigureDropdownOpen] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
+  useEffect(() => {
+    const review = agentReview.current;
+    if (review && !pendingChanges.some((change) => change.filePath === review.filePath && change.diskOriginal !== undefined)) {
+      agentReview.current = undefined;
+      review.finish('The pending review was replaced.');
+    }
+  }, [pendingChanges]);
   const [compileLog, setCompileLog] = useState('');
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfScale, setPdfScale] = useState(1);
@@ -1130,7 +1172,7 @@ export default function EditorPage() {
   const [rightView, setRightView] = useState<'pdf' | 'figures' | 'diff' | 'log' | 'toc' | 'review'>('pdf');
   const [selectedFigure, setSelectedFigure] = useState<string>('');
   const [diffFocus, setDiffFocus] = useState<PendingChange | null>(null);
-  const [activeSidebar, setActiveSidebar] = useState<'files' | 'agent' | 'vision' | 'search' | 'websearch' | 'plot' | 'review'>('files');
+  const [activeSidebar, setActiveSidebar] = useState<'files' | 'agent' | 'vision' | 'search' | 'websearch' | 'plot' | 'review'>(location.state?.agentMessages ? 'agent' : 'files');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [columnSizes, setColumnSizes] = useState({ sidebar: 260, editor: 640, right: 420 });
   const [editorSplit, setEditorSplit] = useState(0.7);
@@ -2716,16 +2758,16 @@ export default function EditorPage() {
 
   // Maziar: uploads land in the folder they were dropped on (or the selected folder for the picker),
   // the tree opens to show them, and failures are reported in the Files panel instead of failing silently.
-  const handleUpload = async (fileList: FileList | File[] | null, basePath = '') => {
+  const handleUpload = async (fileList: FileList | File[] | null, basePath = '', createOnly = false) => {
     if (!projectId || !fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
     const where = basePath || t('project root');
     setUploadError('');
     setStatus(t('Uploading {{count}} file(s) to {{where}}…', { count: files.length, where }));
     try {
-      const res = await uploadFiles(projectId, files, basePath);
+      const res = await uploadFiles(projectId, files, basePath, createOnly);
       const saved = res.files || [];
-      await refreshTree();
+      await refreshTree().catch((err) => { if (!createOnly) throw err; });
       setOpenFolders((prev) => {
         const next = { ...prev };
         saved.forEach((file) => {
@@ -2744,11 +2786,13 @@ export default function EditorPage() {
       } else {
         setStatus(saved.length === 1 ? t('Uploaded {{file}}', { file: saved[0] }) : t('Uploaded {{count}} files to {{where}}', { count: saved.length, where }));
       }
+      return saved;
     } catch (err) {
       const message = (err as Error)?.message || String(err);
       setUploadError(t('Upload failed: {{error}}', { error: message }));
       setStatus(t('Upload failed: {{error}}', { error: message }));
       await refreshTree().catch(() => {});
+      if (createOnly) throw err;
     }
   };
 
@@ -3343,38 +3387,23 @@ export default function EditorPage() {
     setIsCompiling(true);
     setStatus(t('编译中...'));
     try {
-      const { files: serverFiles } = await getAllFiles(projectId);
-      const fileMap: Record<string, string | Uint8Array> = {};
-      for (const file of serverFiles) {
-        if (file.encoding === 'base64') {
-          const binary = Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0));
-          fileMap[file.path] = binary;
-        } else {
-          fileMap[file.path] = files[file.path] ?? file.content;
-        }
-      }
-      if (activePath) {
-        fileMap[activePath] = editorValue;
-      }
-      if (!fileMap[mainFile]) {
-        throw new Error(t('主文件不存在: {{file}}', { file: mainFile }));
-      }
+      if (!mainFile) throw new Error(t('主文件不存在: {{file}}', { file: mainFile }));
       const res = await compileProject({ projectId, mainFile, engine: compileEngine });
       // A newer compile of this project took over (e.g. Compile clicked again): that one reports back.
-      if (res.replaced) return;
+      if (res.replaced) return { ok: false, error: 'Superseded by another compile.' };
       setMissingFiles(res.missing || []);
       if (!res.ok && res.missing?.length) {
         setCompileLog(`${res.error}\n\n${res.log || ''}`.trim());
         setCompileState('failed');
         setStatus(res.error || t('后端编译失败'));
-        return;
+        return res;
       }
       if (res.timedOut) {
         // LaTeX got stuck in a loop and was stopped: keep its log so the Problems panel shows the first errors.
         setCompileLog(`${res.error}\n\n${res.log || ''}`.trim());
         setCompileState('failed');
         setStatus(t('Compile stopped: LaTeX seemed stuck in a loop — see the first errors in Problems.'));
-        return;
+        return res;
       }
       if (!res.ok || !res.pdf) {
         const detail = [res.error, res.log].filter(Boolean).join('\n');
@@ -3403,11 +3432,13 @@ export default function EditorPage() {
       setRightView('pdf');
       setCompileState('ok');
       setStatus(t('编译完成 ({{engine}})', { engine: result.engine }));
+      return { ok: true, log: result.log, status: result.status };
     } catch (err) {
       console.error('Compilation error:', err);
       setCompileLog(`${t('编译错误: {{error}}', { error: String(err) })}\n${(err as Error).stack || ''}`);
       setCompileState('failed');
       setStatus(t('编译失败: {{error}}', { error: String(err) }));
+      return { ok: false, error: String(err) };
     } finally {
       setIsCompiling(false);
     }
@@ -4098,11 +4129,142 @@ export default function EditorPage() {
     };
   }, []);
 
+  const agentEditor = useRef({ compile, mainFile, isDirty, pendingChanges });
+  agentEditor.current = { compile, mainFile, isDirty, pendingChanges };
+
+  const runProjectTools = async (request: string, history: Message[]) => {
+    const controller = new AbortController();
+    agentRun.current = controller;
+    setAgentBusy(true);
+    const results: { tool: string; result: string }[] = [];
+    let currentStep = 'Plan';
+    const activity: Message[] = [];
+    const report = (content: string, files?: string[]) => {
+      const message: Message = { role: 'assistant', content, files };
+      activity.push(message);
+      setAgentMessages((messages) => [...messages, message]);
+    };
+    const read = async (path: string) => {
+      const { content: disk } = await getFile(projectId, path, true);
+      return { disk, content: activePathRef.current === path ? cmViewRef.current?.state.doc.toString() ?? disk : disk };
+    };
+    try {
+      for (let index = 0; index < 24; index += 1) {
+        currentStep = 'Plan';
+        const { step } = await projectAgentStep({
+          prompt: request, activePath: activePathRef.current,
+          history: history.slice(-4).flatMap(({ role, content }) => role === 'system' ? [] : [{ role, content: content.slice(0, 750) }]),
+          results: results.map((entry, i) => i < results.length - 3 && entry.tool === 'read_file'
+            ? { ...entry, result: entry.result.slice(0, 350) } : entry)
+        }, controller.signal);
+        if (controller.signal.aborted) return;
+        currentStep = 'path' in step ? `${step.tool} (${step.path})` : step.tool;
+        let result: object;
+        switch (step.tool) {
+          case 'finish':
+            report(step.reply);
+            return;
+          case 'list_files': {
+            const tree = await getProjectTree(projectId);
+            result = { mainFile: tree.mainFile || agentEditor.current.mainFile, mainFiles: tree.mainFiles,
+              items: tree.items.map(({ path, type }) => ({ path, type })) };
+            break;
+          }
+          case 'read_file': {
+            const { content } = await read(step.path);
+            const offset = step.offset ?? 0;
+            const end = offset + 3200;
+            result = { path: step.path, offset, content: content.slice(offset, end), nextOffset: end < content.length ? end : undefined };
+            break;
+          }
+          case 'create_project':
+            navigate('/projects', { state: { agentCreate: { name: step.name, template: step.template,
+              history: [...history, { role: 'user', content: request }, ...activity.map(({ role, content }) => ({ role, content }))] } } });
+            return;
+          case 'create_folder':
+            if (!(await createFolderApi(projectId, step.path, true)).ok) throw new Error('Folder could not be created.');
+            report(t('Created folder {{path}}.', { path: step.path }));
+            result = { path: step.path };
+            await refreshTree();
+            break;
+          case 'create_file':
+            if (!(await writeFile(projectId, step.path, step.content, { createOnly: true })).ok) throw new Error('File could not be created.');
+            report(t('Created file.'), [step.path]);
+            result = { path: step.path };
+            await refreshTree();
+            break;
+          case 'edit_file': {
+            if (agentEditor.current.pendingChanges.length) throw new Error('Apply or discard the existing review first.');
+            const { disk, content: original } = await read(step.path);
+            const start = original.indexOf(step.find);
+            if (start < 0 || original.indexOf(step.find, start + 1) >= 0) throw new Error('The excerpt must match exactly once.');
+            const proposed = original.slice(0, start) + step.replace + original.slice(start + step.find.length);
+            if (proposed === original) { result = { path: step.path, unchanged: true }; break; }
+            const change = { filePath: step.path, original, proposed, diskOriginal: disk,
+              diff: createTwoFilesPatch(step.path, step.path, original, proposed, 'current', 'proposed') };
+            report(t('Review the proposed edit to continue.'), [step.path]);
+            await new Promise<void>((resolve, reject) => {
+              agentReview.current = { filePath: step.path, finish: (error) => error ? reject(new Error(error)) : resolve() };
+              setPendingChanges([change]);
+              setRightView('diff');
+            });
+            report(t('Applied the reviewed edit.'), [step.path]);
+            result = { path: step.path, applied: true };
+            break;
+          }
+          case 'import_figure': {
+            let file = agentFigure.current;
+            if (!file) {
+              file = await new Promise<File | undefined>((resolve) => {
+                agentPicker.current = resolve;
+                setWaitingForFigure(true);
+                try {
+                  agentFileInput.current?.showPicker?.();
+                } catch {
+                  // Some browsers require a fresh click. The Choose figure button remains available.
+                }
+              });
+            }
+            if (!file) throw new Error('No figure was selected.');
+            if (!isFigureFile(file.name)) throw new Error('Choose a supported figure file.');
+            if (controller.signal.aborted) return;
+            const [path] = await handleUpload([file], step.folder, true) ?? [];
+            if (!path) throw new Error('No figure was imported.');
+            agentFigure.current = undefined;
+            setAgentFigureName('');
+            report(t('Imported figure.'), [path]);
+            result = { path };
+            break;
+          }
+          case 'compile_project': {
+            if (agentEditor.current.isDirty) throw new Error('Save the active file before compiling.');
+            if (collabActiveRef.current && activePathRef.current) await flushCollabFile(projectId, activePathRef.current);
+            const compileResult = await agentEditor.current.compile();
+            if (!compileResult?.ok) throw new Error([compileResult?.error, compileResult?.log].filter(Boolean).join('\n').slice(-3500) || 'Compilation failed.');
+            report(t('Compilation succeeded.'));
+            result = { ok: true, log: compileResult.log?.slice(-2500) };
+            break;
+          }
+        }
+        results.push({ tool: step.tool, result: JSON.stringify(result).slice(0, 32_000) });
+      }
+      throw new Error('Reached the tool step limit.');
+    } catch (error) {
+      if (!controller.signal.aborted) report(t('{{step}} failed: {{error}}', { step: currentStep, error: (error as Error).message }));
+    } finally {
+      if (agentRun.current === controller) {
+        agentRun.current = null;
+        setAgentBusy(false);
+      }
+    }
+  };
+
   const sendPrompt = async (detachedPrompt?: string) => {
     const isChat = detachedPrompt !== undefined || assistantMode === 'chat';
     const message = isChat ? detachedPrompt ?? chatPrompt : prompt;
     if (isChat && (!message.trim() || chatSendPending.current || aiStatus?.active === 'off' || aiStatus?.generating)) return;
-    if (!activePath && !isChat) return;
+    if (!isChat && (agentRun.current || isGuest || aiStatus?.active === 'off' || aiStatus?.generating)) return;
+    if (!activePath && !isChat && mode === 'direct') return;
     if (isChat === false && task === 'translate') {
       if (translateScope === 'selection' && !selectionText) {
         setStatus(t('请选择要翻译的文本。'));
@@ -4118,6 +4280,17 @@ export default function EditorPage() {
     const history = isChat ? chatMessages : agentMessages;
     const nextHistory = [...history, userMsg];
     setHistory(nextHistory);
+    if (!isChat && mode === 'tools' && task !== 'websearch' && (task !== 'translate' || translateScope === 'project')) {
+      const request = [
+        task !== 'custom' ? `Task: ${task}` : '',
+        task === 'translate' ? `Translate project text to ${translateTarget}. Preserve LaTeX structure.` : '',
+        message,
+        agentFigure.current ? `Attached figure: ${agentFigure.current.name}` : '',
+        selectionText ? `Editor selection:\n${selectionText}` : ''
+      ].filter(Boolean).join('\n\n').slice(0, 24_000);
+      await runProjectTools(request || task, history);
+      return;
+    }
     try {
       let effectivePrompt = message;
       let effectiveSelection = selectionText;
@@ -4168,7 +4341,7 @@ export default function EditorPage() {
         activePath,
         compileLog: effectiveSelection ? undefined : compileLog,
         interaction: isChat ? 'chat' : 'agent',
-        history: nextHistory.slice(-8)
+        history: nextHistory.flatMap(({ role, content }) => role === 'system' ? [] : [{ role, content }]).slice(-8)
       });
       const replyText = res.reply || t('已生成建议。');
       const detached = isChat && chatPopup.current && !chatPopup.current.closed;
@@ -4274,6 +4447,8 @@ export default function EditorPage() {
     try {
       const res = await runAgent({
         task: 'debug_compile',
+        selection: '',
+        content: '',
         prompt: 'Diagnose the LaTeX error and describe the smallest source change to fix it.',
         mode: 'direct',
         projectId,
@@ -4281,7 +4456,7 @@ export default function EditorPage() {
         compileLog: (diagnostics.filter((item) => item.severity === 'error')
           .map((item) => `${item.file}:${item.line ?? '?'} ${item.message}`).join('\n') || compileLog.slice(-2500)).slice(0, 2500),
         interaction: 'agent',
-        history: nextHistory.slice(-8)
+        history: nextHistory.flatMap(({ role, content }) => role === 'system' ? [] : [{ role, content }]).slice(-8)
       });
       const assistant: Message = {
         role: 'assistant',
@@ -4305,12 +4480,56 @@ export default function EditorPage() {
     }
   };
 
+  const applyingAgentReview = useRef(false);
   const applyPending = async (change?: PendingChange) => {
+    if (applyingAgentReview.current) return;
     const list = change ? [change] : pendingChanges;
     for (const item of list) {
-      await writeFileCompat(item.filePath, item.proposed);
+      if (item.diskOriginal !== undefined) {
+        applyingAgentReview.current = true;
+        const review = agentReview.current;
+        try {
+          const { content: disk } = await getFile(projectId, item.filePath, true);
+          const current = activePathRef.current === item.filePath ? cmViewRef.current?.state.doc.toString() ?? disk : disk;
+          if (current !== item.original || (disk !== item.diskOriginal && disk !== item.original)) {
+            throw new Error('The file changed after the edit was prepared. Ask Agent to prepare it again.');
+          }
+          if (activePathRef.current === item.filePath && collabActiveRef.current && collabDocRef.current) {
+            const { doc, text } = collabDocRef.current;
+            doc.transact(() => {
+              text.delete(0, text.length);
+              text.insert(0, item.proposed);
+            });
+          } else {
+            await writeFile(projectId, item.filePath, item.proposed, { expected: disk });
+            if (activePathRef.current === item.filePath) {
+              const latest = cmViewRef.current?.state.doc.toString();
+              if (latest === item.original) {
+                setEditorDoc(item.proposed);
+                setIsDirty(false);
+              } else if (latest !== item.proposed) {
+                // A new edit arrived while the write was in flight. Keep the current buffer.
+                setExternalChange({ path: item.filePath, content: item.proposed });
+              }
+            }
+          }
+          review?.finish();
+        } catch (error) {
+          const message = (error as Error).message;
+          setStatus(message);
+          review?.finish(message);
+          setPendingChanges((previous) => previous.filter((entry) => entry !== item));
+          setDiffFocus((previous) => previous === item ? null : previous);
+          return;
+        } finally {
+          agentReview.current = undefined;
+          applyingAgentReview.current = false;
+        }
+      } else {
+        await writeFileCompat(item.filePath, item.proposed);
+      }
       setFiles((prev) => ({ ...prev, [item.filePath]: item.proposed }));
-      if (activePath === item.filePath && !collabActiveRef.current) {
+      if (item.diskOriginal === undefined && activePath === item.filePath && !collabActiveRef.current) {
         setEditorDoc(item.proposed);
       }
     }
@@ -4327,6 +4546,11 @@ export default function EditorPage() {
   };
 
   const discardPending = (change?: PendingChange) => {
+    if (applyingAgentReview.current) return;
+    if (agentReview.current && (!change || change.filePath === agentReview.current.filePath)) {
+      agentReview.current.finish('The edit was discarded in review.');
+      agentReview.current = undefined;
+    }
     if (change) {
       setPendingChanges((prev) => prev.filter((item) => item.filePath !== change.filePath));
       if (diffFocus?.filePath === change.filePath) {
@@ -4410,6 +4634,8 @@ export default function EditorPage() {
       {syncOpen && projectId && (
         <SyncDialog projectId={projectId} projectName={projectName || t('Project')} onClose={() => setSyncOpen(false)} />
       )}
+      <input ref={agentFileInput} type="file" accept={FIGURE_EXTS.join(',')} hidden
+        onChange={(event) => { acceptAgentFigure(event.target.files?.[0]); event.target.value = ''; }} />
       {shareOpen && projectId && (
         <ShareDialog projectId={projectId} projectName={projectName || t('Project')} onClose={() => setShareOpen(false)} onStatus={setStatus} />
       )}
@@ -4766,12 +4992,12 @@ export default function EditorPage() {
                     {compileLog && <span className="context-tag">{t('只读编译日志')}</span>}
                   </div>
                 )}
-                <div className="chat-messages">
+                <div className="chat-messages nm-editor-ai-messages" aria-live="polite">
                   {assistantMode === 'chat' && chatMessages.length === 0 && (
                     <div className="muted">{t('输入问题，进行只读对话。')}</div>
                   )}
                   {assistantMode === 'agent' && agentMessages.length === 0 && (
-                    <div className="muted">{t('输入任务描述，生成修改建议。')}</div>
+                    <div className="muted">{t('Ask Agent to work on this project.')}</div>
                   )}
                   {(assistantMode === 'chat' ? chatMessages : agentMessages).map((msg, idx) => (
                     <div key={idx} className={`chat-msg ${msg.role}`}>
@@ -4783,6 +5009,10 @@ export default function EditorPage() {
                           msg.content
                         )}
                       </div>
+                      {msg.files?.map((path) => (
+                        <button key={path} type="button" className="btn ghost nm-agent-file-link"
+                          onClick={() => { void handleFileSelect(path).catch((error) => setStatus(String(error))); }}>{path}</button>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -4966,20 +5196,41 @@ export default function EditorPage() {
                       </div>
                     </div>
                   )}
+                  {assistantMode === 'agent' && !isGuest && mode === 'tools' && (
+                    <div className="row" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+                      event.preventDefault();
+                      if (event.dataTransfer.files[0]) acceptAgentFigure(event.dataTransfer.files[0]);
+                    }}>
+                      <button type="button" className="btn ghost" onClick={() => agentFileInput.current?.click()}>
+                        {t(waitingForFigure ? 'Choose figure' : 'Attach figure')}
+                      </button>
+                      {waitingForFigure && <button type="button" className="btn ghost" onClick={() => acceptAgentFigure()}>{t('取消')}</button>}
+                      {agentFigureName && <button type="button" className="btn ghost"
+                        title={t('Remove attachment')} onClick={() => { agentFigure.current = undefined; setAgentFigureName(''); }}>{agentFigureName} ×</button>}
+                    </div>
+                  )}
                   <textarea
                     className="chat-input"
+                    aria-label={t(assistantMode === 'chat' ? 'Chat message' : 'Agent request')}
+                    onDragOver={(event) => { if (assistantMode === 'agent') event.preventDefault(); }}
+                    onDrop={(event) => {
+                      if (assistantMode === 'agent' && event.dataTransfer.files[0]) {
+                        event.preventDefault();
+                        acceptAgentFigure(event.dataTransfer.files[0]);
+                      }
+                    }}
                     ref={chatInputRef}
                     value={assistantMode === 'chat' ? chatPrompt : prompt}
                     onChange={(e) => (assistantMode === 'chat' ? setChatPrompt : setPrompt)(e.target.value)}
                     placeholder={assistantMode === 'chat' ? t('例如：帮我解释这一段的实验设计。') : t('例如：润色这个段落，使其更符合 ACL 风格。')}
                   />
-                  {assistantMode === 'chat' && aiStatus?.active === 'off' ? (
+                  {!isGuest && aiStatus?.active === 'off' ? (
                     <button onClick={() => setSettingsOpen('ai')} className="btn full">
                       {t('Choose an AI model')}
                     </button>
                   ) : (
-                    <button onClick={() => { void sendPrompt(); }} className="btn full" disabled={assistantMode === 'chat' && (chatSending || aiStatus?.generating || !chatPrompt.trim())}>
-                      {assistantMode === 'chat' ? t('发送') : t('生成建议')}
+                    <button onClick={() => { void sendPrompt(); }} className="btn full" disabled={Boolean(aiStatus?.generating) || (assistantMode === 'chat' ? chatSending || !chatPrompt.trim() : agentBusy || isGuest || (task === 'custom' && !prompt.trim()))}>
+                      {assistantMode === 'chat' ? t('发送') : agentBusy ? t('Working…') : t(mode === 'tools' ? 'Run Agent' : '生成建议')}
                     </button>
                   )}
                   {selectionText && assistantMode === 'agent' && (

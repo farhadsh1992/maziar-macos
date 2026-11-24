@@ -1,9 +1,9 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { providerCompletion } from './ai/providers.js';
 
-export async function callOpenAICompatible({ messages }) {
+export async function callOpenAICompatible({ messages, maxTokens }) {
   try {
-    const result = await providerCompletion({ messages, temperature: 0.2 });
+    const result = await providerCompletion({ messages, temperature: 0.2, ...(maxTokens ? { max_tokens: maxTokens } : {}) });
     const content = result.choices?.[0]?.message?.content;
     return typeof content === 'string'
       ? { ok: true, content }

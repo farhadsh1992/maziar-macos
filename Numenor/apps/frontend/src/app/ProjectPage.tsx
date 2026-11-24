@@ -2,7 +2,7 @@ import { AIIndicator } from './AIModels';
 import { interfaceLanguages, interfaceLanguageLabel } from '../i18n';
 import CompilerSetup from './CompilerSetup';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   createProject,
@@ -104,6 +104,9 @@ function formatRelativeTime(iso: string, t: (k: string, o?: Record<string, unkno
 
 export default function ProjectPage() {
   const navigate = useNavigate();
+  const agentCreate = useLocation().state?.agentCreate as {
+    name?: string; template?: string; history: { role: 'user' | 'assistant'; content: string }[];
+  } | undefined;
   const { t, i18n } = useTranslation();
 
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
@@ -146,7 +149,7 @@ export default function ProjectPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [tagsExpanded, setTagsExpanded] = useState(true);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(Boolean(agentCreate));
   const workspaceChatWindow = useRef<Window | null>(null);
   const [createSource, setCreateSource] = useState<string>();
   const [creating, setCreating] = useState(false);
@@ -190,7 +193,7 @@ export default function ProjectPage() {
   const [sharedLinkBusy, setSharedLinkBusy] = useState(false);
   const [sharedLinkError, setSharedLinkError] = useState('');
   const [sharedReload, setSharedReload] = useState(0);
-  const [createName, setCreateName] = useState('');
+  const [createName, setCreateName] = useState(agentCreate?.name || '');
   const [createTemplate, setCreateTemplate] = useState('');
   const [renameState, setRenameState] = useState<{ id: string; value: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -349,11 +352,11 @@ export default function ProjectPage() {
         setTemplates(res.templates || []);
         setCategories(res.categories || []);
         if (res.templates?.length && !createTemplate) {
-          setCreateTemplate(res.templates[0].id);
+          setCreateTemplate(res.templates.find((template) => template.id === agentCreate?.template)?.id || res.templates[0].id);
         }
       })
       .catch((err) => setStatus(t('模板加载失败: {{error}}', { error: String(err) })));
-  }, [createTemplate, t]);
+  }, [agentCreate?.template, createTemplate, t]);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -416,7 +419,9 @@ export default function ProjectPage() {
       setCreateName('');
       setCreateSource(undefined);
       await loadProjects();
-      navigate(`/editor/${created.id}`);
+      navigate(`/editor/${created.id}`, { state: agentCreate ? {
+        agentMessages: [...agentCreate.history, { role: 'assistant', content: t('Created project {{name}}.', { name: created.name }) }]
+      } : undefined });
     } catch (err) {
       setStatus(t('创建失败: {{error}}', { error: String(err) }));
     } finally { setCreating(false); }
