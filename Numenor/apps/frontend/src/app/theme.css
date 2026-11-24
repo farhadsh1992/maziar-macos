@@ -21,6 +21,9 @@
   --nm-gold: #f0c867;
   --nm-gold-hover: #e8bb4c;
   --nm-gold-text: #8a6410;
+  --nm-chat-user-text: #674300;
+  --nm-chat-user-bg: #e2f1ff;
+  --nm-chat-reply-text: #000;
   --nm-gold-line: #d9ad45;
   --nm-gold-soft: rgba(232, 187, 76, 0.2);
   --nm-on-gold: #1c1404;
@@ -61,6 +64,9 @@
     --nm-gold: #f0c867;
     --nm-gold-hover: #f6d684;
     --nm-gold-text: #f0c867;
+    --nm-chat-user-text: var(--nm-gold);
+    --nm-chat-user-bg: rgba(125, 190, 255, 0.14);
+    --nm-chat-reply-text: #fff;
     --nm-gold-line: #c9a24a;
     --nm-gold-soft: rgba(240, 200, 103, 0.14);
     --nm-on-gold: #1c1404;
@@ -97,6 +103,9 @@
   --nm-gold: #f0c867;
   --nm-gold-hover: #f6d684;
   --nm-gold-text: #f0c867;
+  --nm-chat-user-text: var(--nm-gold);
+  --nm-chat-user-bg: rgba(125, 190, 255, 0.14);
+  --nm-chat-reply-text: #fff;
   --nm-gold-line: #c9a24a;
   --nm-gold-soft: rgba(240, 200, 103, 0.14);
   --nm-on-gold: #1c1404;
@@ -3002,12 +3011,30 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
 .nm-workspace-chat-mode { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
 .nm-workspace-chat-mode [aria-pressed="true"] { background: var(--nm-gold-soft); }
 .nm-workspace-chat .chat-messages { min-height: 0; overflow: auto; }
-.nm-workspace-chat .chat-msg.assistant,
-.nm-workspace-chat .chat-msg.assistant :is(pre, code, blockquote, th) {
-  background: transparent;
-  color: var(--nm-gold-text);
+.nm-workspace-chat .chat-msg.user {
+  background: var(--nm-chat-user-bg);
+  border-color: var(--nm-line);
+  color: var(--nm-chat-user-text);
 }
-.nm-workspace-chat .chat-msg.assistant { border: 0; }
-.nm-workspace-chat .chat-msg.assistant .markdown-body { color: inherit; overflow-wrap: anywhere; }
+.nm-workspace-chat .chat-msg.assistant {
+  background: transparent;
+  border: 0;
+  color: var(--nm-chat-reply-text);
+}
+.nm-workspace-chat .markdown-body {
+  --text: var(--nm-chat-reply-text);
+  --accent: var(--nm-syn-math);
+  --accent-strong: var(--nm-chat-reply-text);
+  overflow-wrap: anywhere;
+}
+.nm-workspace-chat .markdown-body :is(pre, :not(pre) > code, blockquote, th) {
+  background: var(--nm-surface-2);
+}
+.nm-workspace-chat .markdown-body blockquote { color: inherit; }
+.nm-workspace-chat .markdown-body a { text-decoration: underline; }
 .nm-workspace-chat .chat-input { max-height: 25dvh; }
+.nm-workspace-chat .chat-input::placeholder {
+  color: var(--nm-muted);
+  opacity: 1;
+}
 .nm-workspace-chat .chat-controls .row { flex-wrap: wrap; }
