@@ -34,14 +34,16 @@ apps/backend/src/        Fastify server (ESM, plain JS — no TypeScript, no tes
   index.js               routes + auth preHandler + static frontend + listen (retries after an update)
   config/constants.js    DATA_DIR, STATE_DIR, PORT, secrets, OWNER_NAME
   routes/                one file per area (projects, compile, collab, invites, share, mail, sync, update,
-                         presence, folders, sharedWithMe, history, spell, synctex, …)
+                         presence, folders, sharedWithMe, history, spell, synctex, compilerSetup
+                         (checks for / installs a TeX compiler, local-only), …)
   services/              logic (projectService, compileService, historyService, syncService,
                          updateService, missingFiles, inviteService, mailService, shareService, tunnel,
                          collab/docStore + tokenService, projectEvents, …)
   utils/authUtils.js     isLocalRequest / remoteRequestAllowed — the security boundary (read it first)
 apps/frontend/src/       React + Vite + TypeScript
   app/EditorPage.tsx     the editor (~6.7k lines; most features live here)
-  app/ProjectPage.tsx    Projects page;  app/ShareDialog.tsx, SyncDialog.tsx, UpdateNotice.tsx, PdfViewer.tsx …
+  app/ProjectPage.tsx    Projects page;  app/ShareDialog.tsx, SyncDialog.tsx, UpdateNotice.tsx, PdfViewer.tsx,
+                         CompilerSetup.tsx …
   app/theme.css          Numenor's theme (tokens `--nm-*`); append new styles here, use the tokens
   api/client.ts          every backend call (`request` = throws on HTTP error, `maziarRequest` = JSON errors)
   latex/                 diagnostics (log parser, reads the LAST pass only), spell, language
