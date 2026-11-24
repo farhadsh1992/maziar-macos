@@ -20,7 +20,7 @@ export type LatexBlock = Environment & {
   tabular?: Environment;
 };
 export type LatexStructure = {
-  source: string; headings: LatexHeading[]; notes: LatexNote[]; blocks: LatexBlock[];
+  source: string; headings: LatexHeading[]; notes: LatexNote[]; blocks: LatexBlock[]; figures: Environment[];
 };
 
 export function blockKind(name: string): LatexBlock['kind'] | undefined {
@@ -126,6 +126,7 @@ export function parseLatexStructure(text: string): LatexStructure {
   const { source, notes } = tokenize(text);
   const headings: LatexHeading[] = [];
   const blocks: LatexBlock[] = [];
+  const figures: Environment[] = [];
   const environments: { name: string; from: number; bodyFrom: number; tabular?: Environment }[] = [];
   const commands = /\\(?:[a-zA-Z@]+|[^\r\n])|\$\$/g;
   let line = 1;
@@ -177,9 +178,10 @@ export function parseLatexStructure(text: string): LatexStructure {
     if (index < 0) continue;
     const start = environments[index];
     environments.length = index;
+    const env = { ...start, to: commands.lastIndex, bodyTo: from };
+    if (name === 'figure' || name === 'figure*') figures.push(env);
     const kind = blockKind(name);
     if (!kind) continue;
-    const env = { ...start, to: commands.lastIndex, bodyTo: from };
     if (tabularEnvironments.has(name)) {
       const wrapper = environments[environments.length - 1];
       if (wrapper && tableWrappers.has(wrapper.name)) wrapper.tabular ??= env;
@@ -194,5 +196,5 @@ export function parseLatexStructure(text: string): LatexStructure {
     grouped.push(block);
     if (tableWrappers.has(block.name)) wrapperEnd = block.to;
   }
-  return { source, notes, headings, blocks: grouped };
+  return { source, notes, headings, blocks: grouped, figures };
 }

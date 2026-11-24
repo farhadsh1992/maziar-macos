@@ -11,6 +11,7 @@ export const latexOptions = {
   foldEquations: 'Enable equation folding',
   previewEquations: 'Enable equation preview',
   tables: 'Highlight tables',
+  figures: 'Highlight figures',
   foldTables: 'Enable table folding',
   previewTables: 'Enable table preview',
   notes: 'Style comment headings',
@@ -19,7 +20,7 @@ export const latexOptions = {
 export type LatexOptions = Record<keyof typeof latexOptions, boolean>;
 export const defaultLatexOptions: LatexOptions = {
   headings: true, equations: true, foldEquations: true, previewEquations: true,
-  tables: true, foldTables: true, previewTables: true, notes: true, outline: true
+  tables: true, figures: true, foldTables: true, previewTables: true, notes: true, outline: true
 };
 
 type Configuration = {
@@ -229,8 +230,9 @@ function decorate(state: EditorState, preview: LatexBlock | null): Presentation 
       }
     }
   }
-  for (const block of structure.blocks) {
-    if (!(block.kind === 'equation' ? options.equations : options.tables)) continue;
+  const highlighted = structure.blocks.filter((block) => block.kind === 'equation' ? options.equations : options.tables);
+  const figures = options.figures ? structure.figures.map((figure) => ({ ...figure, kind: 'figure' as const })) : [];
+  for (const block of [...highlighted, ...figures]) {
     const lastLine = doc.lineAt(block.to - 1).number;
     for (let line = doc.lineAt(block.from).number; line <= lastLine; line++) {
       decorations.push(Decoration.line({ class: `cm-nm-${block.kind}` }).range(doc.line(line).from));

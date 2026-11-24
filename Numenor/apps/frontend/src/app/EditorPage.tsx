@@ -1781,7 +1781,7 @@ export default function EditorPage() {
           latexConfiguration.of({
             enabled: latexMode,
             options: latexHighlights ? settings.latex : {
-              ...settings.latex, headings: false, equations: false, tables: false, notes: false
+              ...settings.latex, headings: false, equations: false, tables: false, figures: false, notes: false
             },
             translate: t,
             showPdf: (line) => forwardSyncLineRef.current(line)

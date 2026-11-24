@@ -2609,6 +2609,11 @@ button.nm-presence-chip:hover { background: var(--nm-hover); }
   box-shadow: inset 2px 0 var(--nm-latex-table);
 }
 
+.editor-host .cm-line.cm-nm-figure {
+  box-shadow: inset 2px 0 var(--nm-latex-note-g);
+  background-color: color-mix(in srgb, var(--nm-latex-note-g) 13%, var(--nm-pane));
+}
+
 .cm-nm-note { font-weight: 600; color: var(--nm-text); }
 
 /* Syntax highlighting can wrap the title in a separate comment-colored span. */
