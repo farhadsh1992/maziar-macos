@@ -326,7 +326,7 @@ Built with SwiftUI + Swift Package Manager (no Xcode project needed).
   annual date, and `rank` covers whatever ranking/impact metric the
   journal is known by (JCR/Scimago quartile, impact factor, or a
   CORE/CCF-style letter some journals also carry). See below.
-- **Library** (`LibraryStore.swift`, `Views/LibraryView.swift`, left rail) —
+- **Library** (`Library/LibraryStore.swift`, `Library/LibraryView.swift`, left rail) —
   a Mendeley-style personal collection of papers you've read/collected
   (distinct from **Projects**, which tracks papers *you're* writing and
   submitting). See below.
@@ -581,7 +581,7 @@ binds its selection to — set the tab, then call `openSettings()`.
 
 ## Library
 
-A Mendeley-style personal reference library (`LibraryStore.swift`,
+A Mendeley-style personal reference library (`Library/LibraryStore.swift`,
 `LibraryModels.swift`, `LibraryMetadataService.swift`, `Views/LibraryView.swift`) —
 papers you've collected/read, each with title/authors/year/venue/DOI/first-author's-institution/tags/notes,
 backed by a plain folder of PDFs rather than a database Maziar owns.
@@ -891,7 +891,7 @@ paper back up live from `libraryStore` by ID rather than being handed a frozen s
   filled in by **Extract Info with AI**, which now pulls the abstract out of the PDF's first page
   alongside the rest), and the multi-note `PaperNotesEditor` (saved on the window's own Save
   button, same as the other fields here — unlike the Reader window below, which autosaves).
-- **Reader** (`Views/PaperReaderWindow.swift`, opened by the card's "Open in Reader" button) — the
+- **Reader** (`Library/PaperReaderWindow.swift`, opened by the card's "Open in Reader" button) — the
   paper's actual PDF now opens *inside* this window rather than externally in Preview, in a
   resizable split view: the PDF on the **left**, a three-way **Translator / AI Chat / Notes**
   toggle on the **right**, each mode taking the whole right pane rather than being wedged into a

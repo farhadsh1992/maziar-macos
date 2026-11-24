@@ -8,6 +8,8 @@ let package = Package(
         .executableTarget(
             name: "Maziar",
             path: "Sources/Maziar",
+            // Notes for Claude Code about the Library section, not part of the app.
+            exclude: ["Library/CLAUDE.md", "Library/code.md"],
             resources: [
                 .copy("Resources/Templates"),
                 .copy("Resources/Logo.png"),
