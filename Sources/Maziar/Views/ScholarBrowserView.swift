@@ -47,12 +47,14 @@ struct ScholarBrowserView: NSViewRepresentable {
     @Binding var currentURL: URL?
     /// JavaScript run in every frame before the page's own scripts (e.g. to preset a site's saved settings).
     var documentStartScript: String? = nil
+    var opensLocalJupyterInBrowser = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(canGoBack: $canGoBack, canGoForward: $canGoForward, isLoading: $isLoading, currentURL: $currentURL)
     }
 
     func makeNSView(context: Context) -> WKWebView {
+        context.coordinator.opensLocalJupyterInBrowser = opensLocalJupyterInBrowser
         let configuration = WKWebViewConfiguration()
         if let documentStartScript {
             configuration.userContentController.addUserScript(
@@ -79,6 +81,7 @@ struct ScholarBrowserView: NSViewRepresentable {
         /// else in the view hierarchy holds a strong reference to either, so without this the
         /// window returned from `createWebViewWith` would be deallocated the instant this method
         /// returns, before the popup ever had a chance to actually appear.
+        var opensLocalJupyterInBrowser = false
         private var popupWindows: [ObjectIdentifier: NSWindow] = [:]
         private static let outlineOnTopKey = "maziar.numenor.outlineAlwaysOnTop"
 
@@ -280,6 +283,11 @@ struct ScholarBrowserView: NSViewRepresentable {
         /// is what makes the popup share the parent page's session/cookies, letting an OAuth-style
         /// popup flow actually complete), hosted in a real, separate `NSWindow`.
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if opensLocalJupyterInBrowser, let url = navigationAction.request.url,
+               url.scheme == "http", url.host == "127.0.0.1", url.path.hasPrefix("/lab/tree/") {
+                NSWorkspace.shared.open(url)
+                return nil
+            }
             // An Numenor project opened in its own window (see `NumenorTheme.pageScript`) is a full
             // editor, not a small sign-in popup — give it an editor-sized, properly titled window.
             // Numenor's PDF preview window, history page and shared projects (an invite link → /collab) get

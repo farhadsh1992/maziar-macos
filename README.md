@@ -13,7 +13,7 @@ rebuttal rounds until it's ready for the conference.
 
 Built with SwiftUI + Swift Package Manager (no Xcode project needed).
 
-**Current version: Beta 3.1.3.** The version lives in two places, bumped together per release:
+**Current version: Beta 3.1.4.** The version lives in two places, bumped together per release:
 `AppUpdater.versionLabel` (shown in About/Settings) and the numeric `CFBundleVersion` /
 `CFBundleShortVersionString` in `build_app.sh`.
 

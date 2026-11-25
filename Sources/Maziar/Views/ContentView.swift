@@ -40,6 +40,8 @@ struct ContentView: View {
                                 JournalsView()
                             case .library:
                                 LibraryView()
+                            case .library2:
+                                ResearchModulesView()
                             case .diagrams, .numenor:
                                 EmptyView() // unreachable; handled below, kept permanently mounted
                             }

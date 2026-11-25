@@ -1,0 +1,187 @@
+.r2-app {
+  --r2-accent: #40E0D0;
+  --r2-bg: #f5f6f7;
+  --r2-panel: #fff;
+  --r2-soft: #edf0f2;
+  --r2-line: #d5dbe0;
+  --r2-ink: #1a232b;
+  --r2-muted: #54616d;
+  --r2-stage: #dfe3e7;
+  --r2-error: #9d292c;
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--r2-bg);
+  color: var(--r2-ink);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .r2-app:not([data-r2-theme="light"]) {
+    --r2-bg: #171b20;
+    --r2-panel: #22282e;
+    --r2-soft: #2b333b;
+    --r2-line: #434d57;
+    --r2-ink: #edf0f3;
+    --r2-muted: #abb7c3;
+    --r2-stage: #101419;
+    --r2-error: #ffb0b3;
+    color-scheme: dark;
+  }
+}
+.r2-app[data-r2-theme="dark"] {
+  --r2-bg: #171b20;
+  --r2-panel: #22282e;
+  --r2-soft: #2b333b;
+  --r2-line: #434d57;
+  --r2-ink: #edf0f3;
+  --r2-muted: #abb7c3;
+  --r2-stage: #101419;
+  --r2-error: #ffb0b3;
+  color-scheme: dark;
+}
+.r2-app *, .r2-app *::before, .r2-app *::after { box-sizing: border-box; }
+.r2-app [hidden] { display: none !important; }
+.r2-app h1, .r2-app h2, .r2-app h3 { color: var(--r2-ink); margin: 0; }
+.r2-app h1 { font-size: 17px; font-weight: 680; white-space: nowrap; }
+.r2-app h2 { font-size: 14px; font-weight: 650; }
+.r2-app h3 { font-size: 13px; font-weight: 650; }
+.r2-app p { margin: 0; }
+.r2-app :is(button, input, select, textarea) {
+  font: inherit;
+  color: var(--r2-ink);
+  background: var(--r2-panel);
+  border: 1px solid var(--r2-line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  min-width: 0;
+}
+.r2-app button { cursor: pointer; }
+.r2-app button:hover:not(:disabled) { background: var(--r2-soft); }
+.r2-app button:disabled { opacity: .5; cursor: default; }
+.r2-app :is(a:not(.internalLink), summary) { color: var(--r2-ink); }
+.r2-app a:not(.internalLink) { text-decoration: underline; text-underline-offset: 3px; }
+.r2-app summary { cursor: pointer; }
+.r2-app :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--r2-accent);
+  outline-offset: 1px;
+}
+.r2-app input[type="checkbox"] { accent-color: var(--r2-accent); }
+.r2-app :is(.r2-primary, button[aria-pressed="true"], .r2-thumbnail[aria-current="page"]) {
+  color: #102523;
+  background: var(--r2-accent);
+  border-color: var(--r2-accent);
+}
+.r2-app :is(.r2-primary, button[aria-pressed="true"], .r2-thumbnail[aria-current="page"]):hover:not(:disabled) {
+  color: #102523;
+  background: var(--r2-accent);
+  border-color: var(--r2-accent);
+  box-shadow: inset 0 0 0 1px #102523;
+}
+.r2-header, .r2-preview-header, .r2-pdf-toolbar, .r2-selection-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--r2-panel);
+  border-bottom: 1px solid var(--r2-line);
+}
+.r2-header, .r2-preview-header { justify-content: space-between; }
+.r2-preview-header > strong, .r2-reader-title > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.r2-reader-title { display: flex; gap: 10px; align-items: center; min-width: 0; flex: 1 1 auto; }
+.r2-header .r2-actions { margin-left: auto; }
+.r2-actions, .r2-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.r2-stack { display: grid; gap: 8px; }
+.r2-stack label:not(.r2-inline) { display: block; }
+.r2-stack label > input:not([type=checkbox]), .r2-stack textarea { display: block; width: 100%; }
+.r2-muted, .r2-app small { color: var(--r2-muted); }
+.r2-error, .r2-status { padding: 6px 12px; flex: 0 0 auto; }
+.r2-error { color: var(--r2-error); }
+.r2-status { color: var(--r2-muted); }
+.r2-split { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.r2-splitter {
+  flex: 0 0 5px;
+  background: var(--r2-line);
+  cursor: col-resize;
+  touch-action: none;
+}
+.r2-splitter:is(:hover, :focus-visible) { background: var(--r2-accent); }
+.r2-library-nav, .r2-paper-list, .r2-reader-nav, .r2-reader-annotations, .r2-preview {
+  min-height: 0;
+  min-width: 0;
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--r2-panel);
+}
+.r2-library-nav, .r2-reader-nav { max-width: 30%; }
+.r2-paper-list { max-width: 45%; }
+.r2-reader-annotations { max-width: 72%; }
+.r2-preview { flex: 1 0 160px; }
+.r2-nav-scroll, .r2-list-scroll, .r2-pane-scroll { flex: 1; min-height: 0; overflow: auto; }
+.r2-nav-scroll, .r2-pane-scroll { padding: 10px; }
+.r2-nav-scroll > :is(button, details) { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
+.r2-nav-scroll > h2 { margin: 14px 0 6px; }
+.r2-nav-scroll details button { margin: 4px 0 0 10px; display: block; text-align: left; }
+.r2-library-nav footer { padding: 10px; border-top: 1px solid var(--r2-line); overflow-wrap: anywhere; }
+.r2-library-nav footer small { display: block; }
+.r2-list-filters { padding: 9px; border-bottom: 1px solid var(--r2-line); display: grid; gap: 7px; }
+.r2-list-filters select { max-width: 150px; }
+.r2-paper-row {
+  display: grid;
+  text-align: left;
+  width: 100%;
+  gap: 3px;
+}
+.r2-app .r2-paper-row { border-width: 0 0 1px; border-radius: 0; padding: 10px 11px; }
+.r2-paper-row :is(strong, span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r2-paper-row[aria-pressed=true] small { color: #102523; }
+.r2-empty { padding: 22px; color: var(--r2-muted); }
+.r2-inspector { padding: 6px 12px; border-top: 1px solid var(--r2-line); max-height: 38%; overflow: auto; }
+.r2-inspector-body { margin-top: 7px; }
+.r2-details div { padding: 5px 0; }
+.r2-details dt { color: var(--r2-muted); font-weight: 600; }
+.r2-details dd { margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.r2-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px; border-bottom: 1px solid var(--r2-line); }
+.r2-title a, .r2-page-link { text-decoration: underline; }
+.r2-outline { padding-left: 14px; list-style: none; }
+.r2-outline button { text-align: left; margin: 3px 0; }
+.r2-thumbnails { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
+.r2-thumbnail { display: grid; justify-items: center; gap: 4px; }
+.r2-thumbnail canvas { width: 96px; height: auto; background: white; }
+.r2-pdf { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.r2-pdf-toolbar { gap: 5px; padding: 5px 6px; }
+.r2-page-field { width: 48px; text-align: right; }
+.r2-pdf-toolbar input[type=search] { width: 117px; }
+.r2-pdf-stage { position: relative; min-height: 0; flex: 1; background: var(--r2-stage); }
+.r2-pdf-scroll { position: absolute; inset: 0; overflow: auto; }
+.r2-pdf-scroll .pdfViewer { padding: 8px 0; min-width: max-content; }
+.r2-pdf-scroll .pdfViewer .page { margin: 0 auto 10px; }
+.r2-pdf-message { position: absolute; z-index: 10; inset: 8px auto auto 10px; color: var(--r2-ink); background: var(--r2-panel); padding: 8px; }
+.r2-pdf-marks { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.r2-pdf-marks span { position: absolute; background: #40E0D0; opacity: .35; mix-blend-mode: multiply; }
+.r2-selection-bar { border-width: 1px 0 0; }
+.r2-selection-quote { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r2-notes-pane, .r2-notebook { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.r2-note-editor { padding: 8px 10px; max-height: 32%; overflow: auto; border-bottom: 1px solid var(--r2-line); }
+.r2-note-editor form { margin-top: 6px; }
+.r2-notebook-controls { max-height: 48%; overflow: auto; padding: 8px 10px; display: grid; gap: 7px; }
+.r2-notebook:not(:has(iframe)) .r2-notebook-controls { max-height: none; }
+.r2-notebook-controls > :is(.r2-status,.r2-error) { padding: 0; }
+.r2-notebook-frame { flex: 1; min-height: 0; border: 0; width: 100%; background: var(--r2-soft); }
+.r2-mark-list { list-style: none; margin: 6px 0; padding: 0; }
+.r2-mark-list li { padding: 6px 0; border-bottom: 1px solid var(--r2-line); }
+.r2-mark-list li p, .r2-original-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.r2-remove { margin-left: auto; }
+.r2-resume { padding: 20px; display: grid; gap: 10px; overflow: auto; }
+.r2-resume > a { padding: 10px; background: var(--r2-panel); display: flex; gap: 10px; justify-content: space-between; }

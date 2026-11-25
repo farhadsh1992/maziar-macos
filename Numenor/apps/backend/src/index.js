@@ -1,3 +1,4 @@
+import { registerResearchRoutes } from './routes/research.js';
 import { registerAIModelRoutes } from './routes/aiModels.js';
 // Must run before anything reads process.env.
 import './config/envCompat.js';
@@ -94,6 +95,7 @@ registerSharedWithMeRoutes(fastify);
 registerSyncRoutes(fastify);
 registerPresenceRoutes(fastify);
 registerUpdateRoutes(fastify);
+await fastify.register(registerResearchRoutes, { prefix: '/api/research2' });
 
 // Serve frontend static files in tunnel/production mode
 const __filename = fileURLToPath(import.meta.url);

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>Reader2 Notebook</title>
+<style>
+  html, body, iframe { margin: 0; width: 100%; height: 100%; border: 0; display: block; }
+</style>
+<iframe title="JupyterLab notebook" id="notebook"></iframe>
+<script>
+  const config = __READER2_CONFIG__;
+  const frame = document.getElementById('notebook');
+  const notify = message => parent.postMessage(message, config.origin);
+  frame.addEventListener('load', () => {
+    try {
+      frame.contentDocument.addEventListener('click', event => {
+        const link = event.target.closest?.('a');
+        if (!link) return;
+        const url = new URL(link.href);
+        const paper = config.notebook.replace(/\.ipynb$/, '');
+        if (url.origin !== location.origin || url.pathname !== '/reader2/paper/' + paper) return;
+        const page = Number(url.searchParams.get('page'));
+        if (!Number.isInteger(page) || page < 1) return;
+        event.preventDefault();
+        notify({ type: 'reader2:source-page', page });
+      });
+    } catch {}
+  });
+  frame.src = config.lab;
+  function openNotebook() {
+    const app = frame.contentWindow.jupyterapp;
+    if (!app) return;
+    return Array.from(app.shell.widgets('main')).find(widget => widget.context?.path === config.notebook);
+  }
+  async function announce() {
+    try {
+      const widget = openNotebook();
+      if (widget?.content.model?.sharedModel) {
+        await widget.context.ready;
+        notify({ type: 'reader2:notebook-ready' });
+        return;
+      }
+    } catch {}
+    setTimeout(announce, 350);
+  }
+  announce();
+
+  window.addEventListener('message', async event => {
+    if (event.source !== parent || event.origin !== config.origin || event.data?.type !== 'reader2:append') return;
+    const { id, markdown } = event.data;
+    if (typeof id !== 'string' || typeof markdown !== 'string' || markdown.length > 100000) return;
+    let inserted = false;
+    try {
+      const widget = openNotebook();
+      if (widget) await widget.context.ready;
+      const model = widget?.content.model?.sharedModel;
+      if (!model) throw new Error('Open this paper’s notebook in the embedded JupyterLab pane first.');
+      const index = model.cells.length;
+      model.transact(() => model.insertCell(index, { cell_type: 'markdown', source: markdown, metadata: { reader2_append_id: id } }));
+      inserted = true;
+      try {
+        await widget.context.save();
+        // With Jupyter's collaboration extension, persistence can lag behind the in-memory model.
+        const contents = frame.contentWindow.jupyterapp.serviceManager.contents;
+        for (let attempt = 0; attempt < 32; attempt += 1) {
+          const saved = await contents.get(config.notebook, { content: true });
+          if (saved.content?.cells?.some(cell => cell.metadata?.reader2_append_id === id)) {
+            notify({ type: 'reader2:append-result', id, inserted });
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 220));
+        }
+      } catch {}
+      throw new Error('The cell was added in JupyterLab, but saving could not be confirmed. Check the notebook before retrying.');
+    } catch (error) {
+      notify({ type: 'reader2:append-result', id, inserted, error: error.message });
+    }
+  });
+</script>
+</html>

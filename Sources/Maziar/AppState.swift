@@ -15,6 +15,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case conferences
     case journals
     case library
+    case library2
     case diagrams
 
     var id: String { rawValue }
@@ -27,6 +28,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .conferences: return "Conferences"
         case .journals: return "Journals"
         case .library: return "Library"
+        case .library2: return "Library2"
         case .diagrams: return "Diagrams"
         }
     }
@@ -39,6 +41,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .conferences: return "calendar.badge.clock"
         case .journals: return "book.closed"
         case .library: return "books.vertical"
+        case .library2: return "books.vertical.fill"
         case .diagrams: return "flowchart"
         }
     }
