@@ -7,8 +7,7 @@
 A local LaTeX writing workspace: a project file tree, a code editor and a live PDF preview side by side,
 with AI help for writing. It runs on your own computer — your projects stay in a local folder.
 
-Numenor is based on [OpenPrism](https://github.com/OpenDCAI/OpenPrism) (MIT) and adds an Overleaf-style
-reading and editing workflow on top of it. It is also the second LaTeX editor inside
+Numenor is also the second LaTeX editor inside
 [Maziar](https://github.com/farhadsh1992/maziar-macos), the macOS paper-writing app it was built for,
 but it runs perfectly well on its own.
 
